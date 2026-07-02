@@ -7,10 +7,24 @@ Starter scaffold for a Python project using a `src/` layout.
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-python -m pip install -e .[dev]
+python -m pip install -r requirements-dev.txt
 pytest
 python -m mikrotik
 mikrotik-api
+```
+
+## Install
+
+Runtime dependencies only:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+Editable install from project metadata:
+
+```powershell
+python -m pip install -e .
 ```
 
 ## Structure
