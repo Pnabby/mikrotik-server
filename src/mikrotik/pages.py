@@ -1045,6 +1045,659 @@ def _render_status_page(
                 grid-column: auto;
             }
         }
+
+        /* Portal-aligned visual system */
+        :root {
+            --portal-bg: #f0f4ff;
+            --portal-surface: #ffffff;
+            --portal-surface-soft: #fafbff;
+            --portal-border: #e8eaf0;
+            --portal-border-strong: #d8def0;
+            --portal-text: #1a1a2e;
+            --portal-text-muted: #6b7280;
+            --portal-text-soft: #8b93a7;
+            --portal-accent: #4361ee;
+            --portal-accent-dark: #3451d1;
+            --portal-accent-soft: #eef2ff;
+            --portal-success-soft: #eefbf3;
+            --portal-success-border: #cbeed7;
+            --portal-success-text: #1f7a47;
+            --portal-error-soft: #fff0f0;
+            --portal-error-border: #fdc5c5;
+            --portal-error-text: #c0392b;
+            --portal-shadow: 0 16px 40px rgba(39, 63, 139, 0.08);
+            --bg: var(--portal-bg);
+            --surface: var(--portal-surface);
+            --border: var(--portal-border);
+            --text: var(--portal-text);
+            --text-secondary: var(--portal-text-muted);
+            --text-tertiary: var(--portal-text-soft);
+            --primary: var(--portal-accent);
+            --primary-light: var(--portal-accent-soft);
+            --primary-hover: var(--portal-accent-dark);
+            --success: var(--portal-success-text);
+            --success-light: var(--portal-success-soft);
+            --danger: var(--portal-error-text);
+            --danger-light: var(--portal-error-soft);
+            --shadow: var(--portal-shadow);
+            --radius: 16px;
+            --radius-sm: 10px;
+        }
+
+        html,
+        body {
+            min-height: 100%;
+        }
+
+        body {
+            min-height: 100vh;
+            background:
+                radial-gradient(circle at top left, rgba(67, 97, 238, 0.12), transparent 28%),
+                radial-gradient(circle at top right, rgba(67, 97, 238, 0.08), transparent 24%),
+                var(--portal-bg);
+            color: var(--portal-text);
+            line-height: 1.5;
+        }
+
+        body.modal-open {
+            overflow: hidden;
+        }
+
+        button,
+        input {
+            font-family: inherit;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 760px;
+            padding: 32px 18px 44px;
+        }
+
+        .header {
+            gap: 12px;
+            margin-bottom: 24px;
+            padding: 0 2px;
+        }
+
+        .logo-icon {
+            width: 46px;
+            height: 46px;
+            border-radius: 14px;
+            background: var(--portal-accent);
+            box-shadow: 0 12px 24px rgba(67, 97, 238, 0.22);
+        }
+
+        .logo-icon svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        .logo-text {
+            font-size: 1.18rem;
+            letter-spacing: -0.035em;
+        }
+
+        .logo-text span {
+            color: var(--portal-accent);
+        }
+
+        .user-chip {
+            gap: 7px;
+            max-width: 190px;
+            padding: 7px 12px;
+            border: 1px solid #c7d2fe;
+            border-radius: 999px;
+            background: var(--portal-accent-soft);
+            color: var(--portal-accent);
+        }
+
+        .user-chip.inactive {
+            border-color: var(--portal-border);
+            background: var(--portal-surface);
+            color: var(--portal-text-soft);
+        }
+
+        .voucher-lookup-card {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 14px;
+            padding: 17px 18px;
+            border: 1px solid #c7d2fe;
+            border-radius: 16px;
+            background: linear-gradient(135deg, #f8f9ff 0%, var(--portal-accent-soft) 100%);
+            box-shadow: 0 10px 28px rgba(67, 97, 238, 0.07);
+        }
+
+        .voucher-lookup-icon {
+            display: flex;
+            width: 42px;
+            height: 42px;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+            border-radius: 12px;
+            background: var(--portal-accent);
+            box-shadow: 0 8px 18px rgba(67, 97, 238, 0.2);
+        }
+
+        .voucher-lookup-icon svg {
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .voucher-lookup-icon svg {
+            width: 21px;
+            height: 21px;
+            color: #fff;
+        }
+
+        .voucher-lookup-copy {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .voucher-lookup-title {
+            margin-bottom: 2px;
+            font-size: 0.9rem;
+            font-weight: 700;
+        }
+
+        .voucher-lookup-text {
+            color: var(--portal-text-muted);
+            font-size: 0.76rem;
+            line-height: 1.5;
+        }
+
+        .voucher-lookup-button {
+            gap: 7px;
+            min-width: 142px;
+        }
+
+        .session-section,
+        .status-bar,
+        .stats-grid {
+            margin-bottom: 14px;
+        }
+
+        .session-bar,
+        .status-bar,
+        .stat-card,
+        .panel {
+            border-color: var(--portal-border);
+            background: var(--portal-surface);
+            box-shadow: var(--portal-shadow);
+        }
+
+        .session-bar {
+            padding: 17px 18px;
+            border-radius: 16px;
+        }
+
+        .session-title,
+        .stat-label,
+        .device-metric-label {
+            color: var(--portal-text-soft);
+            letter-spacing: 0.07em;
+        }
+
+        .session-note {
+            color: var(--portal-text-muted);
+        }
+
+        .btn {
+            height: 44px;
+            padding: 0 16px;
+            border-radius: 10px;
+            font-size: 0.82rem;
+            transition: background 0.2s, border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+        }
+
+        .btn-primary {
+            background: var(--portal-accent);
+            box-shadow: 0 8px 16px rgba(67, 97, 238, 0.16);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: var(--portal-accent-dark);
+        }
+
+        .btn-outline {
+            border-color: var(--portal-border-strong);
+            background: var(--portal-surface-soft);
+            color: var(--portal-text);
+        }
+
+        .btn-outline:hover:not(:disabled) {
+            background: #f1f4fd;
+        }
+
+        .status-bar {
+            padding: 10px 14px;
+            border-radius: 10px;
+            box-shadow: none;
+        }
+
+        .stats-grid {
+            gap: 10px;
+        }
+
+        .stat-card {
+            position: relative;
+            overflow: hidden;
+            min-height: 96px;
+            padding: 17px;
+            border-radius: 14px;
+        }
+
+        .stat-card::after {
+            position: absolute;
+            right: -18px;
+            bottom: -24px;
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: var(--portal-accent-soft);
+            content: "";
+        }
+
+        .stat-value {
+            position: relative;
+            z-index: 1;
+            margin-top: 7px;
+            font-size: 1.18rem;
+        }
+
+        .stat-value.accent {
+            color: var(--portal-accent);
+        }
+
+        .panels {
+            gap: 12px;
+        }
+
+        .panel {
+            border-radius: 16px;
+        }
+
+        .panel-header {
+            min-height: 54px;
+            padding: 15px 18px;
+            border-bottom: 1px solid #f0f2f8;
+        }
+
+        .panel-title {
+            font-size: 0.9rem;
+        }
+
+        .panel-badge {
+            padding: 4px 9px;
+            background: var(--portal-surface-soft);
+        }
+
+        .panel-badge.active {
+            background: var(--portal-success-soft);
+            color: var(--portal-success-text);
+        }
+
+        .panel-badge.error {
+            background: var(--portal-error-soft);
+            color: var(--portal-error-text);
+        }
+
+        .info-list {
+            border-top: 0;
+        }
+
+        .info-row {
+            padding: 12px 18px;
+            border-bottom-color: var(--portal-border);
+        }
+
+        .info-key {
+            color: var(--portal-text-muted);
+        }
+
+        .footer-note {
+            margin: 0;
+            padding: 12px 18px;
+            border-top: 0;
+            background: var(--portal-surface-soft);
+            text-align: left;
+        }
+
+        .devices-container {
+            padding: 0;
+        }
+
+        .device-item {
+            padding: 16px 18px;
+            border: 0;
+            border-bottom: 1px solid var(--portal-border);
+            border-radius: 0;
+            background: var(--portal-surface);
+        }
+
+        .device-item:last-child {
+            border-bottom: 0;
+        }
+
+        .device-metric {
+            border-color: var(--portal-border);
+            background: var(--portal-surface-soft);
+        }
+
+        .device-status.current {
+            border: 1px solid #c7d2fe;
+            background: var(--portal-accent-soft);
+            color: var(--portal-accent);
+        }
+
+        .btn-logout {
+            border-color: var(--portal-error-border);
+            border-radius: 9px;
+            background: #fff;
+            color: var(--portal-error-text);
+        }
+
+        .empty-state {
+            padding: 28px 18px;
+            color: var(--portal-text-soft);
+        }
+
+        .page-footer {
+            margin-top: 20px;
+            color: var(--portal-text-soft);
+        }
+
+        .loading-overlay {
+            background: rgba(240, 244, 255, 0.82);
+            backdrop-filter: blur(6px);
+        }
+
+        .loading-card {
+            border-color: var(--portal-border);
+            box-shadow: 0 24px 60px rgba(39, 63, 139, 0.16);
+        }
+
+        .loading-spinner {
+            border-color: rgba(67, 97, 238, 0.16);
+            border-top-color: var(--portal-accent);
+        }
+
+        .modal-backdrop {
+            padding: 20px;
+            background: rgba(26, 26, 46, 0.48);
+            backdrop-filter: blur(5px);
+            animation: backdrop-in 0.18s ease-out;
+        }
+
+        .modal {
+            overflow: hidden;
+            border-color: var(--portal-border);
+            border-radius: 18px;
+            box-shadow: 0 28px 70px rgba(26, 26, 46, 0.24);
+            animation: modal-in 0.2s ease-out;
+        }
+
+        .lookup-modal {
+            width: min(100%, 460px);
+        }
+
+        .modal-header {
+            gap: 13px;
+            padding: 20px 22px;
+            border-bottom: 1px solid var(--portal-border);
+            background: var(--portal-surface);
+        }
+
+        .modal-icon {
+            flex: 0 0 auto;
+        }
+
+        .lookup-modal-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--portal-accent);
+            color: #fff;
+            box-shadow: 0 8px 18px rgba(67, 97, 238, 0.2);
+        }
+
+        .lookup-modal-icon svg,
+        .modal-close svg,
+        .input-shell > svg,
+        .lookup-privacy-note svg {
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .lookup-modal-icon svg {
+            width: 19px;
+            height: 19px;
+        }
+
+        .modal-title {
+            color: var(--portal-text);
+            font-size: 1rem;
+        }
+
+        .modal-subtitle {
+            color: var(--portal-text-muted);
+        }
+
+        .modal-close {
+            display: flex;
+            width: 34px;
+            height: 34px;
+            align-items: center;
+            justify-content: center;
+            border-radius: 9px;
+            color: var(--portal-text-muted);
+        }
+
+        .modal-close:hover:not(:disabled) {
+            background: var(--portal-accent-soft);
+            color: var(--portal-accent);
+        }
+
+        .modal-close svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        .modal-body {
+            padding: 22px;
+        }
+
+        .lookup-form {
+            display: flex;
+            flex-direction: column;
+            gap: 17px;
+        }
+
+        .form-field label {
+            display: block;
+            margin-bottom: 7px;
+            color: var(--portal-text);
+            font-size: 0.78rem;
+            font-weight: 600;
+        }
+
+        .input-shell {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .input-shell > svg {
+            position: absolute;
+            left: 13px;
+            z-index: 1;
+            width: 18px;
+            height: 18px;
+            color: var(--portal-text-soft);
+            pointer-events: none;
+        }
+
+        .search-input,
+        .password-field .search-input {
+            width: 100%;
+            height: 48px;
+            padding: 0 14px 0 42px;
+            border: 1px solid var(--portal-border-strong);
+            border-radius: 10px;
+            background: var(--portal-surface-soft);
+            color: var(--portal-text);
+            font-size: 0.875rem;
+            transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+        }
+
+        .password-field .search-input {
+            padding-right: 64px;
+        }
+
+        .search-input:focus {
+            border-color: var(--portal-accent);
+            background: #fff;
+            box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.11);
+        }
+
+        .password-toggle {
+            right: 7px;
+            color: var(--portal-accent);
+        }
+
+        .password-toggle:hover,
+        .password-toggle:focus-visible {
+            background: var(--portal-accent-soft);
+        }
+
+        .lookup-privacy-note {
+            display: flex;
+            align-items: flex-start;
+            gap: 9px;
+            padding: 11px 12px;
+            border: 1px solid #c7d2fe;
+            border-radius: 10px;
+            background: var(--portal-accent-soft);
+            color: var(--portal-text-muted);
+            font-size: 0.73rem;
+            line-height: 1.5;
+        }
+
+        .lookup-privacy-note svg {
+            width: 17px;
+            height: 17px;
+            flex: 0 0 auto;
+            margin-top: 1px;
+            color: var(--portal-accent);
+        }
+
+        .lookup-form .modal-error {
+            margin-top: -5px;
+            border-color: var(--portal-error-border);
+            background: var(--portal-error-soft);
+            color: var(--portal-error-text);
+        }
+
+        .lookup-form .modal-actions {
+            margin-top: 0;
+        }
+
+        .modal-card {
+            border-color: var(--portal-border);
+            background: var(--portal-surface-soft);
+        }
+
+        .modal-warning {
+            border-color: #fde68a;
+        }
+
+        .modal-error {
+            border-color: var(--portal-error-border);
+            background: var(--portal-error-soft);
+            color: var(--portal-error-text);
+        }
+
+        @keyframes backdrop-in {
+            from { opacity: 0; }
+        }
+
+        @keyframes modal-in {
+            from { opacity: 0; transform: translateY(10px) scale(0.98); }
+        }
+
+        @media (max-width: 560px) {
+            .container {
+                padding: 24px 12px 36px;
+            }
+
+            .header {
+                margin-bottom: 18px;
+            }
+
+            .logo-icon {
+                width: 40px;
+                height: 40px;
+            }
+
+            .user-chip {
+                max-width: 128px;
+            }
+
+            .voucher-lookup-card {
+                align-items: flex-start;
+                flex-wrap: wrap;
+                padding: 16px;
+            }
+
+            .voucher-lookup-copy {
+                padding-top: 2px;
+            }
+
+            .voucher-lookup-button {
+                width: 100%;
+            }
+
+            .session-bar {
+                align-items: flex-end;
+            }
+
+            .modal-backdrop {
+                align-items: flex-end;
+                padding: 10px;
+            }
+
+            .modal {
+                max-height: calc(100vh - 20px);
+                border-radius: 18px;
+            }
+
+            .modal-header,
+            .modal-body {
+                padding-left: 18px;
+                padding-right: 18px;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .modal-backdrop,
+            .modal {
+                animation: none;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1065,18 +1718,21 @@ def _render_status_page(
             </span>
         </div>
 
-        <!-- Voucher Search -->
-        <div class="search-section">
-            <form class="search-form" id="user-lookup-form">
-                <div class="search-heading">Find another voucher</div>
-                <div class="search-help">Enter its username and password to view the same account details.</div>
-                <input class="search-input" id="lookup-username" name="username" type="text" autocomplete="username" placeholder="Username" aria-label="Voucher username" required>
-                <div class="password-field">
-                    <input class="search-input" id="lookup-password" name="password" type="password" autocomplete="current-password" placeholder="Password" aria-label="Voucher password" required>
-                    <button class="password-toggle" id="password-toggle" type="button" aria-label="Show password" aria-pressed="false">Show</button>
-                </div>
-                <button id="lookup-button" class="btn btn-primary" type="submit">Search</button>
-            </form>
+        <!-- Voucher Lookup Callout -->
+        <div class="voucher-lookup-card">
+            <div class="voucher-lookup-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                    <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5V9a3 3 0 0 0 0 6v1.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5V15a3 3 0 0 0 0-6V7.5Z"/>
+                    <path d="M12 8v8"/>
+                </svg>
+            </div>
+            <div class="voucher-lookup-copy">
+                <div class="voucher-lookup-title">Check a different voucher</div>
+                <div class="voucher-lookup-text">View its usage, plan, expiry date, and connected devices.</div>
+            </div>
+            <button id="open-lookup-modal" class="btn btn-primary voucher-lookup-button" type="button">
+                Check voucher
+            </button>
         </div>
 
         <!-- Session Access -->
@@ -1174,6 +1830,49 @@ def _render_status_page(
         </div>
     </div>
 
+    <div class="modal-backdrop" id="lookup-modal" hidden>
+        <div class="modal lookup-modal" role="dialog" aria-modal="true" aria-labelledby="lookup-modal-title" aria-describedby="lookup-modal-subtitle">
+            <div class="modal-header">
+                <div class="modal-icon lookup-modal-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5V9a3 3 0 0 0 0 6v1.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5V15a3 3 0 0 0 0-6V7.5Z"/><path d="M12 8v8"/></svg>
+                </div>
+                <div class="modal-title-wrap">
+                    <div class="modal-title" id="lookup-modal-title">Find another voucher</div>
+                    <div class="modal-subtitle" id="lookup-modal-subtitle">Enter the details printed on the voucher.</div>
+                </div>
+                <button type="button" class="modal-close" id="lookup-modal-close" aria-label="Close voucher lookup">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+                </button>
+            </div>
+            <form class="modal-body lookup-form" id="user-lookup-form">
+                <div class="form-field">
+                    <label for="lookup-username">Voucher username</label>
+                    <div class="input-shell">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z"/></svg>
+                        <input class="search-input" id="lookup-username" name="username" type="text" autocomplete="username" placeholder="Enter username" required>
+                    </div>
+                </div>
+                <div class="form-field">
+                    <label for="lookup-password">Voucher password</label>
+                    <div class="input-shell password-field">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+                        <input class="search-input" id="lookup-password" name="password" type="password" autocomplete="current-password" placeholder="Enter password" required>
+                        <button class="password-toggle" id="password-toggle" type="button" aria-label="Show password" aria-pressed="false">Show</button>
+                    </div>
+                </div>
+                <div class="lookup-privacy-note">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>
+                    Your details are used only to securely retrieve this voucher's status.
+                </div>
+                <div class="modal-error" id="lookup-modal-error" role="alert" hidden></div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-outline" id="lookup-modal-cancel">Cancel</button>
+                    <button id="lookup-button" class="btn btn-primary" type="submit">View voucher details</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <div class="modal-backdrop" id="logout-modal" hidden>
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="logout-modal-title">
             <div class="modal-header">
@@ -1184,7 +1883,9 @@ def _render_status_page(
                         This will immediately disconnect the selected device from the hotspot session.
                     </div>
                 </div>
-                <button type="button" class="modal-close" id="logout-modal-close" aria-label="Close confirmation">x</button>
+                <button type="button" class="modal-close" id="logout-modal-close" aria-label="Close confirmation">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+                </button>
             </div>
             <div class="modal-body">
                 <div class="modal-card">
@@ -1226,6 +1927,11 @@ def _render_status_page(
         const lookupPasswordEl = document.getElementById('lookup-password');
         const passwordToggleEl = document.getElementById('password-toggle');
         const lookupButtonEl = document.getElementById('lookup-button');
+        const openLookupModalEl = document.getElementById('open-lookup-modal');
+        const lookupModalEl = document.getElementById('lookup-modal');
+        const lookupModalCloseEl = document.getElementById('lookup-modal-close');
+        const lookupModalCancelEl = document.getElementById('lookup-modal-cancel');
+        const lookupModalErrorEl = document.getElementById('lookup-modal-error');
         const refreshButtonEl = document.getElementById('refresh-button');
         const lockedUsernameEl = document.getElementById('locked-username');
         const lockedNoteEl = document.getElementById('locked-note');
@@ -1277,6 +1983,14 @@ def _render_status_page(
         }
 
         function bindEvents() {
+            openLookupModalEl.addEventListener('click', openLookupModal);
+            lookupModalCloseEl.addEventListener('click', closeLookupModal);
+            lookupModalCancelEl.addEventListener('click', closeLookupModal);
+
+            lookupModalEl.addEventListener('click', (event) => {
+                if (event.target === lookupModalEl) closeLookupModal();
+            });
+
             passwordToggleEl.addEventListener('click', () => {
                 const shouldShowPassword = lookupPasswordEl.type === 'password';
                 lookupPasswordEl.type = shouldShowPassword ? 'text' : 'password';
@@ -1293,6 +2007,8 @@ def _render_status_page(
                 event.preventDefault();
                 const username = normalizeText(lookupUsernameEl.value);
                 const password = lookupPasswordEl.value;
+                lookupModalErrorEl.hidden = true;
+                lookupModalErrorEl.textContent = '';
                 if (!username || !password || isLoading) return;
                 loadStatus(username, password);
             });
@@ -1313,10 +2029,39 @@ def _render_status_page(
             });
 
             document.addEventListener('keydown', (event) => {
-                if (event.key === 'Escape' && !logoutModalEl.hidden) {
-                    closeLogoutModal();
-                }
+                if (event.key !== 'Escape') return;
+                if (!lookupModalEl.hidden) closeLookupModal();
+                else if (!logoutModalEl.hidden) closeLogoutModal();
             });
+        }
+
+        function openLookupModal() {
+            lookupModalErrorEl.hidden = true;
+            lookupModalErrorEl.textContent = '';
+            lookupModalEl.hidden = false;
+            syncModalState();
+            window.setTimeout(() => lookupUsernameEl.focus(), 0);
+        }
+
+        function closeLookupModal(forceClose = false) {
+            if (!forceClose && isLoading) return;
+            lookupModalEl.hidden = true;
+            lookupModalErrorEl.hidden = true;
+            lookupModalErrorEl.textContent = '';
+            lookupPasswordEl.value = '';
+            lookupPasswordEl.type = 'password';
+            passwordToggleEl.textContent = 'Show';
+            passwordToggleEl.setAttribute('aria-label', 'Show password');
+            passwordToggleEl.setAttribute('aria-pressed', 'false');
+            syncModalState();
+            if (!forceClose) openLookupModalEl.focus();
+        }
+
+        function syncModalState() {
+            document.body.classList.toggle(
+                'modal-open',
+                !lookupModalEl.hidden || !logoutModalEl.hidden
+            );
         }
 
         async function loadStatus(username, password = '') {
@@ -1350,8 +2095,13 @@ def _render_status_page(
                 const payload = await response.json();
                 renderPayload(payload);
                 lookupPasswordEl.value = '';
+                if (isLookupResult) closeLookupModal(true);
             } catch (error) {
                 renderError(normalizedUsername, error.message || 'Failed to load');
+                if (isLookupResult) {
+                    lookupModalErrorEl.hidden = false;
+                    lookupModalErrorEl.textContent = error.message || 'Could not verify this voucher.';
+                }
             } finally {
                 isLoading = false;
                 hideLoadingIndicator();
@@ -1513,6 +2263,7 @@ def _render_status_page(
             logoutModalCloseEl.disabled = false;
             logoutModalConfirmEl.textContent = 'Confirm logout';
             logoutModalEl.hidden = false;
+            syncModalState();
             logoutModalConfirmEl.focus();
         }
 
@@ -1524,6 +2275,7 @@ def _render_status_page(
             logoutModalErrorEl.textContent = '';
             logoutModalConfirmEl.textContent = 'Confirm logout';
             pendingLogout = null;
+            syncModalState();
         }
 
         async function confirmLogout() {

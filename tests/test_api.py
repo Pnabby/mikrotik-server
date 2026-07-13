@@ -187,6 +187,10 @@ def test_status_page_ignores_query_username_without_locked_cookie() -> None:
     assert response.status_code == 200
     assert "Waiting for hotspot session" in response.text
     assert "Find another voucher" in response.text
+    assert 'id="open-lookup-modal"' in response.text
+    assert 'id="lookup-modal" hidden' in response.text
+    assert 'aria-labelledby="lookup-modal-title"' in response.text
+    assert "Check voucher" in response.text
     assert 'name="username"' in response.text
     assert 'name="password"' in response.text
     assert 'id="password-toggle"' in response.text
