@@ -83,9 +83,20 @@ class MikroTikClient:
 
     def get_hotspot_user(self, username: str) -> dict[str, str] | None:
         api = self.connect()
-        users = api.get_resource("/ip/hotspot/user").get(name=username)
-        if not users:
+        normalized_username = _normalize_routeros_name(username)
+        if not normalized_username:
             return None
+
+        users = api.get_resource("/ip/hotspot/user").get(name=normalized_username)
+        if not users:
+            users = api.get_resource("/ip/hotspot/user").get()
+            normalized_lookup = normalized_username.casefold()
+            for user in users:
+                if _normalize_routeros_name(user.get("name")).casefold() == normalized_lookup:
+                    return user
+
+            return None
+
         return users[0]
 
     def get_hotspot_active_devices(self, username: str) -> list[dict[str, str]]:
@@ -216,12 +227,14 @@ class MikroTikClient:
         mac_address: str | None = None,
         ip_address: str | None = None,
     ) -> dict[str, str] | None:
+        normalized_username = _normalize_routeros_name(username)
         if session_id:
             sessions = active_resource.get(id=session_id)
-            if sessions:
-                return sessions[0]
+            for session in sessions:
+                if _normalize_routeros_name(session.get("user")) == normalized_username:
+                    return session
 
-        user_sessions = active_resource.get(user=username)
+        user_sessions = active_resource.get(user=normalized_username)
         for session in user_sessions:
             if mac_address and session.get("mac-address") == mac_address:
                 return session
@@ -250,6 +263,13 @@ def _parse_routeros_int(value: str | None) -> int:
 def _parse_routeros_optional_int(value: str | None) -> int | None:
     parsed = _parse_routeros_int(value)
     return parsed or None
+
+
+def _normalize_routeros_name(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+
+    return value.strip()
 
 
 def load_dotenv(dotenv_path: str | Path = ".env") -> None:

@@ -10,6 +10,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 router = APIRouter()
 STATUS_COOKIE_NAME = "flint_status_user"
+STATUS_DEVICE_IP_COOKIE_NAME = "flint_status_device_ip"
+STATUS_DEVICE_MAC_COOKIE_NAME = "flint_status_device_mac"
 STATUS_COOKIE_MAX_AGE = 60 * 60 * 12
 
 
@@ -17,31 +19,61 @@ STATUS_COOKIE_MAX_AGE = 60 * 60 * 12
 @router.get("/status", response_class=HTMLResponse)
 @router.get("/status/{username}", response_class=HTMLResponse)
 def hotspot_status_page(request: Request, username: str | None = None) -> HTMLResponse:
-    return HTMLResponse(_render_status_page(_resolve_page_username(request)))
+    return HTMLResponse(
+        _render_status_page(
+            _resolve_page_username(request),
+            _resolve_current_device_ip(request),
+            _resolve_current_device_mac(request),
+        )
+    )
 
 
 @router.get("/launch-status")
-def launch_status_redirect() -> RedirectResponse:
-    return RedirectResponse(url="/", status_code=303)
+def launch_status_redirect(request: Request) -> RedirectResponse:
+    return _build_launch_response(
+        request,
+        _first_query_value(
+            request,
+            ("username", "user", "name", "login", "hotspot_user"),
+        ),
+        _first_query_value(request, ("ip", "ip_address", "address")),
+        _first_query_value(request, ("mac", "mac_address", "mac-address")),
+    )
 
 
 @router.post("/launch-status")
 async def launch_status_page(request: Request) -> RedirectResponse:
-    username = _extract_posted_username(await request.body())
-    response = RedirectResponse(url="/", status_code=303)
+    posted_values = _extract_posted_values(await request.body())
+    username = _first_posted_value(
+        posted_values,
+        ("username", "user", "name", "login", "hotspot_user"),
+    )
+    device_ip = _first_posted_value(posted_values, ("ip", "ip_address", "address"))
+    device_mac = _first_posted_value(posted_values, ("mac", "mac_address", "mac-address"))
+    return _build_launch_response(request, username, device_ip, device_mac)
 
+
+def _build_launch_response(
+    request: Request,
+    username: str | None,
+    device_ip: str | None,
+    device_mac: str | None,
+) -> RedirectResponse:
+    response = RedirectResponse(url="/", status_code=303)
     if username:
-        response.set_cookie(
-            STATUS_COOKIE_NAME,
-            username,
-            max_age=STATUS_COOKIE_MAX_AGE,
-            httponly=True,
-            samesite="lax",
-            secure=request.url.scheme == "https",
-            path="/",
-        )
+        _set_status_cookie(response, request, STATUS_COOKIE_NAME, username)
+        if device_ip:
+            _set_status_cookie(response, request, STATUS_DEVICE_IP_COOKIE_NAME, device_ip)
+        else:
+            response.delete_cookie(STATUS_DEVICE_IP_COOKIE_NAME, path="/")
+        if device_mac:
+            _set_status_cookie(response, request, STATUS_DEVICE_MAC_COOKIE_NAME, device_mac)
+        else:
+            response.delete_cookie(STATUS_DEVICE_MAC_COOKIE_NAME, path="/")
     else:
         response.delete_cookie(STATUS_COOKIE_NAME, path="/")
+        response.delete_cookie(STATUS_DEVICE_IP_COOKIE_NAME, path="/")
+        response.delete_cookie(STATUS_DEVICE_MAC_COOKIE_NAME, path="/")
 
     return response
 
@@ -50,14 +82,49 @@ def _resolve_page_username(request: Request) -> str | None:
     return _normalize_optional_text(request.cookies.get(STATUS_COOKIE_NAME))
 
 
-def _extract_posted_username(body: bytes) -> str | None:
-    try:
-        parsed_body = parse_qs(body.decode("utf-8"), keep_blank_values=False)
-    except UnicodeDecodeError:
+def _resolve_current_device_ip(request: Request) -> str | None:
+    query_ip = _first_query_value(request, ("ip", "ip_address", "address"))
+    if query_ip:
+        return query_ip
+    cookie_ip = _normalize_optional_text(request.cookies.get(STATUS_DEVICE_IP_COOKIE_NAME))
+    if cookie_ip:
+        return cookie_ip
+    for header_name in ("cf-connecting-ip", "x-real-ip", "x-forwarded-for"):
+        header_value = _normalize_optional_text(request.headers.get(header_name))
+        if header_value:
+            return header_value.split(",", 1)[0].strip()
+    if request.client is None:
         return None
+    return _normalize_optional_text(request.client.host)
 
-    for key in ("username", "user", "name", "login", "hotspot_user"):
-        values = parsed_body.get(key)
+
+def _resolve_current_device_mac(request: Request) -> str | None:
+    return _first_query_value(request, ("mac", "mac_address", "mac-address")) or (
+        _normalize_optional_text(request.cookies.get(STATUS_DEVICE_MAC_COOKIE_NAME))
+    )
+
+
+def _first_query_value(request: Request, keys: tuple[str, ...]) -> str | None:
+    for key in keys:
+        value = _normalize_optional_text(request.query_params.get(key))
+        if value:
+            return value
+    return None
+
+
+def _extract_posted_values(body: bytes) -> dict[str, list[str]]:
+    try:
+        return parse_qs(body.decode("utf-8"), keep_blank_values=False)
+    except UnicodeDecodeError:
+        return {}
+
+
+def _first_posted_value(
+    posted_values: dict[str, list[str]],
+    keys: tuple[str, ...],
+) -> str | None:
+    for key in keys:
+        values = posted_values.get(key)
         if not values:
             continue
 
@@ -68,6 +135,23 @@ def _extract_posted_username(body: bytes) -> str | None:
     return None
 
 
+def _set_status_cookie(
+    response: RedirectResponse,
+    request: Request,
+    name: str,
+    value: str,
+) -> None:
+    response.set_cookie(
+        name,
+        value,
+        max_age=STATUS_COOKIE_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        secure=request.url.scheme == "https",
+        path="/",
+    )
+
+
 def _normalize_optional_text(value: object) -> str | None:
     if not isinstance(value, str):
         return None
@@ -76,10 +160,16 @@ def _normalize_optional_text(value: object) -> str | None:
     return normalized_value or None
 
 
-def _render_status_page(username: str | None) -> str:
+def _render_status_page(
+    username: str | None,
+    current_device_ip: str | None = None,
+    current_device_mac: str | None = None,
+) -> str:
     initial_username = (username or "").strip()
     html_username = html.escape(initial_username, quote=True)
     json_username = json.dumps(initial_username)
+    json_current_device_ip = json.dumps((current_device_ip or "").strip())
+    json_current_device_mac = json.dumps((current_device_mac or "").strip())
     locked_username = html.escape(initial_username or "Waiting for hotspot session", quote=False)
     locked_message = html.escape(
         (
@@ -219,14 +309,116 @@ def _render_status_page(username: str | None) -> str:
             50% { opacity: 0.3; }
         }
 
+        .loading-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 1100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(245, 246, 250, 0.86);
+            backdrop-filter: blur(4px);
+        }
+
+        .loading-overlay[hidden] {
+            display: none;
+        }
+
+        .loading-card {
+            width: min(100%, 360px);
+            padding: 26px 22px;
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            background: var(--surface);
+            box-shadow: 0 14px 40px rgba(26, 31, 54, 0.14);
+            text-align: center;
+        }
+
+        .loading-spinner {
+            width: 46px;
+            height: 46px;
+            margin: 0 auto 16px;
+            border: 4px solid var(--primary-light);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: loading-spin 0.8s linear infinite;
+        }
+
+        .loading-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .loading-message {
+            margin-top: 7px;
+            font-size: 0.8rem;
+            line-height: 1.55;
+            color: var(--text-secondary);
+        }
+
+        .loading-progress {
+            position: relative;
+            height: 4px;
+            margin-top: 18px;
+            overflow: hidden;
+            border-radius: 4px;
+            background: var(--primary-light);
+        }
+
+        .loading-progress::after {
+            content: "";
+            position: absolute;
+            inset: 0 auto 0 -40%;
+            width: 40%;
+            border-radius: inherit;
+            background: var(--primary);
+            animation: loading-progress 1.35s ease-in-out infinite;
+        }
+
+        @keyframes loading-spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes loading-progress {
+            from { left: -40%; }
+            to { left: 100%; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .loading-spinner,
+            .loading-progress::after {
+                animation-duration: 2.5s;
+            }
+        }
+
         /* Search */
         .search-section {
             margin-bottom: 10px;
         }
 
         .search-form {
-            display: flex;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
             gap: 6px;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--surface);
+        }
+
+        .search-heading {
+            grid-column: 1 / -1;
+            font-size: 0.82rem;
+            font-weight: 700;
+        }
+
+        .search-help {
+            grid-column: 1 / -1;
+            margin-top: -2px;
+            font-size: 0.74rem;
+            color: var(--text-secondary);
         }
 
         .search-input {
@@ -250,6 +442,49 @@ def _render_status_page(username: str | None) -> str:
         .search-input::placeholder {
             color: var(--text-tertiary);
             font-size: 0.8rem;
+        }
+
+        .password-field {
+            position: relative;
+            min-width: 0;
+        }
+
+        .password-field .search-input {
+            width: 100%;
+            padding-right: 58px;
+        }
+
+        .password-toggle {
+            position: absolute;
+            top: 50%;
+            right: 5px;
+            height: 32px;
+            padding: 0 8px;
+            transform: translateY(-50%);
+            border: 0;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--primary);
+            font: inherit;
+            font-size: 0.72rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .password-toggle:hover,
+        .password-toggle:focus-visible {
+            background: var(--primary-light);
+            outline: none;
+        }
+
+        @media (max-width: 520px) {
+            .search-form {
+                grid-template-columns: 1fr;
+            }
+
+            .search-form .btn {
+                width: 100%;
+            }
         }
 
         .session-section {
@@ -504,6 +739,19 @@ def _render_status_page(username: str | None) -> str:
             font-size: 0.68rem;
             font-weight: 600;
             flex-shrink: 0;
+        }
+
+        .device-badges {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+
+        .device-status.current {
+            background: var(--primary-light);
+            color: var(--primary);
         }
 
         .device-metrics {
@@ -811,6 +1059,20 @@ def _render_status_page(username: str | None) -> str:
             </span>
         </div>
 
+        <!-- Voucher Search -->
+        <div class="search-section">
+            <form class="search-form" id="user-lookup-form">
+                <div class="search-heading">Find another voucher</div>
+                <div class="search-help">Enter its username and password to view the same account details.</div>
+                <input class="search-input" id="lookup-username" name="username" type="text" autocomplete="username" placeholder="Username" aria-label="Voucher username" required>
+                <div class="password-field">
+                    <input class="search-input" id="lookup-password" name="password" type="password" autocomplete="current-password" placeholder="Password" aria-label="Voucher password" required>
+                    <button class="password-toggle" id="password-toggle" type="button" aria-label="Show password" aria-pressed="false">Show</button>
+                </div>
+                <button id="lookup-button" class="btn btn-primary" type="submit">Search</button>
+            </form>
+        </div>
+
         <!-- Session Access -->
         <div class="session-section">
             <div class="session-bar">
@@ -893,6 +1155,15 @@ def _render_status_page(username: str | None) -> str:
         <div class="page-footer">Powered by FlintWiFi</div>
     </div>
 
+    <div class="loading-overlay" id="loading-overlay" role="status" aria-live="polite" aria-busy="true" hidden>
+        <div class="loading-card">
+            <div class="loading-spinner" aria-hidden="true"></div>
+            <div class="loading-title" id="loading-title">Loading voucher details</div>
+            <div class="loading-message" id="loading-message">Please be patient. Contacting the router can sometimes take a little while.</div>
+            <div class="loading-progress" aria-hidden="true"></div>
+        </div>
+    </div>
+
     <div class="modal-backdrop" id="logout-modal" hidden>
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="logout-modal-title">
             <div class="modal-header">
@@ -938,6 +1209,13 @@ def _render_status_page(username: str | None) -> str:
 
     <script>
         const INITIAL_USERNAME = resolveInitialUsername(__INITIAL_USERNAME_JSON__);
+        const CURRENT_DEVICE_IP = normalizeIpAddress(__CURRENT_DEVICE_IP_JSON__);
+        const CURRENT_DEVICE_MAC = normalizeMacAddress(__CURRENT_DEVICE_MAC_JSON__);
+        const lookupFormEl = document.getElementById('user-lookup-form');
+        const lookupUsernameEl = document.getElementById('lookup-username');
+        const lookupPasswordEl = document.getElementById('lookup-password');
+        const passwordToggleEl = document.getElementById('password-toggle');
+        const lookupButtonEl = document.getElementById('lookup-button');
         const refreshButtonEl = document.getElementById('refresh-button');
         const lockedUsernameEl = document.getElementById('locked-username');
         const lockedNoteEl = document.getElementById('locked-note');
@@ -955,6 +1233,9 @@ def _render_status_page(username: str | None) -> str:
         const lastUpdatedEl = document.getElementById('last-updated');
         const devicesRootEl = document.getElementById('devices-root');
         const devicesPillEl = document.getElementById('devices-pill');
+        const loadingOverlayEl = document.getElementById('loading-overlay');
+        const loadingTitleEl = document.getElementById('loading-title');
+        const loadingMessageEl = document.getElementById('loading-message');
         const logoutModalEl = document.getElementById('logout-modal');
         const logoutModalCloseEl = document.getElementById('logout-modal-close');
         const logoutModalCancelEl = document.getElementById('logout-modal-cancel');
@@ -967,7 +1248,10 @@ def _render_status_page(username: str | None) -> str:
         const logoutModalErrorEl = document.getElementById('logout-modal-error');
 
         let activeUsername = INITIAL_USERNAME;
+        let activePassword = '';
+        let isLookupResult = false;
         let isLoading = false;
+        let longLoadingTimer = null;
         let pendingLogout = null;
 
         initializePage();
@@ -982,9 +1266,29 @@ def _render_status_page(username: str | None) -> str:
         }
 
         function bindEvents() {
+            passwordToggleEl.addEventListener('click', () => {
+                const shouldShowPassword = lookupPasswordEl.type === 'password';
+                lookupPasswordEl.type = shouldShowPassword ? 'text' : 'password';
+                passwordToggleEl.textContent = shouldShowPassword ? 'Hide' : 'Show';
+                passwordToggleEl.setAttribute(
+                    'aria-label',
+                    shouldShowPassword ? 'Hide password' : 'Show password'
+                );
+                passwordToggleEl.setAttribute('aria-pressed', String(shouldShowPassword));
+                lookupPasswordEl.focus();
+            });
+
+            lookupFormEl.addEventListener('submit', (event) => {
+                event.preventDefault();
+                const username = normalizeText(lookupUsernameEl.value);
+                const password = lookupPasswordEl.value;
+                if (!username || !password || isLoading) return;
+                loadStatus(username, password);
+            });
+
             refreshButtonEl.addEventListener('click', () => {
                 if (!activeUsername) return;
-                loadStatus(activeUsername);
+                loadStatus(activeUsername, activePassword);
             });
 
             logoutModalCloseEl.addEventListener('click', closeLogoutModal);
@@ -1004,18 +1308,29 @@ def _render_status_page(username: str | None) -> str:
             });
         }
 
-        async function loadStatus(username) {
+        async function loadStatus(username, password = '') {
             const normalizedUsername = normalizeText(username);
             if (!normalizedUsername || isLoading) return;
 
             activeUsername = normalizedUsername;
-            setLoadingState(normalizedUsername);
+            activePassword = password;
+            isLookupResult = Boolean(password);
+            setLoadingState(normalizedUsername, isLookupResult);
 
             try {
-                const response = await fetch('/api/hotspot/users/' + encodeURIComponent(normalizedUsername) + '/status', {
-                    method: 'GET',
-                    headers: { 'Accept': 'application/json' }
-                });
+                const response = isLookupResult
+                    ? await fetch('/api/hotspot/user-lookup', {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ username: normalizedUsername, password: password })
+                    })
+                    : await fetch('/api/hotspot/users/' + encodeURIComponent(normalizedUsername) + '/status', {
+                        method: 'GET',
+                        headers: { 'Accept': 'application/json' }
+                    });
 
                 if (!response.ok) {
                     throw new Error(await extractError(response));
@@ -1023,16 +1338,20 @@ def _render_status_page(username: str | None) -> str:
 
                 const payload = await response.json();
                 renderPayload(payload);
+                lookupPasswordEl.value = '';
             } catch (error) {
                 renderError(normalizedUsername, error.message || 'Failed to load');
             } finally {
                 isLoading = false;
+                hideLoadingIndicator();
                 refreshButtonEl.disabled = false;
+                lookupButtonEl.disabled = false;
             }
         }
 
         function renderPayload(payload) {
             const username = normalizeText(payload.username) || activeUsername || 'Unknown';
+            activeUsername = username;
             
             // Update badge
             heroBadgeEl.innerHTML = '<span class="status-dot active"></span>' + escapeHtml(username);
@@ -1040,7 +1359,10 @@ def _render_status_page(username: str | None) -> str:
             heroBadgeEl.title = username;
             lockedUsernameEl.textContent = username;
             lockedUsernameEl.className = 'session-username';
-            lockedNoteEl.textContent = 'Voucher details are locked to your current hotspot session.';
+            lockedNoteEl.textContent = isLookupResult
+                ? 'Voucher details were verified with the supplied username and password.'
+                : 'Voucher details are locked to your current hotspot session.';
+            if (isLookupResult) lookupUsernameEl.value = username;
             
             // Stats
             totalDataUsedEl.textContent = payload.total_data_used || '0 B';
@@ -1080,6 +1402,9 @@ def _render_status_page(username: str | None) -> str:
                 const rawSessionId = escapeHtml(normalizeText(device.session_id) || '');
                 const rawMacAddress = escapeHtml(normalizeText(device.mac_address) || '');
                 const rawIpAddress = escapeHtml(normalizeText(device.ip_address) || '');
+                const currentDeviceBadge = isCurrentSessionDevice(device)
+                    ? '<span class="device-status current">This device</span>'
+                    : '';
 
                 return (
                     '<div class="device-item">' +
@@ -1088,7 +1413,10 @@ def _render_status_page(username: str | None) -> str:
                                 '<div class="device-name">' + deviceName + '</div>' +
                                 '<div class="device-session">' + sessionId + '</div>' +
                             '</div>' +
-                            '<span class="device-status">Active</span>' +
+                            '<div class="device-badges">' +
+                                currentDeviceBadge +
+                                '<span class="device-status">Active</span>' +
+                            '</div>' +
                         '</div>' +
                         '<div class="device-metrics">' +
                             '<div class="device-metric">' +
@@ -1122,6 +1450,28 @@ def _render_status_page(username: str | None) -> str:
                     );
                 });
             });
+        }
+
+        function isCurrentSessionDevice(device) {
+            const deviceIp = normalizeIpAddress(device.ip_address);
+            const deviceMac = normalizeMacAddress(device.mac_address);
+            return Boolean(
+                (CURRENT_DEVICE_IP && deviceIp === CURRENT_DEVICE_IP) ||
+                (CURRENT_DEVICE_MAC && deviceMac === CURRENT_DEVICE_MAC)
+            );
+        }
+
+        function normalizeIpAddress(value) {
+            let normalized = normalizeText(value).toLowerCase();
+            if (normalized.startsWith('::ffff:')) normalized = normalized.slice(7);
+            if (normalized.startsWith('[') && normalized.includes(']')) {
+                normalized = normalized.slice(1, normalized.indexOf(']'));
+            }
+            return normalized.split('%', 1)[0];
+        }
+
+        function normalizeMacAddress(value) {
+            return normalizeText(value).toUpperCase().replace(/[^0-9A-F]/g, '');
         }
 
         function requestLogout(deviceName, sessionId, macAddress, ipAddress, buttonEl) {
@@ -1211,7 +1561,7 @@ def _render_status_page(username: str | None) -> str:
                 }
 
                 closeLogoutModal(true);
-                await loadStatus(activeUsername);
+                await loadStatus(activeUsername, activePassword);
             } catch (error) {
                 if (buttonEl) {
                     buttonEl.disabled = false;
@@ -1232,7 +1582,9 @@ def _render_status_page(username: str | None) -> str:
             heroBadgeEl.className = 'user-chip';
             lockedUsernameEl.textContent = username || 'Unavailable';
             lockedUsernameEl.className = 'session-username';
-            lockedNoteEl.textContent = 'The voucher session is locked, but the details could not be loaded right now.';
+            lockedNoteEl.textContent = isLookupResult
+                ? 'The supplied voucher credentials could not be verified.'
+                : 'The voucher session is locked, but the details could not be loaded right now.';
             detailUsernameEl.textContent = username || '--';
             totalDataUsedEl.textContent = '--';
             totalDataLeftEl.textContent = '--';
@@ -1247,6 +1599,7 @@ def _render_status_page(username: str | None) -> str:
             statusIndicatorEl.innerHTML = '<span class="status-dot error"></span><span>Load failed</span>';
             lastUpdatedEl.textContent = 'Failed';
             devicesRootEl.innerHTML = '<div class="empty-state error">' + escapeHtml(message || 'Could not load') + '</div>';
+            if (isLookupResult) lookupPasswordEl.focus();
         }
 
         function setIdleState() {
@@ -1255,7 +1608,7 @@ def _render_status_page(username: str | None) -> str:
             heroBadgeEl.className = 'user-chip inactive';
             lockedUsernameEl.textContent = 'Waiting for hotspot session';
             lockedUsernameEl.className = 'session-username empty';
-            lockedNoteEl.textContent = 'Open this page from your hotspot status page to load your voucher details.';
+            lockedNoteEl.textContent = 'Open this page from your hotspot status page, or search with voucher credentials.';
             detailUsernameEl.textContent = '--';
             totalDataUsedEl.textContent = '--';
             totalDataLeftEl.textContent = '--';
@@ -1267,25 +1620,48 @@ def _render_status_page(username: str | None) -> str:
             overviewPillEl.textContent = 'Idle';
             overviewPillEl.className = 'panel-badge';
             devicesPillEl.textContent = '0';
-            statusIndicatorEl.innerHTML = '<span class="status-dot idle"></span><span>Waiting for locked hotspot session</span>';
+            statusIndicatorEl.innerHTML = '<span class="status-dot idle"></span><span>Waiting for a hotspot session or voucher search</span>';
             lastUpdatedEl.textContent = 'No data';
             devicesRootEl.innerHTML = '<div class="empty-state">Open this page from the hotspot status page to view devices</div>';
             refreshButtonEl.disabled = true;
         }
 
-        function setLoadingState(username) {
+        function setLoadingState(username, fromLookup) {
             isLoading = true;
+            showLoadingIndicator(fromLookup);
             refreshButtonEl.disabled = true;
+            lookupButtonEl.disabled = true;
             heroBadgeEl.innerHTML = '<span class="status-dot loading"></span>' + escapeHtml(username);
             heroBadgeEl.className = 'user-chip';
             lockedUsernameEl.textContent = username;
             lockedUsernameEl.className = 'session-username';
-            lockedNoteEl.textContent = 'Loading the locked voucher details for this hotspot user.';
+            lockedNoteEl.textContent = fromLookup
+                ? 'Verifying the voucher credentials and loading its details.'
+                : 'Loading the locked voucher details for this hotspot user.';
             overviewPillEl.textContent = '...';
             devicesPillEl.textContent = '...';
             statusIndicatorEl.innerHTML = '<span class="status-dot loading"></span><span>Loading...</span>';
             lastUpdatedEl.textContent = 'Loading...';
             devicesRootEl.innerHTML = '<div class="empty-state">Loading...</div>';
+        }
+
+        function showLoadingIndicator(fromLookup) {
+            if (longLoadingTimer) window.clearTimeout(longLoadingTimer);
+            loadingTitleEl.textContent = fromLookup
+                ? 'Verifying voucher details'
+                : 'Loading voucher details';
+            loadingMessageEl.textContent = 'Please be patient. Contacting the router can sometimes take a little while.';
+            loadingOverlayEl.hidden = false;
+            longLoadingTimer = window.setTimeout(() => {
+                loadingTitleEl.textContent = 'Still working on it';
+                loadingMessageEl.textContent = 'The router is taking longer than usual to respond. Please keep this page open.';
+            }, 6000);
+        }
+
+        function hideLoadingIndicator() {
+            if (longLoadingTimer) window.clearTimeout(longLoadingTimer);
+            longLoadingTimer = null;
+            loadingOverlayEl.hidden = true;
         }
 
         async function extractError(response) {
@@ -1346,6 +1722,10 @@ def _render_status_page(username: str | None) -> str:
 </html>
 """.replace("__INITIAL_USERNAME_ATTR__", html_username).replace(
         "__INITIAL_USERNAME_JSON__", json_username
+    ).replace(
+        "__CURRENT_DEVICE_IP_JSON__", json_current_device_ip
+    ).replace(
+        "__CURRENT_DEVICE_MAC_JSON__", json_current_device_mac
     ).replace(
         "__LOCKED_USERNAME_DISPLAY__", locked_username
     ).replace(

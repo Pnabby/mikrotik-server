@@ -1,7 +1,11 @@
 from fastapi.testclient import TestClient
 
 from mikrotik.api import app, get_client
-from mikrotik.pages import STATUS_COOKIE_NAME
+from mikrotik.pages import (
+    STATUS_COOKIE_NAME,
+    STATUS_DEVICE_IP_COOKIE_NAME,
+    STATUS_DEVICE_MAC_COOKIE_NAME,
+)
 
 
 class FakeMikroTikClient:
@@ -18,14 +22,18 @@ class FakeMikroTikClient:
         self.devices = devices or []
         self.remove_result = remove_result
         self.remove_calls: list[tuple[str, str]] = []
+        self.usage_calls: list[str] = []
+        self.device_calls: list[str] = []
 
     def get_hotspot_user(self, username: str) -> dict[str, str] | None:
         return self.hotspot_user
 
     def get_hotspot_user_usage(self, username: str) -> dict[str, int | str | None]:
+        self.usage_calls.append(username)
         return self.usage
 
     def get_hotspot_active_devices(self, username: str) -> list[dict[str, str]]:
+        self.device_calls.append(username)
         return self.devices
 
     def remove_hotspot_active_device(
@@ -108,11 +116,56 @@ def test_launch_status_sets_cookie_and_redirects_to_root() -> None:
     assert STATUS_COOKIE_NAME in response.headers["set-cookie"]
 
 
+def test_launch_status_keeps_current_device_identifiers() -> None:
+    client = TestClient(app)
+    response = client.post(
+        "/launch-status",
+        data={
+            "username": "alice",
+            "ip": "10.0.0.2",
+            "mac": "AA:BB:CC:DD:EE:01",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert client.cookies.get(STATUS_DEVICE_IP_COOKIE_NAME) == "10.0.0.2"
+    assert client.cookies.get(STATUS_DEVICE_MAC_COOKIE_NAME) == "AA:BB:CC:DD:EE:01"
+
+    page_response = client.get("/")
+    assert 'const CURRENT_DEVICE_IP = normalizeIpAddress("10.0.0.2")' in page_response.text
+    assert (
+        'const CURRENT_DEVICE_MAC = normalizeMacAddress("AA:BB:CC:DD:EE:01")'
+        in page_response.text
+    )
+    assert "This device" in page_response.text
+
+
 def test_launch_status_get_redirects_to_root() -> None:
     response = TestClient(app).get("/launch-status", follow_redirects=False)
 
     assert response.status_code == 303
     assert response.headers["location"] == "/"
+
+
+def test_launch_status_get_keeps_mikrotik_device_identifiers() -> None:
+    client = TestClient(app)
+    response = client.get(
+        "/launch-status?username=alice&ip=10.0.0.2&mac=AA%3ABB%3ACC%3ADD%3AEE%3A01",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert client.cookies.get(STATUS_COOKIE_NAME) == "alice"
+    assert client.cookies.get(STATUS_DEVICE_IP_COOKIE_NAME) == "10.0.0.2"
+    assert client.cookies.get(STATUS_DEVICE_MAC_COOKIE_NAME) == "AA:BB:CC:DD:EE:01"
+
+
+def test_status_page_accepts_current_device_identifiers_in_query() -> None:
+    response = TestClient(app).get("/?ip=10.0.0.2&mac=aa-bb-cc-dd-ee-01")
+
+    assert 'const CURRENT_DEVICE_IP = normalizeIpAddress("10.0.0.2")' in response.text
+    assert 'const CURRENT_DEVICE_MAC = normalizeMacAddress("aa-bb-cc-dd-ee-01")' in response.text
 
 
 def test_status_page_renders_locked_username_from_cookie() -> None:
@@ -132,8 +185,14 @@ def test_status_page_ignores_query_username_without_locked_cookie() -> None:
 
     assert response.status_code == 200
     assert "Waiting for hotspot session" in response.text
-    assert "Open this page from your hotspot status page to load your voucher details." in response.text
-    assert 'name="username"' not in response.text
+    assert "Find another voucher" in response.text
+    assert 'name="username"' in response.text
+    assert 'name="password"' in response.text
+    assert 'id="password-toggle"' in response.text
+    assert 'aria-label="Show password"' in response.text
+    assert 'id="loading-overlay"' in response.text
+    assert "Please be patient" in response.text
+    assert "Still working on it" in response.text
 
 
 def test_status_page_path_does_not_unlock_username() -> None:
@@ -223,6 +282,106 @@ def test_get_hotspot_status_returns_404_when_user_does_not_exist() -> None:
     assert response.json()["detail"] == "Hotspot user 'alice' was not found."
 
 
+def test_lookup_hotspot_user_returns_status_for_valid_credentials() -> None:
+    fake_client = FakeMikroTikClient(
+        hotspot_user={
+            "name": "alice",
+            "password": "voucher-secret",
+            "profile": "weekly",
+            "comment": "login=2026-05-11 08:15:00",
+        },
+        usage={
+            "combined_bytes_total": 2500,
+            "limit_bytes_total": 7000,
+            "limit_bytes_in": None,
+            "limit_bytes_out": None,
+        },
+    )
+
+    app.dependency_overrides[get_client] = lambda: fake_client
+    response = TestClient(app).post(
+        "/api/hotspot/user-lookup",
+        json={"username": " ALICE ", "password": "voucher-secret"},
+    )
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["username"] == "alice"
+    assert response.json()["profile"] == "weekly"
+    assert fake_client.usage_calls == ["alice"]
+    assert fake_client.device_calls == ["alice"]
+
+
+def test_lookup_hotspot_user_rejects_wrong_password() -> None:
+    fake_client = FakeMikroTikClient(
+        hotspot_user={"name": "alice", "password": "voucher-secret"}
+    )
+
+    app.dependency_overrides[get_client] = lambda: fake_client
+    response = TestClient(app).post(
+        "/api/hotspot/user-lookup",
+        json={"username": "alice", "password": "wrong"},
+    )
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid username or password."
+    assert fake_client.usage_calls == []
+
+
+def test_lookup_hotspot_user_does_not_reveal_missing_username() -> None:
+    fake_client = FakeMikroTikClient(hotspot_user=None)
+
+    app.dependency_overrides[get_client] = lambda: fake_client
+    response = TestClient(app).post(
+        "/api/hotspot/user-lookup",
+        json={"username": "missing", "password": "anything"},
+    )
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid username or password."
+
+
+def test_lookup_hotspot_user_requires_both_credentials() -> None:
+    fake_client = FakeMikroTikClient()
+
+    app.dependency_overrides[get_client] = lambda: fake_client
+    response = TestClient(app).post(
+        "/api/hotspot/user-lookup",
+        json={"username": "alice", "password": ""},
+    )
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Username and password are required."
+
+
+def test_get_hotspot_status_uses_canonical_router_username_for_follow_up_queries() -> None:
+    fake_client = FakeMikroTikClient(
+        hotspot_user={
+            "name": "alice",
+            "profile": "weekly",
+            "comment": "login=2026-05-11 08:15:00",
+        },
+        usage={
+            "combined_bytes_total": 2500,
+            "limit_bytes_total": 7000,
+            "limit_bytes_in": None,
+            "limit_bytes_out": None,
+        },
+    )
+
+    app.dependency_overrides[get_client] = lambda: fake_client
+    response = TestClient(app).get("/api/hotspot/users/ALICE/status")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["username"] == "alice"
+    assert fake_client.usage_calls == ["alice"]
+    assert fake_client.device_calls == ["alice"]
+
+
 def test_logout_hotspot_device_calls_client() -> None:
     fake_client = FakeMikroTikClient(
         hotspot_user={"name": "alice", "profile": "weekly-20gb"},
@@ -271,3 +430,18 @@ def test_logout_hotspot_device_returns_404_when_session_is_missing() -> None:
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Active session '*2' was not found for user 'alice'."
+
+
+def test_logout_hotspot_device_uses_canonical_router_username() -> None:
+    fake_client = FakeMikroTikClient(
+        hotspot_user={"name": "alice", "profile": "weekly-20gb"},
+        remove_result=True,
+    )
+
+    app.dependency_overrides[get_client] = lambda: fake_client
+    response = TestClient(app).post("/api/hotspot/users/ALICE/devices/%2A2/logout")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["username"] == "alice"
+    assert fake_client.remove_calls == [("alice", "*2", None, None)]

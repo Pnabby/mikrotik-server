@@ -123,6 +123,28 @@ def test_get_hotspot_active_devices_returns_matching_sessions() -> None:
     ]
 
 
+def test_get_hotspot_user_falls_back_to_case_insensitive_lookup() -> None:
+    client = MikroTikClient(
+        MikroTikConfig(host="router", username="admin", password="secret")
+    )
+    client._api = FakeApi(
+        [],
+        users=[
+            {
+                "name": "alice",
+                "comment": "Parent account",
+            }
+        ],
+    )
+
+    user = client.get_hotspot_user("  ALICE  ")
+
+    assert user == {
+        "name": "alice",
+        "comment": "Parent account",
+    }
+
+
 def test_get_hotspot_user_usage_combines_user_and_active_session_totals() -> None:
     client = MikroTikClient(
         MikroTikConfig(host="router", username="admin", password="secret")

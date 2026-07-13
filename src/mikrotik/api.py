@@ -4,6 +4,7 @@ from calendar import monthrange
 from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import datetime, timedelta
+import hmac
 import os
 
 from fastapi import Depends, FastAPI, HTTPException, status
@@ -62,6 +63,11 @@ class HotspotStatusResponse(BaseModel):
     data_limit_bytes: int | None = None
     connected_devices_count: int
     connected_devices: list[DeviceSession]
+
+
+class HotspotLookupRequest(BaseModel):
+    username: str
+    password: str
 
 
 class DeviceLogoutResponse(BaseModel):
@@ -124,8 +130,45 @@ def get_hotspot_status(
             detail=f"Hotspot user '{normalized_username}' was not found.",
         )
 
-    usage = client.get_hotspot_user_usage(normalized_username)
-    devices = client.get_hotspot_active_devices(normalized_username)
+    return _build_hotspot_status(client, hotspot_user, normalized_username)
+
+
+@app.post("/api/hotspot/user-lookup", response_model=HotspotStatusResponse)
+def lookup_hotspot_user(
+    credentials: HotspotLookupRequest,
+    client: MikroTikClient = Depends(get_client),
+) -> HotspotStatusResponse:
+    normalized_username = credentials.username.strip()
+    if not normalized_username or not credentials.password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username and password are required.",
+        )
+
+    hotspot_user = client.get_hotspot_user(normalized_username)
+    stored_password = hotspot_user.get("password") if hotspot_user is not None else None
+    comparable_password = stored_password if isinstance(stored_password, str) else ""
+    password_matches = hmac.compare_digest(
+        comparable_password.encode("utf-8"),
+        credentials.password.encode("utf-8"),
+    )
+    if hotspot_user is None or not password_matches:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid username or password.",
+        )
+
+    return _build_hotspot_status(client, hotspot_user, normalized_username)
+
+
+def _build_hotspot_status(
+    client: MikroTikClient,
+    hotspot_user: dict[str, str],
+    fallback_username: str,
+) -> HotspotStatusResponse:
+    resolved_username = _resolve_hotspot_username(hotspot_user, fallback_username)
+    usage = client.get_hotspot_user_usage(resolved_username)
+    devices = client.get_hotspot_active_devices(resolved_username)
     data_limit_bytes = _resolve_total_data_limit(usage)
     total_data_used_bytes = int(usage["combined_bytes_total"])
     total_data_left_bytes = (
@@ -134,7 +177,7 @@ def get_hotspot_status(
     logged_in_date = _resolve_logged_in_date(hotspot_user.get("comment"))
 
     return HotspotStatusResponse(
-        username=normalized_username,
+        username=resolved_username,
         profile=hotspot_user.get("profile"),
         logged_in_date=logged_in_date,
         expiry_date=_resolve_expiry_date(hotspot_user.get("profile"), hotspot_user.get("comment")),
@@ -197,8 +240,9 @@ def logout_hotspot_device(
             detail=f"Hotspot user '{normalized_username}' was not found.",
         )
 
+    resolved_username = _resolve_hotspot_username(hotspot_user, normalized_username)
     removed = client.remove_hotspot_active_device(
-        normalized_username,
+        resolved_username,
         normalized_session_id,
         mac_address=_normalize_optional_text(mac_address),
         ip_address=_normalize_optional_text(ip_address),
@@ -213,7 +257,7 @@ def logout_hotspot_device(
         )
 
     return DeviceLogoutResponse(
-        username=normalized_username,
+        username=resolved_username,
         session_id=normalized_session_id,
         removed=True,
         detail="Device session logged out successfully.",
@@ -231,6 +275,11 @@ def _resolve_total_data_limit(usage: dict[str, int | str | None]) -> int | None:
         return limit_in + limit_out
 
     return None
+
+
+def _resolve_hotspot_username(hotspot_user: dict[str, str], fallback_username: str) -> str:
+    resolved_username = _normalize_optional_text(hotspot_user.get("name"))
+    return resolved_username or fallback_username
 
 
 def _resolve_logged_in_date(comment: object) -> str | None:
