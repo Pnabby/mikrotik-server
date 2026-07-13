@@ -54,6 +54,7 @@ class DeviceSession(BaseModel):
 class HotspotStatusResponse(BaseModel):
     username: str
     profile: str | None = None
+    disabled: bool
     logged_in_date: str | None = None
     expiry_date: str | None = None
     total_data_used_bytes: int
@@ -179,6 +180,7 @@ def _build_hotspot_status(
     return HotspotStatusResponse(
         username=resolved_username,
         profile=hotspot_user.get("profile"),
+        disabled=_parse_bool(hotspot_user.get("disabled")),
         logged_in_date=logged_in_date,
         expiry_date=_resolve_expiry_date(hotspot_user.get("profile"), hotspot_user.get("comment")),
         total_data_used_bytes=total_data_used_bytes,
@@ -350,6 +352,14 @@ def _parse_int(value: object) -> int:
         return int(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return 0
+
+
+def _parse_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if not isinstance(value, str):
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _normalize_optional_text(value: object) -> str | None:

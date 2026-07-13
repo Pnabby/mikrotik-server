@@ -82,6 +82,7 @@ def test_get_hotspot_status_returns_usage_profile_and_devices() -> None:
     assert response.json() == {
         "username": "alice",
         "profile": "weekly",
+        "disabled": False,
         "logged_in_date": "2026-05-11 08:15:00",
         "expiry_date": "2026-05-18 08:15:00",
         "total_data_used_bytes": 2500,
@@ -222,6 +223,33 @@ def test_get_hotspot_status_returns_unlimited_when_no_limit_exists() -> None:
     assert response.json()["total_data_left_bytes"] is None
     assert response.json()["logged_in_date"] is None
     assert response.json()["expiry_date"] is None
+
+
+def test_disabled_hotspot_user_keeps_details_and_reports_disabled_state() -> None:
+    fake_client = FakeMikroTikClient(
+        hotspot_user={
+            "name": "alice",
+            "profile": "weekly",
+            "disabled": "true",
+            "comment": "login=2026-05-11 08:15:00",
+        },
+        usage={
+            "combined_bytes_total": 7000,
+            "limit_bytes_total": 7000,
+            "limit_bytes_in": None,
+            "limit_bytes_out": None,
+        },
+    )
+
+    app.dependency_overrides[get_client] = lambda: fake_client
+    response = TestClient(app).get("/api/hotspot/users/alice/status")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["disabled"] is True
+    assert response.json()["profile"] == "weekly"
+    assert response.json()["total_data_used_bytes"] == 7000
+    assert response.json()["total_data_left_bytes"] == 0
 
 
 def test_get_hotspot_status_returns_monthly_expiry_from_login_comment() -> None:

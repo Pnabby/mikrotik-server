@@ -299,6 +299,7 @@ def _render_status_page(
         .status-dot.active { background: var(--success); }
         .status-dot.idle { background: var(--text-tertiary); }
         .status-dot.error { background: var(--danger); }
+        .status-dot.warning { background: var(--warning); }
         .status-dot.loading { 
             background: var(--primary);
             animation: pulse 1.5s infinite;
@@ -660,6 +661,11 @@ def _render_status_page(
         .panel-badge.error {
             background: var(--danger-light);
             color: var(--danger);
+        }
+
+        .panel-badge.warning {
+            background: var(--warning-light);
+            color: var(--warning);
         }
 
         /* Info List */
@@ -1125,6 +1131,10 @@ def _render_status_page(
                         <span class="info-value" id="detail-username">--</span>
                     </div>
                     <div class="info-row">
+                        <span class="info-key">Voucher Status</span>
+                        <span class="info-value" id="account-status">--</span>
+                    </div>
+                    <div class="info-row">
                         <span class="info-key">Login</span>
                         <span class="info-value" id="logged-in-date">--</span>
                     </div>
@@ -1226,6 +1236,7 @@ def _render_status_page(
         const profileValueEl = document.getElementById('profile-value');
         const connectedDevicesCountEl = document.getElementById('connected-devices-count');
         const detailUsernameEl = document.getElementById('detail-username');
+        const accountStatusEl = document.getElementById('account-status');
         const loggedInDateEl = document.getElementById('logged-in-date');
         const expiryDateEl = document.getElementById('expiry-date');
         const dataLimitEl = document.getElementById('data-limit');
@@ -1351,6 +1362,7 @@ def _render_status_page(
 
         function renderPayload(payload) {
             const username = normalizeText(payload.username) || activeUsername || 'Unknown';
+            const isDisabled = payload.disabled === true;
             activeUsername = username;
             
             // Update badge
@@ -1372,15 +1384,18 @@ def _render_status_page(
             
             // Account details
             detailUsernameEl.textContent = username;
+            accountStatusEl.textContent = isDisabled ? 'Expired or exhausted' : 'Active';
             loggedInDateEl.textContent = normalizeText(payload.logged_in_date) || 'N/A';
             expiryDateEl.textContent = normalizeText(payload.expiry_date) || 'N/A';
             dataLimitEl.textContent = formatLimit(payload.data_limit_bytes);
             
             // Status indicators
-            overviewPillEl.textContent = 'Active';
-            overviewPillEl.className = 'panel-badge active';
+            overviewPillEl.textContent = isDisabled ? 'Used' : 'Active';
+            overviewPillEl.className = isDisabled ? 'panel-badge warning' : 'panel-badge active';
             devicesPillEl.textContent = String(payload.connected_devices_count || 0) + ' dev';
-            statusIndicatorEl.innerHTML = '<span class="status-dot active"></span><span>' + escapeHtml(username) + ' loaded</span>';
+            statusIndicatorEl.innerHTML = isDisabled
+                ? '<span class="status-dot warning"></span><span>Voucher disabled — it may be expired or exhausted</span>'
+                : '<span class="status-dot active"></span><span>' + escapeHtml(username) + ' loaded</span>';
             lastUpdatedEl.textContent = formatTime(new Date());
             
             renderDevices(payload.connected_devices || []);
@@ -1586,6 +1601,7 @@ def _render_status_page(
                 ? 'The supplied voucher credentials could not be verified.'
                 : 'The voucher session is locked, but the details could not be loaded right now.';
             detailUsernameEl.textContent = username || '--';
+            accountStatusEl.textContent = '--';
             totalDataUsedEl.textContent = '--';
             totalDataLeftEl.textContent = '--';
             profileValueEl.textContent = '--';
@@ -1610,6 +1626,7 @@ def _render_status_page(
             lockedUsernameEl.className = 'session-username empty';
             lockedNoteEl.textContent = 'Open this page from your hotspot status page, or search with voucher credentials.';
             detailUsernameEl.textContent = '--';
+            accountStatusEl.textContent = '--';
             totalDataUsedEl.textContent = '--';
             totalDataLeftEl.textContent = '--';
             profileValueEl.textContent = '--';
