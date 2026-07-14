@@ -14,6 +14,12 @@ import uvicorn
 
 from mikrotik.client import MikroTikClient, MikroTikConfig, load_dotenv
 from mikrotik.pages import router as pages_router
+from mikrotik.routers import (
+    RouterDefinition,
+    UnknownRouterError,
+    get_router,
+    iter_routers,
+)
 
 
 LOGIN_COMMENT_PREFIX = "login="
@@ -27,7 +33,7 @@ def _cors_origins() -> list[str]:
     return origins or ["*"]
 
 
-app = FastAPI(title="MikroTik Hotspot API", version="0.1.0")
+app = FastAPI(title="MikroTik Hotspot API", version="0.2.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins(),
@@ -52,6 +58,8 @@ class DeviceSession(BaseModel):
 
 
 class HotspotStatusResponse(BaseModel):
+    router_id: str
+    router_name: str
     username: str
     profile: str | None = None
     disabled: bool
@@ -72,16 +80,34 @@ class HotspotLookupRequest(BaseModel):
 
 
 class DeviceLogoutResponse(BaseModel):
+    router_id: str
+    router_name: str
     username: str
     session_id: str
     removed: bool
     detail: str
 
 
-@contextmanager
-def _client_context() -> Generator[MikroTikClient, None, None]:
+class RouterSummary(BaseModel):
+    router_id: str
+    name: str
+    hotspot_network: str
+
+
+def resolve_router(router_id: str) -> RouterDefinition:
     try:
-        config = MikroTikConfig.from_env()
+        return get_router(router_id)
+    except UnknownRouterError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+
+@contextmanager
+def _client_context(router: RouterDefinition) -> Generator[MikroTikClient, None, None]:
+    try:
+        config = MikroTikConfig.from_env(router)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -102,8 +128,10 @@ def _client_context() -> Generator[MikroTikClient, None, None]:
         client.disconnect()
 
 
-def get_client() -> Generator[MikroTikClient, None, None]:
-    with _client_context() as client:
+def get_client(
+    router: RouterDefinition = Depends(resolve_router),
+) -> Generator[MikroTikClient, None, None]:
+    with _client_context(router) as client:
         yield client
 
 
@@ -112,9 +140,25 @@ def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/api/hotspot/users/{username}/status", response_model=HotspotStatusResponse)
+@app.get("/api/routers", response_model=list[RouterSummary])
+def list_routers() -> list[RouterSummary]:
+    return [
+        RouterSummary(
+            router_id=router.router_id,
+            name=router.name,
+            hotspot_network=router.hotspot_network,
+        )
+        for router in iter_routers()
+    ]
+
+
+@app.get(
+    "/api/routers/{router_id}/hotspot/users/{username}/status",
+    response_model=HotspotStatusResponse,
+)
 def get_hotspot_status(
     username: str,
+    router: RouterDefinition = Depends(resolve_router),
     client: MikroTikClient = Depends(get_client),
 ) -> HotspotStatusResponse:
     normalized_username = username.strip()
@@ -131,12 +175,16 @@ def get_hotspot_status(
             detail=f"Hotspot user '{normalized_username}' was not found.",
         )
 
-    return _build_hotspot_status(client, hotspot_user, normalized_username)
+    return _build_hotspot_status(router, client, hotspot_user, normalized_username)
 
 
-@app.post("/api/hotspot/user-lookup", response_model=HotspotStatusResponse)
+@app.post(
+    "/api/routers/{router_id}/hotspot/user-lookup",
+    response_model=HotspotStatusResponse,
+)
 def lookup_hotspot_user(
     credentials: HotspotLookupRequest,
+    router: RouterDefinition = Depends(resolve_router),
     client: MikroTikClient = Depends(get_client),
 ) -> HotspotStatusResponse:
     normalized_username = credentials.username.strip()
@@ -159,10 +207,11 @@ def lookup_hotspot_user(
             detail="Invalid username or password.",
         )
 
-    return _build_hotspot_status(client, hotspot_user, normalized_username)
+    return _build_hotspot_status(router, client, hotspot_user, normalized_username)
 
 
 def _build_hotspot_status(
+    router: RouterDefinition,
     client: MikroTikClient,
     hotspot_user: dict[str, str],
     fallback_username: str,
@@ -178,6 +227,8 @@ def _build_hotspot_status(
     logged_in_date = _resolve_logged_in_date(hotspot_user.get("comment"))
 
     return HotspotStatusResponse(
+        router_id=router.router_id,
+        router_name=router.name,
         username=resolved_username,
         profile=hotspot_user.get("profile"),
         disabled=_parse_bool(hotspot_user.get("disabled")),
@@ -212,7 +263,7 @@ def _build_hotspot_status(
 
 
 @app.post(
-    "/api/hotspot/users/{username}/devices/{session_id}/logout",
+    "/api/routers/{router_id}/hotspot/users/{username}/devices/{session_id}/logout",
     response_model=DeviceLogoutResponse,
 )
 def logout_hotspot_device(
@@ -220,6 +271,7 @@ def logout_hotspot_device(
     session_id: str,
     mac_address: str | None = None,
     ip_address: str | None = None,
+    router: RouterDefinition = Depends(resolve_router),
     client: MikroTikClient = Depends(get_client),
 ) -> DeviceLogoutResponse:
     normalized_username = username.strip()
@@ -259,6 +311,8 @@ def logout_hotspot_device(
         )
 
     return DeviceLogoutResponse(
+        router_id=router.router_id,
+        router_name=router.name,
         username=resolved_username,
         session_id=normalized_session_id,
         removed=True,

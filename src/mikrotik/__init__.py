@@ -1,8 +1,9 @@
 """Utilities for connecting to a MikroTik router."""
 
 from mikrotik.client import MikroTikClient, MikroTikConfig
+from mikrotik.routers import ROUTERS, RouterDefinition
 
-__all__ = ["MikroTikClient", "MikroTikConfig", "app"]
+__all__ = ["MikroTikClient", "MikroTikConfig", "ROUTERS", "RouterDefinition", "app"]
 
 
 def __getattr__(name: str):

@@ -5,6 +5,7 @@ from mikrotik.pages import (
     STATUS_COOKIE_NAME,
     STATUS_DEVICE_IP_COOKIE_NAME,
     STATUS_DEVICE_MAC_COOKIE_NAME,
+    STATUS_ROUTER_COOKIE_NAME,
 )
 
 
@@ -75,11 +76,13 @@ def test_get_hotspot_status_returns_usage_profile_and_devices() -> None:
     )
 
     app.dependency_overrides[get_client] = lambda: fake_client
-    response = TestClient(app).get("/api/hotspot/users/alice/status")
+    response = TestClient(app).get("/api/routers/flint-main/hotspot/users/alice/status")
     app.dependency_overrides.clear()
 
     assert response.status_code == 200
     assert response.json() == {
+        "router_id": "flint-main",
+        "router_name": "Flint Main",
         "username": "alice",
         "profile": "weekly",
         "disabled": False,
@@ -108,6 +111,26 @@ def test_get_hotspot_status_returns_usage_profile_and_devices() -> None:
     }
 
 
+def test_get_hotspot_status_reports_selected_router() -> None:
+    fake_client = FakeMikroTikClient(
+        hotspot_user={"name": "alice", "profile": "always-on"},
+        usage={
+            "combined_bytes_total": 0,
+            "limit_bytes_total": None,
+            "limit_bytes_in": None,
+            "limit_bytes_out": None,
+        },
+    )
+
+    app.dependency_overrides[get_client] = lambda: fake_client
+    response = TestClient(app).get("/api/routers/platinum/hotspot/users/alice/status")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["router_id"] == "platinum"
+    assert response.json()["router_name"] == "Platinum"
+
+
 def test_launch_status_sets_cookie_and_redirects_to_root() -> None:
     client = TestClient(app)
     response = client.post("/launch-status", data={"username": "alice"}, follow_redirects=False)
@@ -115,6 +138,34 @@ def test_launch_status_sets_cookie_and_redirects_to_root() -> None:
     assert response.status_code == 303
     assert response.headers["location"] == "/"
     assert STATUS_COOKIE_NAME in response.headers["set-cookie"]
+    assert client.cookies.get(STATUS_ROUTER_COOKIE_NAME) == "flint-main"
+
+
+def test_launch_status_keeps_configured_router_id() -> None:
+    client = TestClient(app)
+    response = client.post(
+        "/launch-status",
+        data={"username": "alice", "router_id": "platinum"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert client.cookies.get(STATUS_ROUTER_COOKIE_NAME) == "platinum"
+
+    page_response = client.get("/")
+    assert 'const INITIAL_ROUTER_ID = normalizeText("platinum")' in page_response.text
+    assert '<option value="platinum" selected>Platinum</option>' in page_response.text
+
+
+def test_launch_status_rejects_unconfigured_router_id() -> None:
+    response = TestClient(app).post(
+        "/launch-status",
+        data={"username": "alice", "router_id": "10.20.20.3"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Router '10.20.20.3' is not configured."
 
 
 def test_launch_status_keeps_current_device_identifiers() -> None:
@@ -193,6 +244,13 @@ def test_status_page_ignores_query_username_without_locked_cookie() -> None:
     assert "Check voucher" in response.text
     assert 'name="username"' in response.text
     assert 'name="password"' in response.text
+    assert 'name="router_id"' in response.text
+    assert '<option value="flint-main" selected>Flint Main</option>' in response.text
+    assert '<option value="platinum">Platinum</option>' in response.text
+    assert "const routerApiBase = '/api/routers/'" in response.text
+    assert "routerApiBase + '/hotspot/user-lookup'" in response.text
+    assert "'/hotspot/users/'" in response.text
+    assert "encodeURIComponent(activeRouterId)" in response.text
     assert 'id="password-toggle"' in response.text
     assert 'aria-label="Show password"' in response.text
     assert 'id="loading-overlay"' in response.text
@@ -207,6 +265,35 @@ def test_status_page_path_does_not_unlock_username() -> None:
     assert "Waiting for hotspot session" in response.text
 
 
+def test_list_routers_returns_public_metadata_without_connection_hosts() -> None:
+    response = TestClient(app).get("/api/routers")
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "router_id": "flint-main",
+            "name": "Flint Main",
+            "hotspot_network": "192.168.88.0/23",
+        },
+        {
+            "router_id": "platinum",
+            "name": "Platinum",
+            "hotspot_network": "192.168.90.0/23",
+        },
+    ]
+    assert "10.20.20.2" not in response.text
+    assert "10.20.20.3" not in response.text
+
+
+def test_status_api_rejects_raw_host_as_router_id_before_connecting() -> None:
+    response = TestClient(app).get(
+        "/api/routers/10.20.20.3/hotspot/users/alice/status"
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Router '10.20.20.3' is not configured."
+
+
 def test_get_hotspot_status_returns_unlimited_when_no_limit_exists() -> None:
     fake_client = FakeMikroTikClient(
         hotspot_user={"name": "alice", "profile": "always-on", "comment": ""},
@@ -219,7 +306,7 @@ def test_get_hotspot_status_returns_unlimited_when_no_limit_exists() -> None:
     )
 
     app.dependency_overrides[get_client] = lambda: fake_client
-    response = TestClient(app).get("/api/hotspot/users/alice/status")
+    response = TestClient(app).get("/api/routers/flint-main/hotspot/users/alice/status")
     app.dependency_overrides.clear()
 
     assert response.status_code == 200
@@ -246,7 +333,7 @@ def test_disabled_hotspot_user_keeps_details_and_reports_disabled_state() -> Non
     )
 
     app.dependency_overrides[get_client] = lambda: fake_client
-    response = TestClient(app).get("/api/hotspot/users/alice/status")
+    response = TestClient(app).get("/api/routers/flint-main/hotspot/users/alice/status")
     app.dependency_overrides.clear()
 
     assert response.status_code == 200
@@ -272,7 +359,7 @@ def test_get_hotspot_status_returns_monthly_expiry_from_login_comment() -> None:
     )
 
     app.dependency_overrides[get_client] = lambda: fake_client
-    response = TestClient(app).get("/api/hotspot/users/alice/status")
+    response = TestClient(app).get("/api/routers/flint-main/hotspot/users/alice/status")
     app.dependency_overrides.clear()
 
     assert response.status_code == 200
@@ -296,7 +383,7 @@ def test_get_hotspot_status_clamps_monthly_expiry_to_last_day_of_next_month() ->
     )
 
     app.dependency_overrides[get_client] = lambda: fake_client
-    response = TestClient(app).get("/api/hotspot/users/alice/status")
+    response = TestClient(app).get("/api/routers/flint-main/hotspot/users/alice/status")
     app.dependency_overrides.clear()
 
     assert response.status_code == 200
@@ -307,7 +394,7 @@ def test_get_hotspot_status_returns_404_when_user_does_not_exist() -> None:
     fake_client = FakeMikroTikClient(hotspot_user=None)
 
     app.dependency_overrides[get_client] = lambda: fake_client
-    response = TestClient(app).get("/api/hotspot/users/alice/status")
+    response = TestClient(app).get("/api/routers/flint-main/hotspot/users/alice/status")
     app.dependency_overrides.clear()
 
     assert response.status_code == 404
@@ -332,7 +419,7 @@ def test_lookup_hotspot_user_returns_status_for_valid_credentials() -> None:
 
     app.dependency_overrides[get_client] = lambda: fake_client
     response = TestClient(app).post(
-        "/api/hotspot/user-lookup",
+        "/api/routers/flint-main/hotspot/user-lookup",
         json={"username": " ALICE ", "password": "voucher-secret"},
     )
     app.dependency_overrides.clear()
@@ -351,7 +438,7 @@ def test_lookup_hotspot_user_rejects_wrong_password() -> None:
 
     app.dependency_overrides[get_client] = lambda: fake_client
     response = TestClient(app).post(
-        "/api/hotspot/user-lookup",
+        "/api/routers/flint-main/hotspot/user-lookup",
         json={"username": "alice", "password": "wrong"},
     )
     app.dependency_overrides.clear()
@@ -366,7 +453,7 @@ def test_lookup_hotspot_user_does_not_reveal_missing_username() -> None:
 
     app.dependency_overrides[get_client] = lambda: fake_client
     response = TestClient(app).post(
-        "/api/hotspot/user-lookup",
+        "/api/routers/flint-main/hotspot/user-lookup",
         json={"username": "missing", "password": "anything"},
     )
     app.dependency_overrides.clear()
@@ -380,7 +467,7 @@ def test_lookup_hotspot_user_requires_both_credentials() -> None:
 
     app.dependency_overrides[get_client] = lambda: fake_client
     response = TestClient(app).post(
-        "/api/hotspot/user-lookup",
+        "/api/routers/flint-main/hotspot/user-lookup",
         json={"username": "alice", "password": ""},
     )
     app.dependency_overrides.clear()
@@ -405,7 +492,7 @@ def test_get_hotspot_status_uses_canonical_router_username_for_follow_up_queries
     )
 
     app.dependency_overrides[get_client] = lambda: fake_client
-    response = TestClient(app).get("/api/hotspot/users/ALICE/status")
+    response = TestClient(app).get("/api/routers/flint-main/hotspot/users/ALICE/status")
     app.dependency_overrides.clear()
 
     assert response.status_code == 200
@@ -421,11 +508,15 @@ def test_logout_hotspot_device_calls_client() -> None:
     )
 
     app.dependency_overrides[get_client] = lambda: fake_client
-    response = TestClient(app).post("/api/hotspot/users/alice/devices/%2A2/logout")
+    response = TestClient(app).post(
+        "/api/routers/flint-main/hotspot/users/alice/devices/%2A2/logout"
+    )
     app.dependency_overrides.clear()
 
     assert response.status_code == 200
     assert response.json() == {
+        "router_id": "flint-main",
+        "router_name": "Flint Main",
         "username": "alice",
         "session_id": "*2",
         "removed": True,
@@ -442,7 +533,8 @@ def test_logout_hotspot_device_passes_device_identifiers_to_client() -> None:
 
     app.dependency_overrides[get_client] = lambda: fake_client
     response = TestClient(app).post(
-        "/api/hotspot/users/alice/devices/%2A2/logout?mac_address=AA%3ABB&ip_address=10.0.0.2"
+        "/api/routers/flint-main/hotspot/users/alice/devices/%2A2/logout"
+        "?mac_address=AA%3ABB&ip_address=10.0.0.2"
     )
     app.dependency_overrides.clear()
 
@@ -457,7 +549,9 @@ def test_logout_hotspot_device_returns_404_when_session_is_missing() -> None:
     )
 
     app.dependency_overrides[get_client] = lambda: fake_client
-    response = TestClient(app).post("/api/hotspot/users/alice/devices/%2A2/logout")
+    response = TestClient(app).post(
+        "/api/routers/flint-main/hotspot/users/alice/devices/%2A2/logout"
+    )
     app.dependency_overrides.clear()
 
     assert response.status_code == 404
@@ -471,7 +565,9 @@ def test_logout_hotspot_device_uses_canonical_router_username() -> None:
     )
 
     app.dependency_overrides[get_client] = lambda: fake_client
-    response = TestClient(app).post("/api/hotspot/users/ALICE/devices/%2A2/logout")
+    response = TestClient(app).post(
+        "/api/routers/flint-main/hotspot/users/ALICE/devices/%2A2/logout"
+    )
     app.dependency_overrides.clear()
 
     assert response.status_code == 200

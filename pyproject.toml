@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mikrotik"
-version = "0.1.0"
-description = "Python project scaffold."
+version = "0.2.0"
+description = "Multi-router FastAPI backend for MikroTik hotspot status and sessions."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [

@@ -1,4 +1,7 @@
-from mikrotik.client import MikroTikClient, MikroTikConfig
+import os
+
+from mikrotik.client import MikroTikClient, MikroTikConfig, load_dotenv
+from mikrotik.routers import DEFAULT_ROUTER_ID, UnknownRouterError, get_router
 
 
 def _print_menu() -> None:
@@ -70,12 +73,16 @@ def _print_active_device(device: dict[str, str], index: int) -> None:
 
 
 def main() -> None:
+    load_dotenv()
+    router_id = os.getenv("MIKROTIK_ROUTER_ID", DEFAULT_ROUTER_ID)
     try:
-        config = MikroTikConfig.from_env()
-    except ValueError as exc:
+        router = get_router(router_id)
+        config = MikroTikConfig.from_env(router)
+    except (UnknownRouterError, ValueError) as exc:
         print(exc)
         return
 
+    print(f"Using router: {router.name} ({router.router_id})")
     try:
         with MikroTikClient(config) as client:
             while True:

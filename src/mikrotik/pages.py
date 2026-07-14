@@ -4,14 +4,23 @@ import html
 import json
 from urllib.parse import parse_qs
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
+
+from mikrotik.routers import (
+    DEFAULT_ROUTER_ID,
+    RouterDefinition,
+    UnknownRouterError,
+    get_router,
+    iter_routers,
+)
 
 
 router = APIRouter()
 STATUS_COOKIE_NAME = "flint_status_user"
 STATUS_DEVICE_IP_COOKIE_NAME = "flint_status_device_ip"
 STATUS_DEVICE_MAC_COOKIE_NAME = "flint_status_device_mac"
+STATUS_ROUTER_COOKIE_NAME = "flint_status_router"
 STATUS_COOKIE_MAX_AGE = 60 * 60 * 12
 
 
@@ -19,9 +28,11 @@ STATUS_COOKIE_MAX_AGE = 60 * 60 * 12
 @router.get("/status", response_class=HTMLResponse)
 @router.get("/status/{username}", response_class=HTMLResponse)
 def hotspot_status_page(request: Request, username: str | None = None) -> HTMLResponse:
+    selected_router = _resolve_page_router(request)
     return HTMLResponse(
         _render_status_page(
             _resolve_page_username(request),
+            selected_router,
             _resolve_current_device_ip(request),
             _resolve_current_device_mac(request),
         )
@@ -38,6 +49,7 @@ def launch_status_redirect(request: Request) -> RedirectResponse:
         ),
         _first_query_value(request, ("ip", "ip_address", "address")),
         _first_query_value(request, ("mac", "mac_address", "mac-address")),
+        _first_query_value(request, ("router_id", "router", "site_id", "site")),
     )
 
 
@@ -50,7 +62,11 @@ async def launch_status_page(request: Request) -> RedirectResponse:
     )
     device_ip = _first_posted_value(posted_values, ("ip", "ip_address", "address"))
     device_mac = _first_posted_value(posted_values, ("mac", "mac_address", "mac-address"))
-    return _build_launch_response(request, username, device_ip, device_mac)
+    router_id = _first_posted_value(
+        posted_values,
+        ("router_id", "router", "site_id", "site"),
+    )
+    return _build_launch_response(request, username, device_ip, device_mac, router_id)
 
 
 def _build_launch_response(
@@ -58,10 +74,18 @@ def _build_launch_response(
     username: str | None,
     device_ip: str | None,
     device_mac: str | None,
+    router_id: str | None,
 ) -> RedirectResponse:
+    selected_router = _resolve_allowed_router(router_id or DEFAULT_ROUTER_ID)
     response = RedirectResponse(url="/", status_code=303)
     if username:
         _set_status_cookie(response, request, STATUS_COOKIE_NAME, username)
+        _set_status_cookie(
+            response,
+            request,
+            STATUS_ROUTER_COOKIE_NAME,
+            selected_router.router_id,
+        )
         if device_ip:
             _set_status_cookie(response, request, STATUS_DEVICE_IP_COOKIE_NAME, device_ip)
         else:
@@ -74,12 +98,31 @@ def _build_launch_response(
         response.delete_cookie(STATUS_COOKIE_NAME, path="/")
         response.delete_cookie(STATUS_DEVICE_IP_COOKIE_NAME, path="/")
         response.delete_cookie(STATUS_DEVICE_MAC_COOKIE_NAME, path="/")
+        response.delete_cookie(STATUS_ROUTER_COOKIE_NAME, path="/")
 
     return response
 
 
 def _resolve_page_username(request: Request) -> str | None:
     return _normalize_optional_text(request.cookies.get(STATUS_COOKIE_NAME))
+
+
+def _resolve_page_router(request: Request) -> RouterDefinition:
+    router_id = _normalize_optional_text(request.cookies.get(STATUS_ROUTER_COOKIE_NAME))
+    try:
+        return get_router(router_id or DEFAULT_ROUTER_ID)
+    except UnknownRouterError:
+        return get_router(DEFAULT_ROUTER_ID)
+
+
+def _resolve_allowed_router(router_id: str) -> RouterDefinition:
+    try:
+        return get_router(router_id)
+    except UnknownRouterError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
 
 
 def _resolve_current_device_ip(request: Request) -> str | None:
@@ -162,12 +205,22 @@ def _normalize_optional_text(value: object) -> str | None:
 
 def _render_status_page(
     username: str | None,
+    selected_router: RouterDefinition,
     current_device_ip: str | None = None,
     current_device_mac: str | None = None,
 ) -> str:
     initial_username = (username or "").strip()
     html_username = html.escape(initial_username, quote=True)
     json_username = json.dumps(initial_username)
+    json_router_id = json.dumps(selected_router.router_id)
+    router_options = "\n".join(
+        (
+            f'<option value="{html.escape(router.router_id, quote=True)}"'
+            f'{" selected" if router.router_id == selected_router.router_id else ""}>'
+            f"{html.escape(router.name, quote=False)}</option>"
+        )
+        for router in iter_routers()
+    )
     json_current_device_ip = json.dumps((current_device_ip or "").strip())
     json_current_device_mac = json.dumps((current_device_mac or "").strip())
     locked_username = html.escape(initial_username or "Waiting for hotspot session", quote=False)
@@ -1781,11 +1834,15 @@ def _render_status_page(
                     <h2 class="panel-title">Account</h2>
                     <span class="panel-badge" id="overview-pill">Idle</span>
                 </div>
-                <div class="info-list">
-                    <div class="info-row">
-                        <span class="info-key">Username</span>
-                        <span class="info-value" id="detail-username">--</span>
-                    </div>
+                    <div class="info-list">
+                        <div class="info-row">
+                            <span class="info-key">Username</span>
+                            <span class="info-value" id="detail-username">--</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="info-key">Site</span>
+                            <span class="info-value" id="detail-router">--</span>
+                        </div>
                     <div class="info-row">
                         <span class="info-key">Voucher Status</span>
                         <span class="info-value" id="account-status">--</span>
@@ -1845,6 +1902,15 @@ def _render_status_page(
                 </button>
             </div>
             <form class="modal-body lookup-form" id="user-lookup-form">
+                <div class="form-field">
+                    <label for="lookup-router">WiFi site</label>
+                    <div class="input-shell">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>
+                        <select class="search-input" id="lookup-router" name="router_id" required>
+                            __ROUTER_OPTIONS__
+                        </select>
+                    </div>
+                </div>
                 <div class="form-field">
                     <label for="lookup-username">Voucher username</label>
                     <div class="input-shell">
@@ -1920,9 +1986,11 @@ def _render_status_page(
 
     <script>
         const INITIAL_USERNAME = resolveInitialUsername(__INITIAL_USERNAME_JSON__);
+        const INITIAL_ROUTER_ID = normalizeText(__INITIAL_ROUTER_ID_JSON__);
         const CURRENT_DEVICE_IP = normalizeIpAddress(__CURRENT_DEVICE_IP_JSON__);
         const CURRENT_DEVICE_MAC = normalizeMacAddress(__CURRENT_DEVICE_MAC_JSON__);
         const lookupFormEl = document.getElementById('user-lookup-form');
+        const lookupRouterEl = document.getElementById('lookup-router');
         const lookupUsernameEl = document.getElementById('lookup-username');
         const lookupPasswordEl = document.getElementById('lookup-password');
         const passwordToggleEl = document.getElementById('password-toggle');
@@ -1942,6 +2010,7 @@ def _render_status_page(
         const profileValueEl = document.getElementById('profile-value');
         const connectedDevicesCountEl = document.getElementById('connected-devices-count');
         const detailUsernameEl = document.getElementById('detail-username');
+        const detailRouterEl = document.getElementById('detail-router');
         const accountStatusEl = document.getElementById('account-status');
         const loggedInDateEl = document.getElementById('logged-in-date');
         const expiryDateEl = document.getElementById('expiry-date');
@@ -1965,6 +2034,8 @@ def _render_status_page(
         const logoutModalErrorEl = document.getElementById('logout-modal-error');
 
         let activeUsername = INITIAL_USERNAME;
+        let activeRouterId = INITIAL_ROUTER_ID;
+        let activeRouterName = lookupRouterEl.options[lookupRouterEl.selectedIndex].text;
         let activePassword = '';
         let isLookupResult = false;
         let isLoading = false;
@@ -1976,7 +2047,7 @@ def _render_status_page(
         function initializePage() {
             bindEvents();
             if (INITIAL_USERNAME) {
-                loadStatus(INITIAL_USERNAME);
+                loadStatus(INITIAL_USERNAME, '', INITIAL_ROUTER_ID);
                 return;
             }
             setIdleState();
@@ -2007,15 +2078,16 @@ def _render_status_page(
                 event.preventDefault();
                 const username = normalizeText(lookupUsernameEl.value);
                 const password = lookupPasswordEl.value;
+                const routerId = normalizeText(lookupRouterEl.value);
                 lookupModalErrorEl.hidden = true;
                 lookupModalErrorEl.textContent = '';
-                if (!username || !password || isLoading) return;
-                loadStatus(username, password);
+                if (!routerId || !username || !password || isLoading) return;
+                loadStatus(username, password, routerId);
             });
 
             refreshButtonEl.addEventListener('click', () => {
                 if (!activeUsername) return;
-                loadStatus(activeUsername, activePassword);
+                loadStatus(activeUsername, activePassword, activeRouterId);
             });
 
             logoutModalCloseEl.addEventListener('click', closeLogoutModal);
@@ -2038,6 +2110,7 @@ def _render_status_page(
         function openLookupModal() {
             lookupModalErrorEl.hidden = true;
             lookupModalErrorEl.textContent = '';
+            if (activeRouterId) lookupRouterEl.value = activeRouterId;
             lookupModalEl.hidden = false;
             syncModalState();
             window.setTimeout(() => lookupUsernameEl.focus(), 0);
@@ -2064,18 +2137,24 @@ def _render_status_page(
             );
         }
 
-        async function loadStatus(username, password = '') {
+        async function loadStatus(username, password = '', routerId = INITIAL_ROUTER_ID) {
             const normalizedUsername = normalizeText(username);
-            if (!normalizedUsername || isLoading) return;
+            const normalizedRouterId = normalizeText(routerId);
+            if (!normalizedRouterId || !normalizedUsername || isLoading) return;
 
             activeUsername = normalizedUsername;
+            activeRouterId = normalizedRouterId;
+            if (lookupRouterEl.value === normalizedRouterId) {
+                activeRouterName = lookupRouterEl.options[lookupRouterEl.selectedIndex].text;
+            }
             activePassword = password;
             isLookupResult = Boolean(password);
             setLoadingState(normalizedUsername, isLookupResult);
 
             try {
+                const routerApiBase = '/api/routers/' + encodeURIComponent(normalizedRouterId);
                 const response = isLookupResult
-                    ? await fetch('/api/hotspot/user-lookup', {
+                    ? await fetch(routerApiBase + '/hotspot/user-lookup', {
                         method: 'POST',
                         headers: {
                             'Accept': 'application/json',
@@ -2083,7 +2162,7 @@ def _render_status_page(
                         },
                         body: JSON.stringify({ username: normalizedUsername, password: password })
                     })
-                    : await fetch('/api/hotspot/users/' + encodeURIComponent(normalizedUsername) + '/status', {
+                    : await fetch(routerApiBase + '/hotspot/users/' + encodeURIComponent(normalizedUsername) + '/status', {
                         method: 'GET',
                         headers: { 'Accept': 'application/json' }
                     });
@@ -2112,8 +2191,12 @@ def _render_status_page(
 
         function renderPayload(payload) {
             const username = normalizeText(payload.username) || activeUsername || 'Unknown';
+            const routerId = normalizeText(payload.router_id) || activeRouterId;
+            const routerName = normalizeText(payload.router_name) || activeRouterName || routerId;
             const isDisabled = payload.disabled === true;
             activeUsername = username;
+            activeRouterId = routerId;
+            activeRouterName = routerName;
             
             // Update badge
             heroBadgeEl.innerHTML = '<span class="status-dot active"></span>' + escapeHtml(username);
@@ -2122,9 +2205,12 @@ def _render_status_page(
             lockedUsernameEl.textContent = username;
             lockedUsernameEl.className = 'session-username';
             lockedNoteEl.textContent = isLookupResult
-                ? 'Voucher details were verified with the supplied username and password.'
-                : 'Voucher details are locked to your current hotspot session.';
-            if (isLookupResult) lookupUsernameEl.value = username;
+                ? 'Voucher details were verified for the ' + routerName + ' site.'
+                : 'Voucher details are locked to your current hotspot session at ' + routerName + '.';
+            if (isLookupResult) {
+                lookupUsernameEl.value = username;
+                lookupRouterEl.value = routerId;
+            }
             
             // Stats
             totalDataUsedEl.textContent = payload.total_data_used || '0 B';
@@ -2134,6 +2220,7 @@ def _render_status_page(
             
             // Account details
             detailUsernameEl.textContent = username;
+            detailRouterEl.textContent = routerName;
             accountStatusEl.textContent = isDisabled ? 'Expired or exhausted' : 'Active';
             loggedInDateEl.textContent = normalizeText(payload.logged_in_date) || 'N/A';
             expiryDateEl.textContent = normalizeText(payload.expiry_date) || 'N/A';
@@ -2307,7 +2394,9 @@ def _render_status_page(
 
             try {
                 const requestUrl = new URL(
-                    '/api/hotspot/users/' +
+                    '/api/routers/' +
+                    encodeURIComponent(activeRouterId) +
+                    '/hotspot/users/' +
                     encodeURIComponent(activeUsername) +
                     '/devices/' +
                     encodeURIComponent(sessionId || 'lookup') +
@@ -2328,7 +2417,7 @@ def _render_status_page(
                 }
 
                 closeLogoutModal(true);
-                await loadStatus(activeUsername, activePassword);
+                await loadStatus(activeUsername, activePassword, activeRouterId);
             } catch (error) {
                 if (buttonEl) {
                     buttonEl.disabled = false;
@@ -2353,6 +2442,7 @@ def _render_status_page(
                 ? 'The supplied voucher credentials could not be verified.'
                 : 'The voucher session is locked, but the details could not be loaded right now.';
             detailUsernameEl.textContent = username || '--';
+            detailRouterEl.textContent = activeRouterName || activeRouterId || '--';
             accountStatusEl.textContent = '--';
             totalDataUsedEl.textContent = '--';
             totalDataLeftEl.textContent = '--';
@@ -2378,6 +2468,7 @@ def _render_status_page(
             lockedUsernameEl.className = 'session-username empty';
             lockedNoteEl.textContent = 'Open this page from your hotspot status page, or search with voucher credentials.';
             detailUsernameEl.textContent = '--';
+            detailRouterEl.textContent = activeRouterName || activeRouterId || '--';
             accountStatusEl.textContent = '--';
             totalDataUsedEl.textContent = '--';
             totalDataLeftEl.textContent = '--';
@@ -2407,6 +2498,7 @@ def _render_status_page(
             lockedNoteEl.textContent = fromLookup
                 ? 'Verifying the voucher credentials and loading its details.'
                 : 'Loading the locked voucher details for this hotspot user.';
+            detailRouterEl.textContent = activeRouterName || activeRouterId || '--';
             overviewPillEl.textContent = '...';
             devicesPillEl.textContent = '...';
             statusIndicatorEl.innerHTML = '<span class="status-dot loading"></span><span>Loading...</span>';
@@ -2491,6 +2583,10 @@ def _render_status_page(
 </html>
 """.replace("__INITIAL_USERNAME_ATTR__", html_username).replace(
         "__INITIAL_USERNAME_JSON__", json_username
+    ).replace(
+        "__INITIAL_ROUTER_ID_JSON__", json_router_id
+    ).replace(
+        "__ROUTER_OPTIONS__", router_options
     ).replace(
         "__CURRENT_DEVICE_IP_JSON__", json_current_device_ip
     ).replace(

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 
 from routeros_api import RouterOsApiPool
 from routeros_api.api import RouterOsApi
+
+from mikrotik.routers import RouterDefinition
 
 
 @dataclass(slots=True)
@@ -20,23 +22,21 @@ class MikroTikConfig:
     ssl_verify_hostname: bool = True
 
     @classmethod
-    def from_env(cls) -> "MikroTikConfig":
+    def from_env(cls, router: RouterDefinition) -> "MikroTikConfig":
         load_dotenv()
-        host = os.getenv("MIKROTIK_HOST")
         username = os.getenv("MIKROTIK_USERNAME")
         password = os.getenv("MIKROTIK_PASSWORD")
 
-        if not host or not username or password is None:
+        if not username or password is None:
             raise ValueError(
-                "Set MIKROTIK_HOST, MIKROTIK_USERNAME, and MIKROTIK_PASSWORD before connecting."
+                "Set MIKROTIK_USERNAME and MIKROTIK_PASSWORD before connecting."
             )
 
-        port_raw = os.getenv("MIKROTIK_PORT")
         return cls(
-            host=host,
+            host=router.host,
             username=username,
             password=password,
-            port=int(port_raw) if port_raw else None,
+            port=router.port,
             plaintext_login=_env_flag("MIKROTIK_PLAINTEXT_LOGIN", default=False),
             use_ssl=_env_flag("MIKROTIK_USE_SSL", default=False),
             ssl_verify=_env_flag("MIKROTIK_SSL_VERIFY", default=True),
