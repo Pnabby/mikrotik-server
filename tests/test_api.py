@@ -168,6 +168,21 @@ def test_launch_status_rejects_unconfigured_router_id() -> None:
     assert response.json()["detail"] == "Router '10.20.20.3' is not configured."
 
 
+def test_status_page_uses_configured_router_id_from_query() -> None:
+    response = TestClient(app).get("/?router_id=platinum")
+
+    assert response.status_code == 200
+    assert 'const INITIAL_ROUTER_ID = normalizeText("platinum")' in response.text
+    assert '<option value="platinum" selected>Platinum</option>' in response.text
+
+
+def test_status_page_rejects_unconfigured_router_id_from_query() -> None:
+    response = TestClient(app).get("/?router_id=10.20.20.3")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Router '10.20.20.3' is not configured."
+
+
 def test_launch_status_keeps_current_device_identifiers() -> None:
     client = TestClient(app)
     response = client.post(

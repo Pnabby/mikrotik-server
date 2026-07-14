@@ -108,6 +108,13 @@ def _resolve_page_username(request: Request) -> str | None:
 
 
 def _resolve_page_router(request: Request) -> RouterDefinition:
+    query_router_id = _first_query_value(
+        request,
+        ("router_id", "router", "site_id", "site"),
+    )
+    if query_router_id:
+        return _resolve_allowed_router(query_router_id)
+
     router_id = _normalize_optional_text(request.cookies.get(STATUS_ROUTER_COOKIE_NAME))
     try:
         return get_router(router_id or DEFAULT_ROUTER_ID)
