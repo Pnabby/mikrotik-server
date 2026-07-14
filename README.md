@@ -35,6 +35,10 @@ MIKROTIK_PASSWORD=replace-me
 credentials. Router hosts and ports come exclusively from the registry, so the old
 `MIKROTIK_HOST` and `MIKROTIK_PORT` variables are no longer used.
 
+Set `MIKROTIK_PLAINTEXT_LOGIN=true` for the RouterOS API login flow used by these
+routers. API traffic, including authentication, must remain inside the encrypted
+WireGuard tunnel.
+
 The optional `MIKROTIK_ROUTER_ID` variable selects the router for the interactive
 `python -m mikrotik` command only; it defaults to `flint-main`. API requests always use the
 router ID in their URL.
