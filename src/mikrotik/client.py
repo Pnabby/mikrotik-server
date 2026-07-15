@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from routeros_api import RouterOsApiPool
@@ -13,8 +13,8 @@ from mikrotik.routers import RouterDefinition
 @dataclass(slots=True)
 class MikroTikConfig:
     host: str
-    username: str
-    password: str
+    username: str = field(repr=False)
+    password: str = field(repr=False)
     port: int | None = None
     plaintext_login: bool = False
     use_ssl: bool = False

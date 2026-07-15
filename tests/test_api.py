@@ -1,5 +1,7 @@
 from fastapi.testclient import TestClient
+from pytest import MonkeyPatch
 
+import mikrotik.api as api_module
 from mikrotik.api import app, get_client
 from mikrotik.pages import (
     STATUS_COOKIE_NAME,
@@ -165,7 +167,7 @@ def test_launch_status_rejects_unconfigured_router_id() -> None:
     )
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Router '10.20.20.3' is not configured."
+    assert response.json()["detail"] == "Invalid request."
 
 
 def test_status_page_uses_configured_router_id_from_query() -> None:
@@ -180,7 +182,7 @@ def test_status_page_rejects_unconfigured_router_id_from_query() -> None:
     response = TestClient(app).get("/?router_id=10.20.20.3")
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Router '10.20.20.3' is not configured."
+    assert response.json()["detail"] == "Invalid request."
 
 
 def test_launch_status_keeps_current_device_identifiers() -> None:
@@ -271,6 +273,9 @@ def test_status_page_ignores_query_username_without_locked_cookie() -> None:
     assert 'id="loading-overlay"' in response.text
     assert "Please be patient" in response.text
     assert "Still working on it" in response.text
+    assert "payload.detail" not in response.text
+    assert "error.message" not in response.text
+    assert "publicErrorMessage(response.status)" in response.text
 
 
 def test_status_page_path_does_not_unlock_username() -> None:
@@ -293,11 +298,17 @@ def test_list_routers_returns_public_metadata_without_connection_hosts() -> None
         {
             "router_id": "platinum",
             "name": "Platinum",
+            "hotspot_network": "192.168.92.0/23",
+        },
+        {
+            "router_id": "flint-annex",
+            "name": "Flint Annex",
             "hotspot_network": "192.168.90.0/23",
         },
     ]
     assert "10.20.20.2" not in response.text
     assert "10.20.20.3" not in response.text
+    assert "10.20.20.4" not in response.text
 
 
 def test_status_api_rejects_raw_host_as_router_id_before_connecting() -> None:
@@ -306,7 +317,7 @@ def test_status_api_rejects_raw_host_as_router_id_before_connecting() -> None:
     )
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Router '10.20.20.3' is not configured."
+    assert response.json()["detail"] == "The requested resource was not found."
 
 
 def test_get_hotspot_status_returns_unlimited_when_no_limit_exists() -> None:
@@ -413,7 +424,7 @@ def test_get_hotspot_status_returns_404_when_user_does_not_exist() -> None:
     app.dependency_overrides.clear()
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Hotspot user 'alice' was not found."
+    assert response.json()["detail"] == "The requested resource was not found."
 
 
 def test_lookup_hotspot_user_returns_status_for_valid_credentials() -> None:
@@ -488,7 +499,7 @@ def test_lookup_hotspot_user_requires_both_credentials() -> None:
     app.dependency_overrides.clear()
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Username and password are required."
+    assert response.json()["detail"] == "Invalid request."
 
 
 def test_get_hotspot_status_uses_canonical_router_username_for_follow_up_queries() -> None:
@@ -570,7 +581,55 @@ def test_logout_hotspot_device_returns_404_when_session_is_missing() -> None:
     app.dependency_overrides.clear()
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Active session '*2' was not found for user 'alice'."
+    assert response.json()["detail"] == "The requested resource was not found."
+
+
+def test_router_exception_does_not_expose_backend_credentials(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    backend_username = "server-admin"
+    backend_password = "backend-password-should-never-leak"
+
+    class LeakyMikroTikClient:
+        def __init__(self, _config: object) -> None:
+            pass
+
+        def get_hotspot_user(self, _username: str) -> None:
+            raise RuntimeError(
+                f"executing /login =name={backend_username} =password={backend_password}"
+            )
+
+        def disconnect(self) -> None:
+            pass
+
+    monkeypatch.setenv("MIKROTIK_USERNAME", backend_username)
+    monkeypatch.setenv("MIKROTIK_PASSWORD", backend_password)
+    monkeypatch.setattr(api_module, "MikroTikClient", LeakyMikroTikClient)
+
+    response = TestClient(app, raise_server_exceptions=False).get(
+        "/api/routers/flint-main/hotspot/users/alice/status"
+    )
+
+    assert response.status_code == 502
+    assert response.json() == {
+        "detail": "The router service is temporarily unavailable. Please try again later."
+    }
+    assert backend_username not in response.text
+    assert backend_password not in response.text
+    assert "/login" not in response.text
+
+
+def test_validation_error_does_not_echo_rejected_password() -> None:
+    rejected_password = "rejected-password-should-never-leak"
+
+    response = TestClient(app).post(
+        "/api/routers/flint-main/hotspot/user-lookup",
+        json={"username": "alice", "password": {"value": rejected_password}},
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "Invalid request."}
+    assert rejected_password not in response.text
 
 
 def test_logout_hotspot_device_uses_canonical_router_username() -> None:

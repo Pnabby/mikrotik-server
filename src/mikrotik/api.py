@@ -7,9 +7,12 @@ from datetime import datetime, timedelta
 import hmac
 import os
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, SecretStr
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import uvicorn
 
 from mikrotik.client import MikroTikClient, MikroTikConfig, load_dotenv
@@ -24,6 +27,24 @@ from mikrotik.routers import (
 
 LOGIN_COMMENT_PREFIX = "login="
 LOGIN_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+ROUTER_UNAVAILABLE_DETAIL = (
+    "The router service is temporarily unavailable. Please try again later."
+)
+
+_PUBLIC_ERROR_DETAILS = {
+    status.HTTP_400_BAD_REQUEST: "Invalid request.",
+    status.HTTP_401_UNAUTHORIZED: "Invalid username or password.",
+    status.HTTP_403_FORBIDDEN: "Access denied.",
+    status.HTTP_404_NOT_FOUND: "The requested resource was not found.",
+    status.HTTP_405_METHOD_NOT_ALLOWED: "Method not allowed.",
+    status.HTTP_409_CONFLICT: "The request could not be completed.",
+    422: "Invalid request.",
+    status.HTTP_429_TOO_MANY_REQUESTS: "Too many requests. Please try again later.",
+    status.HTTP_500_INTERNAL_SERVER_ERROR: "An internal server error occurred.",
+    status.HTTP_502_BAD_GATEWAY: ROUTER_UNAVAILABLE_DETAIL,
+    status.HTTP_503_SERVICE_UNAVAILABLE: ROUTER_UNAVAILABLE_DETAIL,
+    status.HTTP_504_GATEWAY_TIMEOUT: ROUTER_UNAVAILABLE_DETAIL,
+}
 
 
 def _cors_origins() -> list[str]:
@@ -42,6 +63,47 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(pages_router)
+
+
+def _public_error_detail(status_code: int) -> str:
+    """Return an allowlisted message that cannot contain exception or request data."""
+
+    return _PUBLIC_ERROR_DETAILS.get(status_code, "Request failed.")
+
+
+@app.exception_handler(StarletteHTTPException)
+async def _handle_http_exception(
+    _request: Request,
+    exc: StarletteHTTPException,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": _public_error_detail(exc.status_code)},
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def _handle_request_validation_error(
+    _request: Request,
+    _exc: RequestValidationError,
+) -> JSONResponse:
+    # FastAPI's default validation response can echo rejected input values.
+    return JSONResponse(
+        status_code=422,
+        content={"detail": _public_error_detail(422)},
+    )
+
+
+@app.exception_handler(Exception)
+async def _handle_unexpected_exception(
+    _request: Request,
+    _exc: Exception,
+) -> JSONResponse:
+    # Never serialize exception messages: RouterOS errors can contain login commands.
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": _public_error_detail(status.HTTP_500_INTERNAL_SERVER_ERROR)},
+    )
 
 
 class DeviceSession(BaseModel):
@@ -76,7 +138,7 @@ class HotspotStatusResponse(BaseModel):
 
 class HotspotLookupRequest(BaseModel):
     username: str
-    password: str
+    password: SecretStr
 
 
 class DeviceLogoutResponse(BaseModel):
@@ -100,7 +162,7 @@ def resolve_router(router_id: str) -> RouterDefinition:
     except UnknownRouterError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(exc),
+            detail="Router is not configured.",
         ) from exc
 
 
@@ -111,18 +173,18 @@ def _client_context(router: RouterDefinition) -> Generator[MikroTikClient, None,
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
+            detail="Router service is not configured.",
         ) from exc
 
     client = MikroTikClient(config)
     try:
         yield client
-    except HTTPException:
+    except (HTTPException, RequestValidationError):
         raise
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Router communication failed: {exc}",
+            detail=ROUTER_UNAVAILABLE_DETAIL,
         ) from exc
     finally:
         client.disconnect()
@@ -172,7 +234,7 @@ def get_hotspot_status(
     if hotspot_user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Hotspot user '{normalized_username}' was not found.",
+            detail="Hotspot user was not found.",
         )
 
     return _build_hotspot_status(router, client, hotspot_user, normalized_username)
@@ -188,7 +250,8 @@ def lookup_hotspot_user(
     client: MikroTikClient = Depends(get_client),
 ) -> HotspotStatusResponse:
     normalized_username = credentials.username.strip()
-    if not normalized_username or not credentials.password:
+    submitted_password = credentials.password.get_secret_value()
+    if not normalized_username or not submitted_password:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Username and password are required.",
@@ -199,7 +262,7 @@ def lookup_hotspot_user(
     comparable_password = stored_password if isinstance(stored_password, str) else ""
     password_matches = hmac.compare_digest(
         comparable_password.encode("utf-8"),
-        credentials.password.encode("utf-8"),
+        submitted_password.encode("utf-8"),
     )
     if hotspot_user is None or not password_matches:
         raise HTTPException(
@@ -291,7 +354,7 @@ def logout_hotspot_device(
     if hotspot_user is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Hotspot user '{normalized_username}' was not found.",
+            detail="Hotspot user was not found.",
         )
 
     resolved_username = _resolve_hotspot_username(hotspot_user, normalized_username)
@@ -304,10 +367,7 @@ def logout_hotspot_device(
     if not removed:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=(
-                f"Active session '{normalized_session_id}' was not found for user "
-                f"'{normalized_username}'."
-            ),
+            detail="Active session was not found for this user.",
         )
 
     return DeviceLogoutResponse(

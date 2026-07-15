@@ -57,9 +57,7 @@ def get_router(router_id: str) -> RouterDefinition:
     try:
         return ROUTERS[normalized_router_id]
     except KeyError as exc:
-        raise UnknownRouterError(
-            f"Router '{normalized_router_id}' is not configured."
-        ) from exc
+        raise UnknownRouterError("Router is not configured.") from exc
 
 
 def iter_routers() -> Iterator[RouterDefinition]:

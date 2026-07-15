@@ -78,8 +78,11 @@ def main() -> None:
     try:
         router = get_router(router_id)
         config = MikroTikConfig.from_env(router)
-    except (UnknownRouterError, ValueError) as exc:
-        print(exc)
+    except UnknownRouterError:
+        print("Router is not configured.")
+        return
+    except ValueError:
+        print("Router service is not configured.")
         return
 
     print(f"Using router: {router.name} ({router.router_id})")
@@ -122,8 +125,8 @@ def main() -> None:
                     continue
 
                 print("Invalid selection.")
-    except Exception as exc:
-        print(f"Connection failed: {exc}")
+    except Exception:
+        print("Connection failed. Check the router service and try again.")
 
 
 if __name__ == "__main__":

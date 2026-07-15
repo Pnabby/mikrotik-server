@@ -128,7 +128,7 @@ def _resolve_allowed_router(router_id: str) -> RouterDefinition:
     except UnknownRouterError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
+            detail="Router is not configured.",
         ) from exc
 
 
@@ -2157,6 +2157,9 @@ def _render_status_page(
             activePassword = password;
             isLookupResult = Boolean(password);
             setLoadingState(normalizedUsername, isLookupResult);
+            let failureMessage = isLookupResult
+                ? 'Could not verify this voucher.'
+                : 'Could not load voucher details.';
 
             try {
                 const routerApiBase = '/api/routers/' + encodeURIComponent(normalizedRouterId);
@@ -2175,18 +2178,19 @@ def _render_status_page(
                     });
 
                 if (!response.ok) {
-                    throw new Error(await extractError(response));
+                    failureMessage = publicErrorMessage(response.status);
+                    throw new Error('request-failed');
                 }
 
                 const payload = await response.json();
                 renderPayload(payload);
                 lookupPasswordEl.value = '';
                 if (isLookupResult) closeLookupModal(true);
-            } catch (error) {
-                renderError(normalizedUsername, error.message || 'Failed to load');
+            } catch {
+                renderError(normalizedUsername, failureMessage);
                 if (isLookupResult) {
                     lookupModalErrorEl.hidden = false;
-                    lookupModalErrorEl.textContent = error.message || 'Could not verify this voucher.';
+                    lookupModalErrorEl.textContent = failureMessage;
                 }
             } finally {
                 isLoading = false;
@@ -2398,6 +2402,7 @@ def _render_status_page(
             logoutModalCancelEl.disabled = true;
             logoutModalCloseEl.disabled = true;
             logoutModalConfirmEl.textContent = 'Logging out...';
+            let failureMessage = 'Could not log out this device. Please try again.';
 
             try {
                 const requestUrl = new URL(
@@ -2420,12 +2425,13 @@ def _render_status_page(
                 });
 
                 if (!response.ok) {
-                    throw new Error(await extractError(response));
+                    failureMessage = publicErrorMessage(response.status);
+                    throw new Error('request-failed');
                 }
 
                 closeLogoutModal(true);
                 await loadStatus(activeUsername, activePassword, activeRouterId);
-            } catch (error) {
+            } catch {
                 if (buttonEl) {
                     buttonEl.disabled = false;
                     buttonEl.textContent = originalLabel;
@@ -2436,7 +2442,7 @@ def _render_status_page(
                 logoutModalCloseEl.disabled = false;
                 logoutModalConfirmEl.textContent = 'Try again';
                 logoutModalErrorEl.hidden = false;
-                logoutModalErrorEl.textContent = error.message || 'Logout failed';
+                logoutModalErrorEl.textContent = failureMessage;
             }
         }
 
@@ -2532,12 +2538,28 @@ def _render_status_page(
             loadingOverlayEl.hidden = true;
         }
 
-        async function extractError(response) {
-            try {
-                const payload = await response.json();
-                return payload.detail || 'Request failed';
-            } catch (error) {
-                return 'Request failed';
+        function publicErrorMessage(statusCode) {
+            switch (statusCode) {
+                case 400:
+                case 422:
+                    return 'The request was invalid. Please check the details and try again.';
+                case 401:
+                    return 'Invalid username or password.';
+                case 403:
+                    return 'This request is not allowed.';
+                case 404:
+                    return 'The requested voucher or device was not found.';
+                case 408:
+                case 504:
+                    return 'The request timed out. Please try again.';
+                case 429:
+                    return 'Too many requests. Please wait and try again.';
+                case 500:
+                case 502:
+                case 503:
+                    return 'The router service is temporarily unavailable. Please try again later.';
+                default:
+                    return 'The request could not be completed. Please try again.';
             }
         }
 
