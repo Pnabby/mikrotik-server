@@ -33,6 +33,13 @@ _ROUTER_DEFINITIONS = (
         name="Platinum",
         host="10.20.20.3",
         port=8728,
+        hotspot_network="192.168.92.0/23",
+    ),
+    RouterDefinition(
+        router_id="flint-annex",
+        name="Flint Annex",
+        host="10.20.20.4",
+        port=8728,
         hotspot_network="192.168.90.0/23",
     ),
 )
