@@ -246,6 +246,7 @@ def _render_status_page(
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <title>FLINT WiFi | Hotspot Status</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%234361ee'/%3E%3Ccircle cx='12' cy='17.5' r='1.4' fill='%23fff'/%3E%3Cpath d='M8.2 13.4a5.3 5.3 0 0 1 7.6 0' stroke='%23fff' stroke-width='1.8' stroke-linecap='round' fill='none'/%3E%3Cpath d='M5.1 10.2a9.7 9.7 0 0 1 13.8 0' stroke='%23fff' stroke-width='1.8' stroke-linecap='round' fill='none'/%3E%3C/svg%3E">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -1746,6 +1747,166 @@ def _render_status_page(
             }
         }
 
+        /* Desktop layout */
+        @media (min-width: 900px) {
+            .container {
+                max-width: 980px;
+                padding: 40px 32px 56px;
+            }
+
+            .panels {
+                display: grid;
+                grid-template-columns: 1.15fr 1fr;
+                align-items: start;
+            }
+
+            /* The Devices panel is narrower here than the single-column
+               mobile layout, so keep MAC/IP at two-up instead of three
+               to stop the MAC address wrapping mid-address. */
+            .device-metrics {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .device-metric.full {
+                grid-column: 1 / -1;
+            }
+
+            .stat-card {
+                transition: transform 0.18s ease, box-shadow 0.18s ease;
+            }
+
+            .stat-card:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 14px 30px rgba(67, 97, 238, 0.14);
+            }
+        }
+
+        /* Scrollbars */
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--portal-border-strong);
+            border-radius: 999px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--portal-text-soft);
+        }
+
+        /* Panel + section icons */
+        .panel-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .panel-title svg {
+            width: 17px;
+            height: 17px;
+            flex-shrink: 0;
+            color: var(--portal-accent);
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .stat-icon {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            width: 30px;
+            height: 30px;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 9px;
+            border-radius: 9px;
+            background: var(--portal-accent-soft);
+            color: var(--portal-accent);
+        }
+
+        .stat-icon svg {
+            width: 16px;
+            height: 16px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .stat-label,
+        .stat-value {
+            position: relative;
+            z-index: 1;
+        }
+
+        .btn.icon-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        .btn.icon-btn svg {
+            width: 15px;
+            height: 15px;
+            flex-shrink: 0;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .device-status svg {
+            width: 12px;
+            height: 12px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2.4;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .empty-state svg {
+            width: 26px;
+            height: 26px;
+            color: var(--portal-text-soft);
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.6;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .empty-state.error svg {
+            color: var(--portal-error-text);
+        }
+
+        a:focus-visible,
+        button:focus-visible,
+        input:focus-visible,
+        select:focus-visible {
+            outline: 2px solid var(--portal-accent);
+            outline-offset: 2px;
+        }
+
         @media (prefers-reduced-motion: reduce) {
             .modal-backdrop,
             .modal {
@@ -1797,7 +1958,10 @@ def _render_status_page(
                     <div class="session-username" id="locked-username">__LOCKED_USERNAME_DISPLAY__</div>
                     <div class="session-note" id="locked-note">__LOCKED_ACCESS_MESSAGE__</div>
                 </div>
-                <button id="refresh-button" class="btn btn-outline" type="button">Refresh</button>
+                <button id="refresh-button" class="btn btn-outline icon-btn" type="button">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11A8 8 0 1 0 18.3 16"/><path d="M20 5v6h-6"/></svg>
+                    Refresh
+                </button>
             </div>
         </div>
 
@@ -1810,18 +1974,30 @@ def _render_status_page(
         <!-- Stats -->
         <div class="stats-grid">
             <div class="stat-card">
+                <div class="stat-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M12 3v12m0 0-4-4m4 4 4-4"/><path d="M5 19h14"/></svg>
+                </div>
                 <div class="stat-label">Data Used</div>
                 <div class="stat-value" id="total-data-used">--</div>
             </div>
             <div class="stat-card">
+                <div class="stat-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><rect x="2" y="7" width="18" height="10" rx="2"/><path d="M22 10v4"/></svg>
+                </div>
                 <div class="stat-label">Data Left</div>
                 <div class="stat-value" id="total-data-left">--</div>
             </div>
             <div class="stat-card">
+                <div class="stat-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="m12 3 2.6 5.9L21 9.6l-4.6 4.2L17.6 21 12 17.6 6.4 21l1.2-7.2L3 9.6l6.4-.7Z"/></svg>
+                </div>
                 <div class="stat-label">Plan</div>
                 <div class="stat-value accent" id="profile-value">--</div>
             </div>
             <div class="stat-card">
+                <div class="stat-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+                </div>
                 <div class="stat-label">Devices</div>
                 <div class="stat-value" id="connected-devices-count">--</div>
             </div>
@@ -1832,7 +2008,10 @@ def _render_status_page(
             <!-- Account Details -->
             <div class="panel">
                 <div class="panel-header">
-                    <h2 class="panel-title">Account</h2>
+                    <h2 class="panel-title">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z"/></svg>
+                        Account
+                    </h2>
                     <span class="panel-badge" id="overview-pill">Idle</span>
                 </div>
                     <div class="info-list">
@@ -1841,7 +2020,7 @@ def _render_status_page(
                             <span class="info-value" id="detail-username">--</span>
                         </div>
                         <div class="info-row">
-                            <span class="info-key">Site</span>
+                            <span class="info-key">Hostel</span>
                             <span class="info-value" id="detail-router">--</span>
                         </div>
                     <div class="info-row">
@@ -1867,11 +2046,17 @@ def _render_status_page(
             <!-- Devices -->
             <div class="panel">
                 <div class="panel-header">
-                    <h2 class="panel-title">Devices</h2>
+                    <h2 class="panel-title">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+                        Devices
+                    </h2>
                     <span class="panel-badge" id="devices-pill">0 devices</span>
                 </div>
                 <div class="devices-container" id="devices-root">
-                    <div class="empty-state">Open this page from the hotspot status page to view devices</div>
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+                        Open this page from the hotspot status page to view devices
+                    </div>
                 </div>
             </div>
         </div>
@@ -1904,7 +2089,7 @@ def _render_status_page(
             </div>
             <form class="modal-body lookup-form" id="user-lookup-form">
                 <div class="form-field">
-                    <label for="lookup-router">WiFi site</label>
+                    <label for="lookup-router">WiFi hostel</label>
                     <div class="input-shell">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>
                         <select class="search-input" id="lookup-router" name="router_id" required>
@@ -1943,7 +2128,9 @@ def _render_status_page(
     <div class="modal-backdrop" id="logout-modal" hidden>
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="logout-modal-title">
             <div class="modal-header">
-                <div class="modal-icon">!</div>
+                <div class="modal-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a1.5 1.5 0 0 0 1.3 2.25h17.76a1.5 1.5 0 0 0 1.3-2.25L13.71 3.86a1.5 1.5 0 0 0-2.42 0Z"/></svg>
+                </div>
                 <div class="modal-title-wrap">
                     <div class="modal-title" id="logout-modal-title">Confirm device logout</div>
                     <div class="modal-subtitle">
@@ -2028,6 +2215,11 @@ def _render_status_page(
         const logoutModalIpEl = document.getElementById('logout-modal-ip');
         const logoutModalMacEl = document.getElementById('logout-modal-mac');
         const logoutModalErrorEl = document.getElementById('logout-modal-error');
+
+        const ICON_CHECK = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 13 4 4L19 7"/></svg>';
+        const ICON_DOT = '<svg viewBox="0 0 24 24" aria-hidden="true" style="fill:currentColor;stroke:none"><circle cx="12" cy="12" r="6"/></svg>';
+        const ICON_DEVICES_EMPTY = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>';
+        const ICON_WARNING_EMPTY = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a1.5 1.5 0 0 0 1.3 2.25h17.76a1.5 1.5 0 0 0 1.3-2.25L13.71 3.86a1.5 1.5 0 0 0-2.42 0Z"/></svg>';
 
         let activeUsername = INITIAL_USERNAME;
         let activeRouterId = INITIAL_ROUTER_ID;
@@ -2205,7 +2397,7 @@ def _render_status_page(
             lockedUsernameEl.textContent = username;
             lockedUsernameEl.className = 'session-username';
             lockedNoteEl.textContent = isLookupResult
-                ? 'Voucher details were verified for the ' + routerName + ' site.'
+                ? 'Voucher details were verified for the ' + routerName + ' hostel.'
                 : 'Voucher details are locked to your current hotspot session at ' + routerName + '.';
             if (isLookupResult) {
                 lookupUsernameEl.value = username;
@@ -2240,7 +2432,7 @@ def _render_status_page(
 
         function renderDevices(devices) {
             if (!devices.length) {
-                devicesRootEl.innerHTML = '<div class="empty-state">No active devices</div>';
+                devicesRootEl.innerHTML = '<div class="empty-state">' + ICON_DEVICES_EMPTY + 'No active devices</div>';
                 return;
             }
 
@@ -2254,7 +2446,7 @@ def _render_status_page(
                 const rawMacAddress = escapeHtml(normalizeText(device.mac_address) || '');
                 const rawIpAddress = escapeHtml(normalizeText(device.ip_address) || '');
                 const currentDeviceBadge = isCurrentSessionDevice(device)
-                    ? '<span class="device-status current">This device</span>'
+                    ? '<span class="device-status current">' + ICON_CHECK + 'This device</span>'
                     : '';
 
                 return (
@@ -2265,7 +2457,7 @@ def _render_status_page(
                             '</div>' +
                             '<div class="device-badges">' +
                                 currentDeviceBadge +
-                                '<span class="device-status">Active</span>' +
+                                '<span class="device-status">' + ICON_DOT + 'Active</span>' +
                             '</div>' +
                         '</div>' +
                         '<div class="device-metrics">' +
@@ -2455,7 +2647,7 @@ def _render_status_page(
             devicesPillEl.textContent = formatDeviceCount(0);
             statusIndicatorEl.innerHTML = '<span class="status-dot error"></span><span>Load failed</span>';
             lastUpdatedEl.textContent = 'Failed';
-            devicesRootEl.innerHTML = '<div class="empty-state error">' + escapeHtml(message || 'Could not load') + '</div>';
+            devicesRootEl.innerHTML = '<div class="empty-state error">' + ICON_WARNING_EMPTY + escapeHtml(message || 'Could not load') + '</div>';
             if (isLookupResult) lookupPasswordEl.focus();
         }
 
@@ -2481,7 +2673,7 @@ def _render_status_page(
             devicesPillEl.textContent = formatDeviceCount(0);
             statusIndicatorEl.innerHTML = '<span class="status-dot idle"></span><span>Waiting for a hotspot session or voucher search</span>';
             lastUpdatedEl.textContent = 'No data';
-            devicesRootEl.innerHTML = '<div class="empty-state">Open this page from the hotspot status page to view devices</div>';
+            devicesRootEl.innerHTML = '<div class="empty-state">' + ICON_DEVICES_EMPTY + 'Open this page from the hotspot status page to view devices</div>';
             refreshButtonEl.disabled = true;
         }
 
