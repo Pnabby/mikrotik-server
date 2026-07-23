@@ -30,15 +30,19 @@ class FakeApi:
         self,
         sessions: list[dict[str, str]],
         users: list[dict[str, str]] | None = None,
+        leases: list[dict[str, str]] | None = None,
     ) -> None:
         self.active_resource = FakeResource(sessions)
         self.user_resource = FakeResource(users or [])
+        self.lease_resource = FakeResource(leases or [])
 
     def get_resource(self, path: str) -> FakeResource:
         if path == "/ip/hotspot/active":
             return self.active_resource
         if path == "/ip/hotspot/user":
             return self.user_resource
+        if path == "/ip/dhcp-server/lease":
+            return self.lease_resource
         raise AssertionError(f"Unexpected path: {path}")
 
 
@@ -68,7 +72,7 @@ def test_get_hotspot_active_devices_returns_matching_sessions() -> None:
                 "user": "alice",
                 "address": "10.0.0.2",
                 "mac-address": "AA:BB:CC:DD:EE:01",
-                "host-name": "Alice-iPhone",
+                "host-name": "Hotspot-Fallback",
             },
             {
                 "id": "*2",
@@ -92,6 +96,16 @@ def test_get_hotspot_active_devices_returns_matching_sessions() -> None:
                 "limit-bytes-total": "5000",
             }
         ],
+        leases=[
+            {
+                "mac-address": "aa-bb-cc-dd-ee-01",
+                "host-name": "Alice-iPhone",
+            },
+            {
+                "mac-address": "AA:BB:CC:DD:EE:03",
+                "host-name": "Bobs-Phone",
+            },
+        ],
     )
 
     devices = client.get_hotspot_active_devices("alice")
@@ -102,7 +116,7 @@ def test_get_hotspot_active_devices_returns_matching_sessions() -> None:
             "user": "alice",
             "address": "10.0.0.2",
             "mac-address": "AA:BB:CC:DD:EE:01",
-            "host-name": "Alice-iPhone",
+            "host-name": "Hotspot-Fallback",
             "bytes-in": "0",
             "bytes-out": "0",
             "bytes-total": "0",
@@ -121,6 +135,61 @@ def test_get_hotspot_active_devices_returns_matching_sessions() -> None:
             "user-comment": "Parent account",
         },
     ]
+
+
+def test_get_hotspot_active_devices_falls_back_when_dhcp_hostname_is_empty() -> None:
+    client = MikroTikClient(
+        MikroTikConfig(host="router", username="admin", password="secret")
+    )
+    client._api = FakeApi(
+        [
+            {
+                "id": "*1",
+                "user": "alice",
+                "mac-address": "AA:BB:CC:DD:EE:01",
+                "host": "Active-Session-Name",
+            },
+        ],
+        leases=[
+            {
+                "mac-address": "AA:BB:CC:DD:EE:01",
+                "host-name": "  ",
+            },
+        ],
+    )
+
+    devices = client.get_hotspot_active_devices("alice")
+
+    assert devices[0]["device-name"] == "Active-Session-Name"
+
+
+def test_get_hotspot_active_devices_caches_dhcp_leases_for_client_lifetime() -> None:
+    client = MikroTikClient(
+        MikroTikConfig(host="router", username="admin", password="secret")
+    )
+    fake_api = FakeApi(
+        [
+            {
+                "id": "*1",
+                "user": "alice",
+                "mac-address": "AA:BB:CC:DD:EE:01",
+            },
+        ],
+        leases=[
+            {
+                "mac-address": "AA:BB:CC:DD:EE:01",
+                "host-name": "Alice-iPhone",
+            },
+        ],
+    )
+    client._api = fake_api
+
+    first_devices = client.get_hotspot_active_devices("alice")
+    fake_api.lease_resource.records.clear()
+    second_devices = client.get_hotspot_active_devices("alice")
+
+    assert first_devices[0]["device-name"] == "Alice-iPhone"
+    assert second_devices[0]["device-name"] == "Alice-iPhone"
 
 
 def test_get_hotspot_user_falls_back_to_case_insensitive_lookup() -> None:

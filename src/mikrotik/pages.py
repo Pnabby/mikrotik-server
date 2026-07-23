@@ -788,12 +788,6 @@ def _render_status_page(
             font-weight: 600;
         }
 
-        .device-session {
-            font-size: 0.7rem;
-            color: var(--text-tertiary);
-            margin-top: 1px;
-        }
-
         .device-status {
             display: inline-flex;
             align-items: center;
@@ -1874,7 +1868,7 @@ def _render_status_page(
             <div class="panel">
                 <div class="panel-header">
                     <h2 class="panel-title">Devices</h2>
-                    <span class="panel-badge" id="devices-pill">0</span>
+                    <span class="panel-badge" id="devices-pill">0 devices</span>
                 </div>
                 <div class="devices-container" id="devices-root">
                     <div class="empty-state">Open this page from the hotspot status page to view devices</div>
@@ -1966,10 +1960,6 @@ def _render_status_page(
                     <div class="modal-user" id="logout-modal-user">User: --</div>
                     <div class="modal-meta">
                         <div class="modal-meta-row">
-                            <span class="modal-meta-label">Session</span>
-                            <span class="modal-meta-value" id="logout-modal-session">--</span>
-                        </div>
-                        <div class="modal-meta-row">
                             <span class="modal-meta-label">IP address</span>
                             <span class="modal-meta-value" id="logout-modal-ip">--</span>
                         </div>
@@ -2035,7 +2025,6 @@ def _render_status_page(
         const logoutModalConfirmEl = document.getElementById('logout-modal-confirm');
         const logoutModalDeviceEl = document.getElementById('logout-modal-device');
         const logoutModalUserEl = document.getElementById('logout-modal-user');
-        const logoutModalSessionEl = document.getElementById('logout-modal-session');
         const logoutModalIpEl = document.getElementById('logout-modal-ip');
         const logoutModalMacEl = document.getElementById('logout-modal-mac');
         const logoutModalErrorEl = document.getElementById('logout-modal-error');
@@ -2240,7 +2229,7 @@ def _render_status_page(
             // Status indicators
             overviewPillEl.textContent = isDisabled ? 'Used' : 'Active';
             overviewPillEl.className = isDisabled ? 'panel-badge warning' : 'panel-badge active';
-            devicesPillEl.textContent = String(payload.connected_devices_count || 0) + ' dev';
+            devicesPillEl.textContent = formatDeviceCount(payload.connected_devices_count);
             statusIndicatorEl.innerHTML = isDisabled
                 ? '<span class="status-dot warning"></span><span>Voucher disabled — it may be expired or exhausted</span>'
                 : '<span class="status-dot active"></span><span>' + escapeHtml(username) + ' loaded</span>';
@@ -2257,7 +2246,6 @@ def _render_status_page(
 
             devicesRootEl.innerHTML = devices.map((device) => {
                 const deviceName = escapeHtml(normalizeText(device.device_name) || 'Unknown');
-                const sessionId = escapeHtml(normalizeText(device.session_id) || 'N/A');
                 const ipAddress = escapeHtml(normalizeText(device.ip_address) || 'N/A');
                 const macAddress = escapeHtml(normalizeText(device.mac_address) || 'N/A');
                 const uptime = escapeHtml(normalizeText(device.uptime) || 'N/A');
@@ -2274,7 +2262,6 @@ def _render_status_page(
                         '<div class="device-top">' +
                             '<div>' +
                                 '<div class="device-name">' + deviceName + '</div>' +
-                                '<div class="device-session">' + sessionId + '</div>' +
                             '</div>' +
                             '<div class="device-badges">' +
                                 currentDeviceBadge +
@@ -2351,7 +2338,6 @@ def _render_status_page(
 
             logoutModalDeviceEl.textContent = pendingLogout.deviceName;
             logoutModalUserEl.textContent = 'User: ' + pendingLogout.username;
-            logoutModalSessionEl.textContent = pendingLogout.sessionId || '--';
             logoutModalIpEl.textContent = pendingLogout.ipAddress || 'N/A';
             logoutModalMacEl.textContent = pendingLogout.macAddress || 'N/A';
             logoutModalErrorEl.hidden = true;
@@ -2466,7 +2452,7 @@ def _render_status_page(
             dataLimitEl.textContent = '--';
             overviewPillEl.textContent = 'Error';
             overviewPillEl.className = 'panel-badge error';
-            devicesPillEl.textContent = '0';
+            devicesPillEl.textContent = formatDeviceCount(0);
             statusIndicatorEl.innerHTML = '<span class="status-dot error"></span><span>Load failed</span>';
             lastUpdatedEl.textContent = 'Failed';
             devicesRootEl.innerHTML = '<div class="empty-state error">' + escapeHtml(message || 'Could not load') + '</div>';
@@ -2492,7 +2478,7 @@ def _render_status_page(
             dataLimitEl.textContent = '--';
             overviewPillEl.textContent = 'Idle';
             overviewPillEl.className = 'panel-badge';
-            devicesPillEl.textContent = '0';
+            devicesPillEl.textContent = formatDeviceCount(0);
             statusIndicatorEl.innerHTML = '<span class="status-dot idle"></span><span>Waiting for a hotspot session or voucher search</span>';
             lastUpdatedEl.textContent = 'No data';
             devicesRootEl.innerHTML = '<div class="empty-state">Open this page from the hotspot status page to view devices</div>';
@@ -2574,6 +2560,11 @@ def _render_status_page(
         function formatLimit(value) {
             if (value === null || value === undefined) return 'Unlimited';
             return formatBytes(value);
+        }
+
+        function formatDeviceCount(value) {
+            const count = Math.max(0, Number(value) || 0);
+            return count + (count === 1 ? ' device' : ' devices');
         }
 
         function formatTime(date) {

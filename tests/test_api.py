@@ -237,6 +237,17 @@ def test_status_page_accepts_current_device_identifiers_in_query() -> None:
     assert 'const CURRENT_DEVICE_MAC = normalizeMacAddress("aa-bb-cc-dd-ee-01")' in response.text
 
 
+def test_status_page_spells_out_device_count_and_hides_session_id() -> None:
+    response = TestClient(app).get("/")
+
+    assert "devicesPillEl.textContent = formatDeviceCount(payload.connected_devices_count)" in (
+        response.text
+    )
+    assert "count === 1 ? ' device' : ' devices'" in response.text
+    assert "device-session" not in response.text
+    assert 'id="logout-modal-session"' not in response.text
+
+
 def test_status_page_renders_locked_username_from_cookie() -> None:
     client = TestClient(app)
     client.cookies.set(STATUS_COOKIE_NAME, "alice")

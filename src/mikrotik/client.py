@@ -6,6 +6,7 @@ from pathlib import Path
 
 from routeros_api import RouterOsApiPool
 from routeros_api.api import RouterOsApi
+from routeros_api.exceptions import RouterOsApiError
 
 from mikrotik.routers import RouterDefinition
 
@@ -49,6 +50,7 @@ class MikroTikClient:
         self.config = config
         self._pool: RouterOsApiPool | None = None
         self._api: RouterOsApi | None = None
+        self._dhcp_hostnames_by_mac: dict[str, str] | None = None
 
     def connect(self) -> RouterOsApi:
         if self._api is not None:
@@ -72,6 +74,7 @@ class MikroTikClient:
             self._pool.disconnect()
         self._pool = None
         self._api = None
+        self._dhcp_hostnames_by_mac = None
 
     def get_system_identity(self) -> list[dict[str, str]]:
         api = self.connect()
@@ -104,6 +107,7 @@ class MikroTikClient:
         active_devices = api.get_resource("/ip/hotspot/active").get(user=username)
         hotspot_user = self.get_hotspot_user(username)
         user_comment = hotspot_user.get("comment", "") if hotspot_user else ""
+        dhcp_hostnames_by_mac = self._get_dhcp_hostnames_by_mac(api) if active_devices else {}
 
         enriched_devices: list[dict[str, str]] = []
         for device in active_devices:
@@ -111,7 +115,8 @@ class MikroTikClient:
             if user_comment:
                 enriched_device["user-comment"] = user_comment
             enriched_device["device-name"] = (
-                device.get("host-name")
+                dhcp_hostnames_by_mac.get(_normalize_mac_address(device.get("mac-address")))
+                or device.get("host-name")
                 or device.get("host")
                 or device.get("device-name")
                 or "unknown"
@@ -243,6 +248,26 @@ class MikroTikClient:
 
         return None
 
+    def _get_dhcp_hostnames_by_mac(self, api: RouterOsApi) -> dict[str, str]:
+        if self._dhcp_hostnames_by_mac is not None:
+            return self._dhcp_hostnames_by_mac
+
+        try:
+            leases = api.get_resource("/ip/dhcp-server/lease").get()
+        except RouterOsApiError:
+            self._dhcp_hostnames_by_mac = {}
+            return self._dhcp_hostnames_by_mac
+
+        hostnames_by_mac: dict[str, str] = {}
+        for lease in leases:
+            mac_address = _normalize_mac_address(lease.get("mac-address"))
+            hostname = _normalize_routeros_name(lease.get("host-name"))
+            if mac_address and hostname:
+                hostnames_by_mac[mac_address] = hostname
+
+        self._dhcp_hostnames_by_mac = hostnames_by_mac
+        return self._dhcp_hostnames_by_mac
+
 
 def _env_flag(name: str, *, default: bool) -> bool:
     value = os.getenv(name)
@@ -270,6 +295,19 @@ def _normalize_routeros_name(value: object) -> str:
         return ""
 
     return value.strip()
+
+
+def _normalize_mac_address(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+
+    normalized = value.strip().casefold().replace(":", "").replace("-", "").replace(".", "")
+    if len(normalized) != 12 or any(
+        character not in "0123456789abcdef" for character in normalized
+    ):
+        return ""
+
+    return normalized
 
 
 def load_dotenv(dotenv_path: str | Path = ".env") -> None:
