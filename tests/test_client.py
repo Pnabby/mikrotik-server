@@ -1,4 +1,4 @@
-from mikrotik.client import MikroTikClient, MikroTikConfig
+from mikrotik.client import MikroTikClient, MikroTikConfig, infer_device_type
 
 
 class FakeResource:
@@ -121,6 +121,7 @@ def test_get_hotspot_active_devices_returns_matching_sessions() -> None:
             "bytes-out": "0",
             "bytes-total": "0",
             "device-name": "Alice-iPhone",
+            "device-type": "Phone",
             "user-comment": "Parent account",
         },
         {
@@ -132,6 +133,7 @@ def test_get_hotspot_active_devices_returns_matching_sessions() -> None:
             "bytes-out": "0",
             "bytes-total": "0",
             "device-name": "unknown",
+            "device-type": "Unknown",
             "user-comment": "Parent account",
         },
     ]
@@ -163,6 +165,57 @@ def test_get_hotspot_active_devices_falls_back_when_dhcp_hostname_is_empty() -> 
     assert devices[0]["device-name"] == "Active-Session-Name"
 
 
+def test_get_hotspot_active_devices_uses_dhcp_active_class_id_for_type() -> None:
+    client = MikroTikClient(
+        MikroTikConfig(host="router", username="admin", password="secret")
+    )
+    client._api = FakeApi(
+        [
+            {"id": "*1", "user": "alice", "mac-address": "AA:BB:CC:DD:EE:01"},
+            {"id": "*2", "user": "alice", "mac-address": "AA:BB:CC:DD:EE:02"},
+            {"id": "*3", "user": "alice", "mac-address": "AA:BB:CC:DD:EE:03"},
+            {"id": "*4", "user": "alice", "mac-address": "AA:BB:CC:DD:EE:04"},
+        ],
+        leases=[
+            {
+                "mac-address": "AA:BB:CC:DD:EE:01",
+                "host-name": "generic-one",
+                "class-id": "HUAWEI:android:VOG",
+            },
+            {
+                "mac-address": "AA:BB:CC:DD:EE:02",
+                "host-name": "generic-two",
+                "class-id": "MSFT 5.0\x00",
+            },
+            {
+                "mac-address": "AA:BB:CC:DD:EE:03",
+                "host-name": "generic-three",
+                "class-id": "chromeos",
+            },
+            {
+                "active-mac-address": "AA:BB:CC:DD:EE:04",
+                "host-name": "generic-four",
+                "class-id": "Linux 4.14.90 mips",
+            },
+        ],
+    )
+
+    devices = client.get_hotspot_active_devices("alice")
+
+    assert [device["device-type"] for device in devices] == [
+        "Phone",
+        "PC",
+        "Chromebook",
+        "Linux device",
+    ]
+    assert [device["class-id"] for device in devices] == [
+        "HUAWEI:android:VOG",
+        "MSFT 5.0",
+        "chromeos",
+        "Linux 4.14.90 mips",
+    ]
+
+
 def test_get_hotspot_active_devices_caches_dhcp_leases_for_client_lifetime() -> None:
     client = MikroTikClient(
         MikroTikConfig(host="router", username="admin", password="secret")
@@ -190,6 +243,31 @@ def test_get_hotspot_active_devices_caches_dhcp_leases_for_client_lifetime() -> 
 
     assert first_devices[0]["device-name"] == "Alice-iPhone"
     assert second_devices[0]["device-name"] == "Alice-iPhone"
+
+
+def test_infer_device_type_from_common_device_names_and_platforms() -> None:
+    assert infer_device_type("Alice-iPhone") == "Phone"
+    assert infer_device_type("Galaxy-S24") == "Phone"
+    assert infer_device_type("DESKTOP-ABC123") == "PC"
+    assert infer_device_type("Johns-MacBook-Pro") == "PC"
+    assert infer_device_type("Family-iPad") == "Tablet"
+    assert infer_device_type("generic-host", "Android") == "Phone"
+    assert infer_device_type("generic-host") == "Unknown"
+
+
+def test_infer_device_type_prefers_specific_tablet_and_computer_names() -> None:
+    assert infer_device_type("Samsung-Galaxy-Tab-S9", "Android") == "Tablet"
+    assert infer_device_type("Samsung-Galaxy-Book") == "PC"
+
+
+def test_infer_device_type_prioritizes_dhcp_active_class_id() -> None:
+    assert infer_device_type("DESKTOP-looking-name", active_class_id="android-dhcp-16") == "Phone"
+    assert infer_device_type("Alice-iPhone", active_class_id="MSFT 5.0") == "PC"
+    assert infer_device_type("generic-host", active_class_id="chromeos") == "Chromebook"
+    assert (
+        infer_device_type("generic-host", active_class_id="Linux 4.14.90 mips")
+        == "Linux device"
+    )
 
 
 def test_get_hotspot_user_falls_back_to_case_insensitive_lookup() -> None:

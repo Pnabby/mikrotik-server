@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -9,6 +10,38 @@ from routeros_api.api import RouterOsApi
 from routeros_api.exceptions import RouterOsApiError
 
 from mikrotik.routers import RouterDefinition
+
+
+_ACTIVE_CLASS_DEVICE_TYPE_PATTERNS = (
+    ("Phone", re.compile(r"\bandroid\b")),
+    ("PC", re.compile(r"\b(?:msft|microsoft)\b")),
+    ("Chromebook", re.compile(r"\bchrome\s*os\b")),
+    ("Linux device", re.compile(r"\blinux\b")),
+)
+
+_HOSTNAME_DEVICE_TYPE_PATTERNS = (
+    (
+        "Tablet",
+        re.compile(
+            r"\b(?:ipad|tablet|galaxy\s+tab|kindle|fire\s+hd|surface\s+(?:go|pro))\b"
+        ),
+    ),
+    ("Chromebook", re.compile(r"\b(?:chrome\s*os|chromebook)\b")),
+    (
+        "PC",
+        re.compile(
+            r"\b(?:desktop|laptop|computer|workstation|pc|macbook|imac|mac\s+mini|"
+            r"thinkpad|windows|surface|galaxy\s+book|win\d{0,2})\b"
+        ),
+    ),
+    (
+        "Phone",
+        re.compile(
+            r"\b(?:iphone|android|phone|smartphone|pixel|galaxy|oneplus|redmi|xiaomi|"
+            r"oppo|vivo|realme|huawei|honor|motorola|moto|nokia|infinix|tecno|itel)\b"
+        ),
+    ),
+)
 
 
 @dataclass(slots=True)
@@ -50,7 +83,7 @@ class MikroTikClient:
         self.config = config
         self._pool: RouterOsApiPool | None = None
         self._api: RouterOsApi | None = None
-        self._dhcp_hostnames_by_mac: dict[str, str] | None = None
+        self._dhcp_lease_hints_by_mac: dict[str, dict[str, str]] | None = None
 
     def connect(self) -> RouterOsApi:
         if self._api is not None:
@@ -74,7 +107,7 @@ class MikroTikClient:
             self._pool.disconnect()
         self._pool = None
         self._api = None
-        self._dhcp_hostnames_by_mac = None
+        self._dhcp_lease_hints_by_mac = None
 
     def get_system_identity(self) -> list[dict[str, str]]:
         api = self.connect()
@@ -107,19 +140,37 @@ class MikroTikClient:
         active_devices = api.get_resource("/ip/hotspot/active").get(user=username)
         hotspot_user = self.get_hotspot_user(username)
         user_comment = hotspot_user.get("comment", "") if hotspot_user else ""
-        dhcp_hostnames_by_mac = self._get_dhcp_hostnames_by_mac(api) if active_devices else {}
+        dhcp_lease_hints_by_mac = (
+            self._get_dhcp_lease_hints_by_mac(api) if active_devices else {}
+        )
 
         enriched_devices: list[dict[str, str]] = []
         for device in active_devices:
             enriched_device = dict(device)
+            lease_hints = dhcp_lease_hints_by_mac.get(
+                _normalize_mac_address(device.get("mac-address")),
+                {},
+            )
             if user_comment:
                 enriched_device["user-comment"] = user_comment
             enriched_device["device-name"] = (
-                dhcp_hostnames_by_mac.get(_normalize_mac_address(device.get("mac-address")))
+                lease_hints.get("host-name")
                 or device.get("host-name")
                 or device.get("host")
                 or device.get("device-name")
                 or "unknown"
+            )
+            active_class_id = lease_hints.get("class-id") or _normalize_dhcp_class_id(
+                device.get("active-class-id") or device.get("class-id")
+            )
+            if active_class_id:
+                enriched_device["class-id"] = active_class_id
+            enriched_device["device-type"] = infer_device_type(
+                enriched_device["device-name"],
+                device.get("platform"),
+                device.get("os"),
+                device.get("user-agent"),
+                active_class_id=active_class_id,
             )
             enriched_device["bytes-in"] = str(_parse_routeros_int(device.get("bytes-in")))
             enriched_device["bytes-out"] = str(_parse_routeros_int(device.get("bytes-out")))
@@ -248,25 +299,44 @@ class MikroTikClient:
 
         return None
 
-    def _get_dhcp_hostnames_by_mac(self, api: RouterOsApi) -> dict[str, str]:
-        if self._dhcp_hostnames_by_mac is not None:
-            return self._dhcp_hostnames_by_mac
+    def _get_dhcp_lease_hints_by_mac(
+        self,
+        api: RouterOsApi,
+    ) -> dict[str, dict[str, str]]:
+        if self._dhcp_lease_hints_by_mac is not None:
+            return self._dhcp_lease_hints_by_mac
 
         try:
             leases = api.get_resource("/ip/dhcp-server/lease").get()
         except RouterOsApiError:
-            self._dhcp_hostnames_by_mac = {}
-            return self._dhcp_hostnames_by_mac
+            self._dhcp_lease_hints_by_mac = {}
+            return self._dhcp_lease_hints_by_mac
 
-        hostnames_by_mac: dict[str, str] = {}
+        lease_hints_by_mac: dict[str, dict[str, str]] = {}
         for lease in leases:
-            mac_address = _normalize_mac_address(lease.get("mac-address"))
-            hostname = _normalize_routeros_name(lease.get("host-name"))
-            if mac_address and hostname:
-                hostnames_by_mac[mac_address] = hostname
+            mac_addresses = {
+                normalized_mac
+                for key in ("mac-address", "active-mac-address")
+                if (normalized_mac := _normalize_mac_address(lease.get(key)))
+            }
+            if not mac_addresses:
+                continue
 
-        self._dhcp_hostnames_by_mac = hostnames_by_mac
-        return self._dhcp_hostnames_by_mac
+            hostname = _normalize_routeros_name(lease.get("host-name"))
+            active_class_id = _normalize_dhcp_class_id(
+                lease.get("active-class-id") or lease.get("class-id")
+            )
+            lease_hints = {}
+            if hostname:
+                lease_hints["host-name"] = hostname
+            if active_class_id:
+                lease_hints["class-id"] = active_class_id
+            if lease_hints:
+                for mac_address in mac_addresses:
+                    lease_hints_by_mac[mac_address] = lease_hints
+
+        self._dhcp_lease_hints_by_mac = lease_hints_by_mac
+        return self._dhcp_lease_hints_by_mac
 
 
 def _env_flag(name: str, *, default: bool) -> bool:
@@ -308,6 +378,40 @@ def _normalize_mac_address(value: object) -> str:
         return ""
 
     return normalized
+
+
+def infer_device_type(
+    *fallback_hints: object,
+    active_class_id: object = None,
+) -> str:
+    """Infer a broad device type, preferring the DHCP active class ID."""
+
+    normalized_class_id = _normalize_device_hint(active_class_id)
+    for device_type, pattern in _ACTIVE_CLASS_DEVICE_TYPE_PATTERNS:
+        if pattern.search(normalized_class_id):
+            return device_type
+
+    searchable_text = " ".join(
+        normalized_hint
+        for hint in fallback_hints
+        if (normalized_hint := _normalize_device_hint(hint))
+    )
+    for device_type, pattern in _HOSTNAME_DEVICE_TYPE_PATTERNS:
+        if pattern.search(searchable_text):
+            return device_type
+
+    return "Unknown"
+
+
+def _normalize_device_hint(hint: object) -> str:
+    if not isinstance(hint, str):
+        return ""
+
+    return re.sub(r"[^a-z0-9]+", " ", hint.casefold()).strip()
+
+
+def _normalize_dhcp_class_id(value: object) -> str:
+    return _normalize_routeros_name(value).replace("\x00", "").strip()
 
 
 def load_dotenv(dotenv_path: str | Path = ".env") -> None:

@@ -15,7 +15,7 @@ from pydantic import BaseModel, SecretStr
 from starlette.exceptions import HTTPException as StarletteHTTPException
 import uvicorn
 
-from mikrotik.client import MikroTikClient, MikroTikConfig, load_dotenv
+from mikrotik.client import MikroTikClient, MikroTikConfig, infer_device_type, load_dotenv
 from mikrotik.pages import router as pages_router
 from mikrotik.routers import (
     RouterDefinition,
@@ -109,6 +109,7 @@ async def _handle_unexpected_exception(
 class DeviceSession(BaseModel):
     session_id: str
     device_name: str
+    device_type: str
     mac_address: str | None = None
     ip_address: str | None = None
     login_by: str | None = None
@@ -311,6 +312,14 @@ def _build_hotspot_status(
             DeviceSession(
                 session_id=device.get("id", ""),
                 device_name=device.get("device-name", "unknown"),
+                device_type=device.get("device-type")
+                or infer_device_type(
+                    device.get("device-name"),
+                    device.get("platform"),
+                    device.get("os"),
+                    device.get("user-agent"),
+                    active_class_id=device.get("active-class-id") or device.get("class-id"),
+                ),
                 mac_address=device.get("mac-address"),
                 ip_address=device.get("address"),
                 login_by=device.get("login-by"),

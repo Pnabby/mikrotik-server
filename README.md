@@ -81,6 +81,12 @@ Status and logout responses include `router_id` and `router_name`, making the se
 site explicit to clients. An unknown ID returns an error before RouterOS credentials are
 loaded or a connection is attempted.
 
+Each connected-device entry also includes `device_type`. Classification first uses the
+DHCP lease `active-class-id`: Android values are shown as `Phone`, MSFT values as `PC`,
+ChromeOS as `Chromebook`, and Linux values as `Linux device`. When the class ID is
+missing (as with many Apple devices), recognizable DHCP hostnames such as iPhone, iPad,
+and MacBook are used as a fallback; generic or hidden hostnames remain `Unknown`.
+
 ## Status page integration
 
 The root/status page stores the selected router ID with the locked hotspot username and

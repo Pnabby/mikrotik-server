@@ -100,6 +100,7 @@ def test_get_hotspot_status_returns_usage_profile_and_devices() -> None:
             {
                 "session_id": "*1",
                 "device_name": "Alice-iPhone",
+                "device_type": "Phone",
                 "mac_address": "AA:BB:CC:DD:EE:01",
                 "ip_address": "10.0.0.2",
                 "login_by": None,
@@ -246,6 +247,12 @@ def test_status_page_spells_out_device_count_and_hides_session_id() -> None:
     assert "count === 1 ? ' device' : ' devices'" in response.text
     assert "device-session" not in response.text
     assert 'id="logout-modal-session"' not in response.text
+    assert "const deviceTypeIcon = getDeviceTypeIcon(normalizedDeviceType)" in response.text
+    assert '<span class="device-status type">' in response.text
+    assert "case 'phone':" in response.text
+    assert "return ICON_DEVICE_PHONE" in response.text
+    assert "case 'pc':" in response.text
+    assert "return ICON_DEVICE_PC" in response.text
 
 
 def test_status_page_renders_locked_username_from_cookie() -> None:

@@ -815,6 +815,11 @@ def _render_status_page(
             color: var(--primary);
         }
 
+        .device-status.type {
+            background: #f3f4f6;
+            color: var(--text-secondary);
+        }
+
         .device-metrics {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -2220,6 +2225,12 @@ def _render_status_page(
         const ICON_DOT = '<svg viewBox="0 0 24 24" aria-hidden="true" style="fill:currentColor;stroke:none"><circle cx="12" cy="12" r="6"/></svg>';
         const ICON_DEVICES_EMPTY = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>';
         const ICON_WARNING_EMPTY = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a1.5 1.5 0 0 0 1.3 2.25h17.76a1.5 1.5 0 0 0 1.3-2.25L13.71 3.86a1.5 1.5 0 0 0-2.42 0Z"/></svg>';
+        const ICON_DEVICE_PHONE = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>';
+        const ICON_DEVICE_PC = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>';
+        const ICON_DEVICE_CHROMEBOOK = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="12" rx="1.5"/><path d="M2 19h20"/></svg>';
+        const ICON_DEVICE_TABLET = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M11 18h2"/></svg>';
+        const ICON_DEVICE_LINUX = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>';
+        const ICON_DEVICE_UNKNOWN = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.4 2.4 0 1 1 3.4 2.2c-.8.4-1.2.9-1.2 1.8M12 17h.01"/></svg>';
 
         let activeUsername = INITIAL_USERNAME;
         let activeRouterId = INITIAL_ROUTER_ID;
@@ -2438,6 +2449,9 @@ def _render_status_page(
 
             devicesRootEl.innerHTML = devices.map((device) => {
                 const deviceName = escapeHtml(normalizeText(device.device_name) || 'Unknown');
+                const normalizedDeviceType = normalizeText(device.device_type) || 'Unknown';
+                const deviceType = escapeHtml(normalizedDeviceType);
+                const deviceTypeIcon = getDeviceTypeIcon(normalizedDeviceType);
                 const ipAddress = escapeHtml(normalizeText(device.ip_address) || 'N/A');
                 const macAddress = escapeHtml(normalizeText(device.mac_address) || 'N/A');
                 const uptime = escapeHtml(normalizeText(device.uptime) || 'N/A');
@@ -2457,6 +2471,7 @@ def _render_status_page(
                             '</div>' +
                             '<div class="device-badges">' +
                                 currentDeviceBadge +
+                                '<span class="device-status type">' + deviceTypeIcon + deviceType + '</span>' +
                                 '<span class="device-status">' + ICON_DOT + 'Active</span>' +
                             '</div>' +
                         '</div>' +
@@ -2492,6 +2507,23 @@ def _render_status_page(
                     );
                 });
             });
+        }
+
+        function getDeviceTypeIcon(deviceType) {
+            switch (normalizeText(deviceType).toLowerCase()) {
+                case 'phone':
+                    return ICON_DEVICE_PHONE;
+                case 'pc':
+                    return ICON_DEVICE_PC;
+                case 'chromebook':
+                    return ICON_DEVICE_CHROMEBOOK;
+                case 'tablet':
+                    return ICON_DEVICE_TABLET;
+                case 'linux device':
+                    return ICON_DEVICE_LINUX;
+                default:
+                    return ICON_DEVICE_UNKNOWN;
+            }
         }
 
         function isCurrentSessionDevice(device) {

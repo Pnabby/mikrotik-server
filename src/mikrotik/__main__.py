@@ -61,6 +61,7 @@ def _print_active_device(device: dict[str, str], index: int) -> None:
     print(f"Device {index}:")
     print(f"  Session ID: {device.get('id', 'unknown')}")
     print(f"  Device Name: {device.get('device-name', 'unknown')}")
+    print(f"  Device Type: {device.get('device-type', 'Unknown')}")
     print(f"  IP Address: {device.get('address', 'unknown')}")
     print(f"  MAC Address: {device.get('mac-address', 'unknown')}")
     print(f"  Login By: {device.get('login-by', 'unknown')}")
