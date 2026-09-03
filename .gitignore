@@ -10,5 +10,10 @@ __pycache__/
 .coverage
 htmlcov/
 .env
+*.env.local
+node_modules/
+public/dist/
+admin/dist/
+.vite/
 .DS_Store
 Thumbs.db
