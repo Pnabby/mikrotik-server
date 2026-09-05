@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 
-import { CheckIcon, WifiIcon } from '../components/Icons'
+import { WifiIcon } from '../components/Icons'
+import { AccountApiError, login } from '../services/accountApi'
 
-const USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,63}$/
+const USERNAME_PATTERN = /^[a-z0-9]{3,64}$/
 const PIN_PATTERN = /^[0-9]{6}$/
 
 function validate(form) {
@@ -21,7 +22,8 @@ export default function LoginPage() {
   const [form, setForm] = useState({ username: '', pin: '' })
   const [errors, setErrors] = useState({})
   const [showPin, setShowPin] = useState(false)
-  const [readyMessage, setReadyMessage] = useState('')
+  const [apiError, setApiError] = useState('')
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     document.title = 'Log in | FLINT WiFi'
@@ -35,17 +37,33 @@ export default function LoginPage() {
 
     setForm((current) => ({ ...current, [name]: normalizedValue }))
     setErrors((current) => ({ ...current, [name]: '' }))
-    setReadyMessage('')
+    setApiError('')
   }
 
-  function submit(event) {
+  async function submit(event) {
     event.preventDefault()
     const nextErrors = validate(form)
     setErrors(nextErrors)
-    setReadyMessage('')
+    setApiError('')
     if (Object.keys(nextErrors).length) return
 
-    setReadyMessage('Your login details are ready to be verified securely.')
+    setBusy(true)
+    try {
+      const result = await login(form.username, form.pin)
+      window.location.assign(result.redirect_to || '/account')
+    } catch (error) {
+      if (error instanceof AccountApiError && error.status === 401) {
+        setApiError('The username or PIN is incorrect.')
+      } else if (error instanceof AccountApiError && error.status === 403) {
+        setApiError('This account is currently unavailable. Please contact help and support.')
+      } else if (error instanceof AccountApiError && error.status === 429) {
+        setApiError('Too many login attempts. Please wait before trying again.')
+      } else {
+        setApiError('Login is temporarily unavailable. Please try again.')
+      }
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -91,14 +109,14 @@ export default function LoginPage() {
               <label htmlFor="login-pin">PIN</label>
               <div className="signup-password-wrap">
                 <input
-                  autoComplete="current-password"
-                  className={errors.pin ? 'signup-input invalid' : 'signup-input'}
+                  autoComplete="off"
+                  className={`${errors.pin ? 'signup-input invalid' : 'signup-input'} pin-input${showPin ? '' : ' pin-masked'}`}
                   id="login-pin"
                   inputMode="numeric"
                   maxLength={6}
                   name="pin"
                   placeholder="Enter your PIN"
-                  type={showPin ? 'text' : 'password'}
+                  type="text"
                   value={form.pin}
                   onChange={updateField}
                   aria-describedby={errors.pin ? 'login-pin-error' : undefined}
@@ -109,21 +127,17 @@ export default function LoginPage() {
               {errors.pin && <span className="signup-field-error" id="login-pin-error">{errors.pin}</span>}
             </div>
 
-            {readyMessage && (
-              <div className="signup-ready" role="status">
-                <CheckIcon /><span>{readyMessage}</span>
-              </div>
-            )}
+            {apiError && <div className="otp-api-error" role="alert">{apiError}</div>}
 
-            <button className="signup-submit" type="submit">Log in</button>
+            <button className="signup-submit" disabled={busy} type="submit">
+              {busy ? 'Logging in...' : 'Log in'}
+            </button>
           </form>
 
           <div className="login-create-account">
             <span>Do not have an account?</span>
             <a href="/signup">Create an account</a>
           </div>
-
-          <p className="signup-footer-link login-status-link"><a href="/status">View hotspot status</a></p>
         </section>
       </div>
     </main>

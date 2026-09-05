@@ -9,8 +9,17 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from app.core.config import get_settings
 from app.core.exceptions import ServiceError
 from app.dependencies import ROUTER_UNAVAILABLE_DETAIL
-from app.routes import health, hotspot, pages, routers
-
+from app.routes import (
+    account,
+    admin_auth,
+    admin_profiles,
+    auth,
+    health,
+    hotspot,
+    pages,
+    registration,
+    routers,
+)
 
 _PUBLIC_ERROR_DETAILS = {
     status.HTTP_400_BAD_REQUEST: "Invalid request.",
@@ -40,13 +49,18 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=origins,
         allow_credentials="*" not in origins,
-        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "OPTIONS"],
         allow_headers=["*"],
     )
 
     application.include_router(health.router)
     application.include_router(routers.router)
     application.include_router(hotspot.router)
+    application.include_router(registration.router)
+    application.include_router(auth.router)
+    application.include_router(account.router)
+    application.include_router(admin_auth.router)
+    application.include_router(admin_profiles.router)
     application.include_router(pages.router)
 
     @application.exception_handler(ServiceError)

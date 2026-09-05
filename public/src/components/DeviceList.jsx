@@ -51,7 +51,7 @@ export default function DeviceList({ phase, devices, session, onLogout, errorMes
     return <div className="empty-state error"><WarningIcon />{errorMessage || 'Could not load'}</div>
   }
   if (phase !== 'loaded') {
-    return <div className="empty-state"><DevicesIcon />Open this page from the hotspot status page to view devices</div>
+    return <div className="empty-state"><DevicesIcon />Open this page from the WiFi status page to view devices</div>
   }
   if (!devices.length) return <div className="empty-state"><DevicesIcon />No active devices</div>
   return devices.map((device) => (

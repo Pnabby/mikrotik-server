@@ -1,15 +1,25 @@
 from __future__ import annotations
 
 import re
+import uuid
 
 from pydantic import BaseModel, ConfigDict, SecretStr, field_validator
 
-USERNAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{2,63}$")
+from app.models.enums import AccountStatus
+
+USERNAME_PATTERN = re.compile(r"^[a-z0-9]{3,64}$")
 PIN_PATTERN = re.compile(r"^[0-9]{6}$")
 
 
+def normalize_username(value: str) -> str:
+    normalized = value.strip().casefold()
+    if not USERNAME_PATTERN.fullmatch(normalized):
+        raise ValueError("Username format is invalid.")
+    return normalized
+
+
 class RegistrationStartRequest(BaseModel):
-    """Contract for the upcoming email-OTP registration endpoint."""
+    """Account details validated before a registration OTP is sent."""
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
@@ -37,10 +47,7 @@ class RegistrationStartRequest(BaseModel):
     @field_validator("username")
     @classmethod
     def normalize_username(cls, value: str) -> str:
-        normalized = value.casefold()
-        if not USERNAME_PATTERN.fullmatch(normalized):
-            raise ValueError("Username format is invalid.")
-        return normalized
+        return normalize_username(value)
 
     @field_validator("router_id")
     @classmethod
@@ -55,3 +62,41 @@ class RegistrationStartRequest(BaseModel):
         if not PIN_PATTERN.fullmatch(value.get_secret_value()):
             raise ValueError("PIN must contain exactly 6 digits.")
         return value
+
+
+class RegistrationStartResponse(BaseModel):
+    challenge_id: uuid.UUID
+    destination: str
+    expires_in_seconds: int
+    resend_after_seconds: int
+
+
+class UsernameAvailabilityResponse(BaseModel):
+    username: str
+    available: bool
+    suggestions: list[str]
+
+
+class RegistrationRouterReadinessResponse(BaseModel):
+    router_id: str
+    username: str
+    ready: bool
+
+
+class RegistrationCompleteRequest(RegistrationStartRequest):
+    challenge_id: uuid.UUID
+    code: SecretStr
+
+    @field_validator("code")
+    @classmethod
+    def validate_code(cls, value: SecretStr) -> SecretStr:
+        if not PIN_PATTERN.fullmatch(value.get_secret_value()):
+            raise ValueError("Verification code must contain exactly 6 digits.")
+        return value
+
+
+class RegistrationCompleteResponse(BaseModel):
+    customer_id: uuid.UUID
+    username: str
+    account_status: AccountStatus
+    router_user_disabled: bool

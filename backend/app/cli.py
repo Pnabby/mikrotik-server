@@ -1,4 +1,7 @@
+from sqlalchemy.orm import Session
+
 from app.core.config import get_settings
+from app.db.session import get_engine
 from app.integrations.mikrotik.client import MikroTikClient, MikroTikConfig
 from app.integrations.mikrotik.registry import DEFAULT_ROUTER_ID, UnknownRouterError, get_router
 
@@ -75,7 +78,8 @@ def _print_active_device(device: dict[str, str], index: int) -> None:
 def main() -> None:
     router_id = get_settings().mikrotik_router_id or DEFAULT_ROUTER_ID
     try:
-        router = get_router(router_id)
+        with Session(get_engine()) as session:
+            router = get_router(session, router_id)
         config = MikroTikConfig.from_env(router)
     except UnknownRouterError:
         print("Router is not configured.")

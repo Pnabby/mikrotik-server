@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from contextlib import contextmanager
+from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from fastapi.exceptions import RequestValidationError
+from sqlalchemy.orm import Session
 
+from app.db.session import get_db_session
 from app.integrations.mikrotik.client import MikroTikClient, MikroTikConfig
 from app.integrations.mikrotik.registry import (
     RouterDefinition,
@@ -14,15 +17,15 @@ from app.integrations.mikrotik.registry import (
 )
 from app.services.hotspot import HotspotService
 
-
 ROUTER_UNAVAILABLE_DETAIL = (
     "The router service is temporarily unavailable. Please try again later."
 )
+SessionDependency = Annotated[Session, Depends(get_db_session)]
 
 
-def resolve_router(router_id: str) -> RouterDefinition:
+def resolve_router(router_id: str, session: SessionDependency) -> RouterDefinition:
     try:
-        return get_router(router_id)
+        return get_router(session, router_id)
     except UnknownRouterError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -31,7 +34,9 @@ def resolve_router(router_id: str) -> RouterDefinition:
 
 
 @contextmanager
-def _client_context(router: RouterDefinition) -> Generator[MikroTikClient, None, None]:
+def mikrotik_client_context(
+    router: RouterDefinition,
+) -> Generator[MikroTikClient, None, None]:
     try:
         config = MikroTikConfig.from_env(router)
     except ValueError as exc:
@@ -54,15 +59,19 @@ def _client_context(router: RouterDefinition) -> Generator[MikroTikClient, None,
         client.disconnect()
 
 
-def get_mikrotik_client(
-    router: RouterDefinition = Depends(resolve_router),
-) -> Generator[MikroTikClient, None, None]:
-    with _client_context(router) as client:
+RouterDependency = Annotated[RouterDefinition, Depends(resolve_router)]
+
+
+def get_mikrotik_client(router: RouterDependency) -> Generator[MikroTikClient, None, None]:
+    with mikrotik_client_context(router) as client:
         yield client
 
 
+MikroTikClientDependency = Annotated[MikroTikClient, Depends(get_mikrotik_client)]
+
+
 def get_hotspot_service(
-    router: RouterDefinition = Depends(resolve_router),
-    client: MikroTikClient = Depends(get_mikrotik_client),
+    router: RouterDependency,
+    client: MikroTikClientDependency,
 ) -> HotspotService:
     return HotspotService(router, client)

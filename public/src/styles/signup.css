@@ -184,6 +184,59 @@
   font-weight: 500;
 }
 
+.username-availability {
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.username-availability.checking,
+.username-availability.error {
+  color: #7c8798;
+}
+
+.username-availability.available {
+  color: #087f5b;
+}
+
+.username-availability.unavailable {
+  color: #b42359;
+}
+
+.username-unavailable {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.username-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  color: #7c8798;
+  font-size: 0.7rem;
+}
+
+.username-suggestions button {
+  padding: 0.25rem 0.55rem;
+  border: 1px solid #dbe1ff;
+  border-radius: 999px;
+  color: var(--signup-primary);
+  background: #f5f7ff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.username-suggestions button:hover {
+  border-color: var(--signup-primary);
+}
+
+.username-suggestions button:focus-visible {
+  outline: 2px solid var(--signup-primary);
+  outline-offset: 2px;
+}
+
 .signup-select-wrap,
 .signup-password-wrap {
   position: relative;
@@ -213,6 +266,10 @@
 
 .signup-password-wrap .signup-input {
   padding-right: 4rem;
+}
+
+.pin-input.pin-masked {
+  -webkit-text-security: disc;
 }
 
 .signup-password-wrap button {
@@ -317,6 +374,13 @@
   opacity: 0.55;
 }
 
+.signup-login-link {
+  display: grid;
+  place-items: center;
+  margin-top: 0.35rem;
+  text-decoration: none;
+}
+
 .signup-footer-link {
   margin-top: 1.5rem;
   color: var(--signup-muted);
@@ -369,8 +433,115 @@
   text-decoration: underline;
 }
 
-.login-status-link {
-  margin-top: 0.75rem;
+.otp-card {
+  width: min(620px, 100%);
+  margin: 0 auto;
+}
+
+.otp-card .signup-card-header strong {
+  color: var(--signup-dark);
+}
+
+.otp-form {
+  display: grid;
+  gap: 1.35rem;
+}
+
+.otp-input {
+  height: 60px;
+  padding-left: 1.35rem;
+  font-size: 1.45rem;
+  font-weight: 600;
+  letter-spacing: 0.55rem;
+  text-align: center;
+}
+
+.otp-api-error {
+  padding: 0.8rem 1rem;
+  border: 1px solid #ffd0df;
+  border-radius: 8px;
+  color: #b42359;
+  background: #fff4f7;
+  font-size: 0.78rem;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.otp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.65rem 1.25rem;
+}
+
+.otp-actions button {
+  padding: 0.2rem;
+  border: 0;
+  color: var(--signup-primary);
+  background: transparent;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.otp-actions button:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.otp-actions button:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--signup-primary);
+  outline-offset: 3px;
+}
+
+.otp-actions button:disabled {
+  color: var(--signup-gray);
+  cursor: not-allowed;
+}
+
+.otp-complete {
+  display: grid;
+  justify-items: center;
+  gap: 0.9rem;
+  text-align: center;
+}
+
+.otp-complete h2 {
+  font-size: 1.65rem;
+}
+
+.otp-complete > p {
+  max-width: 440px;
+  color: var(--signup-muted);
+  font-size: 0.88rem;
+  line-height: 1.65;
+}
+
+.otp-success-icon {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  border-radius: 50%;
+  color: #087f5b;
+  background: #eafaf4;
+}
+
+.otp-success-icon svg {
+  width: 29px;
+  height: 29px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.otp-complete .signup-next-note {
+  width: 100%;
+  margin-top: 0.5rem;
+  text-align: left;
 }
 
 @media (max-width: 700px) {

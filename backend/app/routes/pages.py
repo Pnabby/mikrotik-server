@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from typing import Annotated
 from urllib.parse import parse_qs, urlencode
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse, RedirectResponse, Response
+from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.db.session import get_db_session
 from app.integrations.mikrotik.registry import (
     DEFAULT_ROUTER_ID,
     RouterDefinition,
@@ -16,8 +19,8 @@ from app.integrations.mikrotik.registry import (
 from app.schemas.routers import RouterSummary
 from app.schemas.status_session import StatusSessionResponse
 
-
 router = APIRouter()
+SessionDependency = Annotated[Session, Depends(get_db_session)]
 STATUS_COOKIE_NAME = "flint_status_user"
 STATUS_DEVICE_IP_COOKIE_NAME = "flint_status_device_ip"
 STATUS_DEVICE_MAC_COOKIE_NAME = "flint_status_device_mac"
@@ -26,25 +29,26 @@ STATUS_COOKIE_MAX_AGE = 60 * 60 * 12
 
 
 @router.get("/api/status-session", response_model=StatusSessionResponse, tags=["status-page"])
-def status_session(request: Request) -> StatusSessionResponse:
-    selected_router = _resolve_page_router(request)
+def status_session(request: Request, session: SessionDependency) -> StatusSessionResponse:
+    selected_router = _resolve_page_router(request, session)
     return StatusSessionResponse(
         username=_resolve_page_username(request),
         current_device_ip=_resolve_current_device_ip(request),
         current_device_mac=_resolve_current_device_mac(request),
         selected_router=_router_summary(selected_router),
-        routers=[_router_summary(item) for item in iter_routers()],
+        routers=[_router_summary(item) for item in iter_routers(session)],
     )
 
 
 @router.get("/", include_in_schema=False)
 @router.get("/login", include_in_schema=False)
 @router.get("/signup", include_in_schema=False)
+@router.get("/account", include_in_schema=False)
+@router.get("/profile", include_in_schema=False)
 @router.get("/status", include_in_schema=False)
 @router.get("/status/{username}", include_in_schema=False)
 def hotspot_status_page(request: Request, username: str | None = None) -> Response:
-    # Preserve the old paths and router validation. Usernames in paths remain ignored.
-    _resolve_page_router(request)
+    # Preserve the old SPA paths. Usernames in paths remain ignored.
     return _frontend_response(request)
 
 
@@ -58,9 +62,13 @@ def frontend_asset(asset_path: str) -> Response:
 
 
 @router.get("/launch-status", include_in_schema=False)
-def launch_status_redirect(request: Request) -> RedirectResponse:
+def launch_status_redirect(
+    request: Request,
+    session: SessionDependency,
+) -> RedirectResponse:
     return _build_launch_response(
         request,
+        session,
         _first_query_value(request, ("username", "user", "name", "login", "hotspot_user")),
         _first_query_value(request, ("ip", "ip_address", "address")),
         _first_query_value(request, ("mac", "mac_address", "mac-address")),
@@ -69,10 +77,14 @@ def launch_status_redirect(request: Request) -> RedirectResponse:
 
 
 @router.post("/launch-status", include_in_schema=False)
-async def launch_status_page(request: Request) -> RedirectResponse:
+async def launch_status_page(
+    request: Request,
+    session: SessionDependency,
+) -> RedirectResponse:
     posted_values = _extract_posted_values(await request.body())
     return _build_launch_response(
         request,
+        session,
         _first_posted_value(
             posted_values, ("username", "user", "name", "login", "hotspot_user")
         ),
@@ -97,12 +109,13 @@ def _frontend_response(request: Request) -> Response:
 
 def _build_launch_response(
     request: Request,
+    session: Session,
     username: str | None,
     device_ip: str | None,
     device_mac: str | None,
     router_id: str | None,
 ) -> RedirectResponse:
-    selected_router = _resolve_allowed_router(router_id or DEFAULT_ROUTER_ID)
+    selected_router = _resolve_allowed_router(session, router_id or DEFAULT_ROUTER_ID)
     response = RedirectResponse(url="/status", status_code=status.HTTP_303_SEE_OTHER)
     if username:
         _set_status_cookie(response, request, STATUS_COOKIE_NAME, username)
@@ -132,22 +145,22 @@ def _resolve_page_username(request: Request) -> str | None:
     return _normalize_optional_text(request.cookies.get(STATUS_COOKIE_NAME))
 
 
-def _resolve_page_router(request: Request) -> RouterDefinition:
+def _resolve_page_router(request: Request, session: Session) -> RouterDefinition:
     query_router_id = _first_query_value(
         request, ("router_id", "router", "site_id", "site")
     )
     if query_router_id:
-        return _resolve_allowed_router(query_router_id)
+        return _resolve_allowed_router(session, query_router_id)
     router_id = _normalize_optional_text(request.cookies.get(STATUS_ROUTER_COOKIE_NAME))
     try:
-        return get_router(router_id or DEFAULT_ROUTER_ID)
+        return get_router(session, router_id or DEFAULT_ROUTER_ID)
     except UnknownRouterError:
-        return get_router(DEFAULT_ROUTER_ID)
+        return get_router(session, DEFAULT_ROUTER_ID)
 
 
-def _resolve_allowed_router(router_id: str) -> RouterDefinition:
+def _resolve_allowed_router(session: Session, router_id: str) -> RouterDefinition:
     try:
-        return get_router(router_id)
+        return get_router(session, router_id)
     except UnknownRouterError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

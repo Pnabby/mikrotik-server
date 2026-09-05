@@ -24,6 +24,9 @@ class FakeResource:
         self.removed_ids.append(session_id)
         self.records[:] = [record for record in self.records if record.get("id") != session_id]
 
+    def add(self, **values: str) -> None:
+        self.records.append({"id": f"*{len(self.records) + 1}", **values})
+
 
 class FakeApi:
     def __init__(
@@ -31,10 +34,12 @@ class FakeApi:
         sessions: list[dict[str, str]],
         users: list[dict[str, str]] | None = None,
         leases: list[dict[str, str]] | None = None,
+        profiles: list[dict[str, str]] | None = None,
     ) -> None:
         self.active_resource = FakeResource(sessions)
         self.user_resource = FakeResource(users or [])
         self.lease_resource = FakeResource(leases or [])
+        self.profile_resource = FakeResource(profiles or [])
 
     def get_resource(self, path: str) -> FakeResource:
         if path == "/ip/hotspot/active":
@@ -43,6 +48,8 @@ class FakeApi:
             return self.user_resource
         if path == "/ip/dhcp-server/lease":
             return self.lease_resource
+        if path == "/ip/hotspot/user/profile":
+            return self.profile_resource
         raise AssertionError(f"Unexpected path: {path}")
 
 
@@ -290,6 +297,53 @@ def test_get_hotspot_user_falls_back_to_case_insensitive_lookup() -> None:
         "name": "alice",
         "comment": "Parent account",
     }
+
+
+def test_create_and_remove_disabled_hotspot_user_with_expected_marker() -> None:
+    client = MikroTikClient(
+        MikroTikConfig(host="router", username="admin", password="secret")
+    )
+    fake_api = FakeApi([], profiles=[{"name": "disabled"}])
+    client._api = fake_api
+
+    assert client.get_hotspot_user_profile("disabled") == {"name": "disabled"}
+    client.create_hotspot_user(
+        username="alice",
+        password="483265",
+        profile="disabled",
+        comment="flint-registration=challenge-id",
+        disabled=True,
+    )
+
+    assert client.get_hotspot_user("alice") == {
+        "id": "*1",
+        "name": "alice",
+        "password": "483265",
+        "profile": "disabled",
+        "comment": "flint-registration=challenge-id",
+        "disabled": "yes",
+    }
+    assert (
+        client.remove_hotspot_user(
+            "alice",
+            expected_comment="flint-registration=challenge-id",
+        )
+        is True
+    )
+    assert client.get_hotspot_user("alice") is None
+
+
+def test_get_hotspot_user_profiles_lists_router_profiles() -> None:
+    client = MikroTikClient(
+        MikroTikConfig(host="router", username="admin", password="secret")
+    )
+    profiles = [
+        {"name": "weekly-20gb", "rate-limit": "10M/10M"},
+        {"name": "monthly", "shared-users": "2"},
+    ]
+    client._api = FakeApi([], profiles=profiles)
+
+    assert client.get_hotspot_user_profiles() == profiles
 
 
 def test_get_hotspot_user_usage_combines_user_and_active_session_totals() -> None:

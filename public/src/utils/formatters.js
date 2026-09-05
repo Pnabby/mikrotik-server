@@ -64,7 +64,7 @@ export function publicErrorMessage(statusCode) {
     case 500:
     case 502:
     case 503:
-      return 'The router service is temporarily unavailable. Please try again later.'
+      return 'The service is temporarily unavailable. Please try again later.'
     default:
       return 'The request could not be completed. Please try again.'
   }

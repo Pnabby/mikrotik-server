@@ -31,7 +31,10 @@ class Package(TimestampMixin, Base):
     __tablename__ = "packages"
     __table_args__ = (
         CheckConstraint("amount >= 0", name="package_amount_non_negative"),
-        CheckConstraint("duration_seconds > 0", name="package_duration_positive"),
+        CheckConstraint(
+            "duration_seconds IS NULL OR duration_seconds > 0",
+            name="package_duration_positive",
+        ),
         CheckConstraint(
             "data_limit_bytes IS NULL OR data_limit_bytes > 0",
             name="package_data_limit_positive",
@@ -52,7 +55,7 @@ class Package(TimestampMixin, Base):
     description: Mapped[str | None] = mapped_column(Text)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     currency: Mapped[str] = mapped_column(String(3), default="GHS", server_default="GHS")
-    duration_seconds: Mapped[int] = mapped_column(BigInteger)
+    duration_seconds: Mapped[int | None] = mapped_column(BigInteger)
     data_limit_bytes: Mapped[int | None] = mapped_column(BigInteger)
     device_limit: Mapped[int | None] = mapped_column(Integer)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
@@ -82,6 +85,10 @@ class RouterPackageProfile(TimestampMixin, Base):
         ForeignKey("packages.id", ondelete="CASCADE"), index=True
     )
     mikrotik_profile: Mapped[str] = mapped_column(String(120))
+    # Presentation can vary by hostel even when the underlying commercial package is shared.
+    display_name: Mapped[str | None] = mapped_column(String(120))
+    description: Mapped[str | None] = mapped_column(Text)
+    download_speed: Mapped[str | None] = mapped_column(String(40))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
 
     router: Mapped[Router] = relationship(back_populates="package_profiles")

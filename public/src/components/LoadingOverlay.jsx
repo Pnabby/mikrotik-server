@@ -5,8 +5,8 @@ export default function LoadingOverlay({ lookup, longLoading }) {
       ? 'Verifying voucher details'
       : 'Loading voucher details'
   const message = longLoading
-    ? 'The router is taking longer than usual to respond. Please keep this page open.'
-    : 'Please be patient. Contacting the router can sometimes take a little while.'
+    ? 'The network is taking longer than usual to respond. Please keep this page open.'
+    : 'Please be patient. Loading your network details can sometimes take a little while.'
   return (
     <div className="loading-overlay" role="status" aria-live="polite" aria-busy="true">
       <div className="loading-card">

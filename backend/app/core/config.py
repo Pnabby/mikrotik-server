@@ -6,13 +6,12 @@ from pathlib import Path
 from pydantic import BaseModel, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 PROJECT_ROOT = BACKEND_DIR.parent
 
 
 class RouterSettings(BaseModel):
-    """Environment-provided connection and display metadata for one router."""
+    """Legacy environment router metadata accepted only by the one-time importer."""
 
     router_id: str
     name: str
@@ -38,6 +37,29 @@ class Settings(BaseSettings):
 
     database_url: str | None = None
 
+    brevo_api_key: SecretStr | None = None
+    brevo_sender_email: str | None = None
+    brevo_sender_name: str = "Flint WiFi"
+    brevo_api_url: str = "https://api.brevo.com/v3"
+    brevo_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+
+    otp_hash_secret: SecretStr | None = None
+    otp_code_ttl_seconds: int = Field(default=600, ge=60, le=3600)
+    otp_resend_cooldown_seconds: int = Field(default=60, ge=1, le=3600)
+    otp_max_attempts: int = Field(default=5, ge=1, le=20)
+    otp_max_requests_per_hour: int = Field(default=5, ge=1, le=100)
+    pin_hash_secret: SecretStr | None = None
+    customer_session_ttl_seconds: int = Field(
+        default=60 * 60 * 24 * 7,
+        ge=60 * 60,
+        le=60 * 60 * 24 * 30,
+    )
+    admin_session_ttl_seconds: int = Field(
+        default=60 * 60 * 12,
+        ge=15 * 60,
+        le=60 * 60 * 24 * 7,
+    )
+
     mikrotik_username: str | None = None
     mikrotik_password: SecretStr | None = None
     mikrotik_plaintext_login: bool = True
@@ -45,6 +67,9 @@ class Settings(BaseSettings):
     mikrotik_ssl_verify: bool = True
     mikrotik_ssl_verify_hostname: bool = True
     mikrotik_router_id: str = "flint-main"
+    mikrotik_registration_profile: str = "disabled"
+    # Retained temporarily so existing JSON configuration can be imported into PostgreSQL.
+    # Runtime router resolution never reads this value.
     mikrotik_routers_json: list[RouterSettings] = Field(default_factory=list)
 
     paystack_secret_key: SecretStr | None = None

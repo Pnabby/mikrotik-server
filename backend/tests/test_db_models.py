@@ -59,6 +59,24 @@ def test_customer_schema_stores_only_a_pin_hash() -> None:
     assert "routers.id" in _foreign_key_targets("customers")
 
 
+def test_router_catalog_contains_runtime_connection_metadata_without_credentials() -> None:
+    router_columns = _column_names("routers")
+
+    assert {
+        "id",
+        "name",
+        "vpn_host",
+        "api_port",
+        "hotspot_network",
+        "display_order",
+        "location",
+        "status",
+        "is_active",
+    } <= router_columns
+    assert "username" not in router_columns
+    assert "password" not in router_columns
+
+
 def test_otp_and_session_secrets_are_stored_as_hashes() -> None:
     otp_columns = _column_names("email_otp_challenges")
     customer_session_columns = _column_names("customer_sessions")
@@ -143,7 +161,15 @@ def test_packages_map_to_router_specific_mikrotik_profiles() -> None:
         "device_limit",
         "is_active",
     } <= package_columns
-    assert {"router_id", "package_id", "mikrotik_profile", "is_active"} <= (mapping_columns)
+    assert {
+        "router_id",
+        "package_id",
+        "mikrotik_profile",
+        "display_name",
+        "description",
+        "download_speed",
+        "is_active",
+    } <= mapping_columns
     assert ("router_id", "package_id") in _unique_column_sets("router_package_profiles")
     assert ("router_id", "mikrotik_profile") in _unique_column_sets("router_package_profiles")
 

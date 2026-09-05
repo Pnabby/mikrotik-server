@@ -11,7 +11,7 @@ export default function LogoutModal({ device, error, loading, username, onClose,
           <div className="modal-icon" aria-hidden="true"><WarningIcon /></div>
           <div className="modal-title-wrap">
             <div className="modal-title" id="logout-modal-title">Confirm device logout</div>
-            <div className="modal-subtitle">This will immediately disconnect the selected device from the hotspot session.</div>
+            <div className="modal-subtitle">This will immediately disconnect the selected device from the WiFi session.</div>
           </div>
           <button type="button" className="modal-close" aria-label="Close confirmation" onClick={onClose} disabled={loading}><CloseIcon /></button>
         </div>

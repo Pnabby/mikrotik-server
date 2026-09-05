@@ -4,34 +4,42 @@ The project is split into a public React application, a separate React admin app
 and a modular FastAPI backend.
 
 ```text
-admin/       Admin React application boundary (screens intentionally deferred)
+admin/       Admin login and hostel profile-management application
 backend/     FastAPI, RouterOS integration, SQLAlchemy models, and Alembic
-public/      Public hotspot status React application
+public/      Customer signup, login, and account React application
 ```
 
-## What remains compatible
+## Customer portal
 
-The status page keeps its original stylesheet, layout, colors, spacing, loading overlay,
-voucher lookup, device classification, current-device badge, logout confirmation, and
-public error messages. These existing paths remain available:
+The public application now uses account login instead of the former voucher-status lookup.
+Customers can create an account, log in with their username and PIN, view their current
+plan, see plans available at their hostel, review purchase history, and log out. These
+customer-facing paths and APIs are available:
 
 ```text
 GET  /
-GET  /status
-GET  /status/{username}
-GET  /launch-status
-POST /launch-status
+GET  /login
+GET  /signup
+GET  /account
+GET  /profile
 GET  /health
 GET  /api/routers
-GET  /api/routers/{router_id}/hotspot/users/{username}/status
-POST /api/routers/{router_id}/hotspot/user-lookup
-POST /api/routers/{router_id}/hotspot/users/{username}/devices/{session_id}/logout
+GET  /api/registration/username-availability
+GET  /api/registration/router-readiness
+POST /api/registration/start
+POST /api/registration/complete
+POST /api/auth/login
+POST /api/auth/logout
+GET  /api/account
+GET  /api/account/hotspot-status
+POST /api/account/devices/{session_id}/logout
 ```
 
-`GET /api/status-session` is the only new public-page endpoint. It exposes the locked
-status username, selected router, and current device identifiers to React without making
-the existing HTTP-only cookies readable by JavaScript. Query-string usernames are still
-ignored; only the launch flow can set the locked username.
+Successful login creates an opaque, HTTP-only customer session cookie. Only a SHA-256 hash
+of the session token is stored in PostgreSQL, sessions expire after
+`CUSTOMER_SESSION_TTL_SECONDS`, and logout revokes the stored session. The account endpoint
+always resolves the customer from this session; it does not accept a username to inspect.
+The same restriction applies to live WiFi status and device disconnection.
 
 ## Local setup
 
@@ -60,11 +68,37 @@ Run the public frontend in another terminal. Vite proxies `/api` to port 8000:
 npm run dev --prefix public
 ```
 
-The public page is then at `http://localhost:5173`. Run the separate admin boundary at
+The public page is then at `http://localhost:5173`. Run the admin login at
 `http://localhost:5174` with:
 
 ```powershell
 npm run dev --prefix admin
+```
+
+Create or reset an administrator from the backend directory. The command prompts for the
+password without putting it in shell history:
+
+```powershell
+.venv\Scripts\python.exe -m app.commands.admins --username admin
+```
+
+Admin passwords are stored only as Argon2id hashes. Successful login uses a separate,
+HTTP-only admin session cookie. The admin workspace lets an administrator select a hostel,
+read its current HotSpot user profiles directly from MikroTik, and configure the display
+name, description, price, optional validity, data allowance, device limit, download speed,
+and customer visibility for each profile. Download speed is prefilled from the RouterOS
+rate limit when available and can be edited before saving. Profile changes are written to the audit log. The registration-only
+profile cannot be published for purchase.
+
+Admin API routes:
+
+```text
+POST /api/admin/auth/login
+GET  /api/admin/auth/session
+POST /api/admin/auth/logout
+GET  /api/admin/hostels
+GET  /api/admin/hostels/{router_id}/profiles
+PUT  /api/admin/hostels/{router_id}/profiles/{mikrotik_profile}
 ```
 
 To build both React applications:
@@ -74,25 +108,38 @@ npm run build --prefix public
 npm run build --prefix admin
 ```
 
-After `public/dist` exists, FastAPI serves the built public app at `/`, `/status`, and
-`/status/{username}`. Without a build, those paths redirect to `FRONTEND_URL` so local
-frontend development remains separate.
+After `public/dist` exists, FastAPI serves the built public app at `/`, `/login`, `/signup`,
+and `/account`. Without a build, those paths redirect to `FRONTEND_URL` so local frontend
+development remains separate.
 
 ## Configuration
 
-All credentials and deployment addresses are environment-driven. In particular:
+Secrets and application deployment settings are environment-driven. Router catalogue
+metadata is stored in PostgreSQL. In particular:
 
 - `MIKROTIK_USERNAME` and `MIKROTIK_PASSWORD` are shared RouterOS credentials.
-- `MIKROTIK_ROUTERS_JSON` is the server-side allowlist. Each JSON item contains
-  `router_id`, `name`, `host`, `port`, and `hotspot_network`.
+- The `routers` table is the single runtime source for router IDs, hostel names, VPN hosts,
+  API ports, hotspot networks, display order, active state, and health.
+- `MIKROTIK_ROUTERS_JSON` is supported only as a legacy one-time import input and is never
+  used for runtime router resolution.
 - `DATABASE_URL` is a PostgreSQL SQLAlchemy URL such as
   `postgresql+psycopg://USER:PASSWORD@HOST:5432/DATABASE`.
+- `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, and `BREVO_SENDER_NAME` configure
+  transactional OTP delivery. The sender address must be verified in Brevo.
+- `OTP_HASH_SECRET` is an application-only random secret of at least 32 characters used
+  to protect stored OTP hashes. It must be different from the Brevo API key.
+- `PIN_HASH_SECRET` is a second independent random secret used with Argon2id to protect
+  low-entropy customer PIN hashes.
+- `CUSTOMER_SESSION_TTL_SECONDS` controls the customer login lifetime and defaults to
+  seven days.
+- `MIKROTIK_REGISTRATION_PROFILE` is the RouterOS HotSpot profile assigned during signup
+  and defaults to `disabled`; the RouterOS user itself is also created disabled.
 - `API_CORS_ORIGINS`, `FRONTEND_URL`, and optionally `FRONTEND_DIST_DIR` control
   public-app/backend deployment boundaries.
 - Paystack environment names are reserved, but no payment implementation is enabled.
 
-Do not commit `backend/.env`. Router connection hosts, database passwords, Paystack keys, and
-other deployment-specific values do not have tracked defaults.
+Do not commit `backend/.env`. Database passwords, shared router credentials, Paystack keys,
+and other deployment-specific secrets do not have tracked defaults.
 
 ## PostgreSQL and migrations
 
@@ -103,14 +150,32 @@ transaction while RouterOS provisioning state belongs to a separate activation r
 a confirmed payment remains recoverable during a router outage. See
 `backend/SCHEMA.md` for the table and state-machine contract.
 
-No database existed in the previous code, so there is no legacy data migration to run.
-The application does not connect to PostgreSQL or run Alembic during startup. After
-reviewing the initial migration and backing up any target database, apply it manually:
+The application does not run Alembic during startup. After reviewing new migrations and
+backing up any target database, apply them manually:
 
 ```powershell
 Set-Location backend
 .venv\Scripts\alembic.exe upgrade head
 Set-Location ..
+```
+
+Manage routers from the backend directory. These commands never store router credentials:
+
+```powershell
+# See the database catalogue
+.venv\Scripts\python.exe -m app.commands.routers list
+
+# Add or update a router
+.venv\Scripts\python.exe -m app.commands.routers add `
+  --id example-hostel `
+  --name "Example Hostel" `
+  --host 10.0.0.10 `
+  --port 8728 `
+  --network 192.168.100.0/24 `
+  --order 10
+
+# One-time migration from an existing MIKROTIK_ROUTERS_JSON value
+.venv\Scripts\python.exe -m app.commands.routers import-env
 ```
 
 ## Validation
@@ -131,12 +196,16 @@ npm run build --prefix admin
 - `backend/app/routes/` handles HTTP contracts and delegates hotspot work.
 - `backend/app/services/` owns hotspot business behavior and reserves separate modules
   for verification, activation, reconciliation, and subscriptions.
-- `backend/app/integrations/mikrotik/` contains all RouterOS behavior and its allowlist.
+- `backend/app/integrations/mikrotik/` contains RouterOS behavior and database catalogue
+  resolution.
 - `backend/app/integrations/paystack/` is the future Paystack adapter boundary.
 - `backend/app/db/` owns the engine/session factory; database access is injectable.
-- `public/src/services/` owns HTTP calls, `hooks/` owns page workflows, and
-  `components/` owns the existing visual sections and dialogs.
+- `public/src/services/` owns HTTP calls while `pages/` owns the signup, login, and
+  authenticated account workflows.
 
-The database boundaries for permanent accounts, OTP, PIN recovery, Paystack processing,
-activation/retry jobs, reconciliation, and history are defined. Their service and user
-interface workflows remain to be implemented one vertical slice at a time.
+Registration email OTP delivery, account provisioning, login sessions, and the account
+overview are implemented. Signup creates and verifies a disabled RouterOS HotSpot user
+before committing the inactive customer to PostgreSQL. Plan purchasing stays disabled in
+the portal until the Paystack payment and activation workflow is implemented and packages
+are configured. PIN recovery, activation/retry jobs, and reconciliation remain separate
+vertical slices.

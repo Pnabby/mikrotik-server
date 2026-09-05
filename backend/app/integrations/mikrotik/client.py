@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Self
 
 from routeros_api import RouterOsApiPool
 from routeros_api.api import RouterOsApi
 from routeros_api.exceptions import RouterOsApiError
 
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.integrations.mikrotik.registry import RouterDefinition
-
 
 _ACTIVE_CLASS_DEVICE_TYPE_PATTERNS = (
     ("Phone", re.compile(r"\bandroid\b")),
@@ -55,8 +55,11 @@ class MikroTikConfig:
     ssl_verify_hostname: bool = True
 
     @classmethod
-    def from_env(cls, router: RouterDefinition) -> "MikroTikConfig":
-        settings = get_settings()
+    def from_env(cls, router: RouterDefinition) -> MikroTikConfig:
+        return cls.from_settings(router, get_settings())
+
+    @classmethod
+    def from_settings(cls, router: RouterDefinition, settings: Settings) -> MikroTikConfig:
         username = settings.mikrotik_username
         password = (
             settings.mikrotik_password.get_secret_value()
@@ -137,6 +140,51 @@ class MikroTikClient:
             return None
 
         return users[0]
+
+    def get_hotspot_user_profile(self, profile: str) -> dict[str, str] | None:
+        api = self.connect()
+        normalized_profile = _normalize_routeros_name(profile)
+        if not normalized_profile:
+            return None
+        profiles = api.get_resource("/ip/hotspot/user/profile").get(name=normalized_profile)
+        return profiles[0] if profiles else None
+
+    def get_hotspot_user_profiles(self) -> list[dict[str, str]]:
+        """Return every HotSpot user profile currently defined on the router."""
+        api = self.connect()
+        return api.get_resource("/ip/hotspot/user/profile").get()
+
+    def create_hotspot_user(
+        self,
+        *,
+        username: str,
+        password: str,
+        profile: str,
+        comment: str,
+        disabled: bool = True,
+    ) -> None:
+        api = self.connect()
+        api.get_resource("/ip/hotspot/user").add(
+            name=_normalize_routeros_name(username),
+            password=password,
+            profile=_normalize_routeros_name(profile),
+            comment=comment,
+            disabled="yes" if disabled else "no",
+        )
+
+    def remove_hotspot_user(self, username: str, *, expected_comment: str) -> bool:
+        hotspot_user = self.get_hotspot_user(username)
+        if hotspot_user is None:
+            return True
+        if hotspot_user.get("comment") != expected_comment:
+            return False
+
+        hotspot_user_id = hotspot_user.get("id")
+        if not hotspot_user_id:
+            return False
+        api = self.connect()
+        api.get_resource("/ip/hotspot/user").remove(id=hotspot_user_id)
+        return self.get_hotspot_user(username) is None
 
     def get_hotspot_active_devices(self, username: str) -> list[dict[str, str]]:
         api = self.connect()
@@ -270,7 +318,7 @@ class MikroTikClient:
             "limit_bytes_total": limit_bytes_total,
         }
 
-    def __enter__(self) -> "MikroTikClient":
+    def __enter__(self) -> Self:
         self.connect()
         return self
 
@@ -408,4 +456,3 @@ def _normalize_device_hint(hint: object) -> str:
 
 def _normalize_dhcp_class_id(value: object) -> str:
     return _normalize_routeros_name(value).replace("\x00", "").strip()
-
