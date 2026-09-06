@@ -31,6 +31,7 @@ class AdminRouterProfileResponse(BaseModel):
     data_limit_bytes: int | None
     device_limit: int | None
     download_speed: str | None
+    is_promotional: bool
     is_configured: bool
     is_visible: bool
     is_registration_profile: bool
@@ -53,6 +54,7 @@ class AdminProfileUpdate(BaseModel):
     data_limit_bytes: int | None = Field(default=None, gt=0)
     device_limit: int | None = Field(default=None, gt=0, le=100)
     download_speed: str | None = Field(default=None, max_length=40)
+    is_promotional: bool = False
     is_visible: bool = False
 
     @field_validator("display_name")

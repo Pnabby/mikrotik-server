@@ -58,6 +58,11 @@ class Package(TimestampMixin, Base):
     duration_seconds: Mapped[int | None] = mapped_column(BigInteger)
     data_limit_bytes: Mapped[int | None] = mapped_column(BigInteger)
     device_limit: Mapped[int | None] = mapped_column(Integer)
+    is_promotional: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
 
     router_profiles: Mapped[list[RouterPackageProfile]] = relationship(

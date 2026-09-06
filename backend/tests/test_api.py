@@ -382,6 +382,54 @@ def test_get_hotspot_status_returns_monthly_expiry_from_login_comment() -> None:
     assert response.json()["expiry_date"] == "2026-06-25 12:05:54"
 
 
+def test_get_hotspot_status_reads_login_after_activation_marker() -> None:
+    fake_client = FakeMikroTikClient(
+        hotspot_user={
+            "name": "alice",
+            "profile": "weekly",
+            "comment": "activation=ACT-123;login=2026-05-11 08:15:00",
+        },
+        usage={
+            "combined_bytes_total": 0,
+            "limit_bytes_total": None,
+            "limit_bytes_in": None,
+            "limit_bytes_out": None,
+        },
+    )
+
+    app.dependency_overrides[get_mikrotik_client] = lambda: fake_client
+    response = TestClient(app).get("/api/routers/flint-main/hotspot/users/alice/status")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["logged_in_date"] == "2026-05-11 08:15:00"
+    assert response.json()["expiry_date"] == "2026-05-18 08:15:00"
+
+
+def test_activation_marker_does_not_start_login_clock() -> None:
+    fake_client = FakeMikroTikClient(
+        hotspot_user={
+            "name": "alice",
+            "profile": "weekly",
+            "comment": "activation=ACT-123",
+        },
+        usage={
+            "combined_bytes_total": 0,
+            "limit_bytes_total": None,
+            "limit_bytes_in": None,
+            "limit_bytes_out": None,
+        },
+    )
+
+    app.dependency_overrides[get_mikrotik_client] = lambda: fake_client
+    response = TestClient(app).get("/api/routers/flint-main/hotspot/users/alice/status")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["logged_in_date"] is None
+    assert response.json()["expiry_date"] is None
+
+
 def test_get_hotspot_status_clamps_monthly_expiry_to_last_day_of_next_month() -> None:
     fake_client = FakeMikroTikClient(
         hotspot_user={
@@ -535,7 +583,7 @@ def test_logout_hotspot_device_calls_client() -> None:
         "username": "alice",
         "session_id": "*2",
         "removed": True,
-        "detail": "Device session logged out successfully.",
+        "detail": "Device session and saved login removed successfully.",
     }
     assert fake_client.remove_calls == [("alice", "*2", None, None)]
 

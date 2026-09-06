@@ -23,7 +23,12 @@ from app.models.customer import Customer
 from app.models.email_otp_challenge import EmailOtpChallenge
 from app.models.enums import AccountStatus, OtpPurpose
 from app.models.router import Router
-from app.schemas.registration import RegistrationCompleteRequest, RegistrationStartRequest
+from app.schemas.registration import (
+    PRIVACY_NOTICE_VERSION,
+    TERMS_VERSION,
+    RegistrationCompleteRequest,
+    RegistrationStartRequest,
+)
 
 logger = logging.getLogger(__name__)
 REGISTRATION_COMMENT_PREFIX = "flint-registration="
@@ -405,6 +410,10 @@ class RegistrationOtpService:
             account_status=AccountStatus.INACTIVE,
             email_verified_at=now,
             mikrotik_user_verified_at=now,
+            last_activity_at=now,
+            terms_accepted_at=now,
+            terms_version=TERMS_VERSION,
+            privacy_notice_version=PRIVACY_NOTICE_VERSION,
         )
         challenge.customer = customer
         challenge.verified_at = now

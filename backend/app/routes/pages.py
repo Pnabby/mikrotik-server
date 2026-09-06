@@ -45,6 +45,8 @@ def status_session(request: Request, session: SessionDependency) -> StatusSessio
 @router.get("/signup", include_in_schema=False)
 @router.get("/account", include_in_schema=False)
 @router.get("/profile", include_in_schema=False)
+@router.get("/terms", include_in_schema=False)
+@router.get("/privacy", include_in_schema=False)
 @router.get("/status", include_in_schema=False)
 @router.get("/status/{username}", include_in_schema=False)
 def hotspot_status_page(request: Request, username: str | None = None) -> Response:

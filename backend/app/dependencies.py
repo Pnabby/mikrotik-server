@@ -8,6 +8,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.exceptions import RequestValidationError
 from sqlalchemy.orm import Session
 
+from app.core.exceptions import ServiceError
 from app.db.session import get_db_session
 from app.integrations.mikrotik.client import MikroTikClient, MikroTikConfig
 from app.integrations.mikrotik.registry import (
@@ -48,7 +49,7 @@ def mikrotik_client_context(
     client = MikroTikClient(config)
     try:
         yield client
-    except (HTTPException, RequestValidationError):
+    except (HTTPException, RequestValidationError, ServiceError):
         raise
     except Exception as exc:
         raise HTTPException(

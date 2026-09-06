@@ -45,6 +45,10 @@ class Customer(TimestampMixin, Base):
     email_verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     mikrotik_user_verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    terms_accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    terms_version: Mapped[str] = mapped_column(String(20))
+    privacy_notice_version: Mapped[str] = mapped_column(String(20))
 
     router: Mapped[Router] = relationship(back_populates="customers")
     otp_challenges: Mapped[list[EmailOtpChallenge]] = relationship(back_populates="customer")

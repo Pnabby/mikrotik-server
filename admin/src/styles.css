@@ -1207,6 +1207,23 @@ a:focus-visible {
   gap: 0.2rem;
 }
 
+.profile-title-line {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.profile-title-line em {
+  padding: 0.18rem 0.35rem;
+  border-radius: 999px;
+  color: #8a5d08;
+  background: #fff4d6;
+  font-size: 0.5rem;
+  font-style: normal;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
 .profile-name-cell strong,
 .router-details span {
   color: #353143;
@@ -1615,6 +1632,8 @@ a:focus-visible {
 }
 
 .visibility-section {
+  display: grid;
+  gap: 0.75rem;
   padding: 1.4rem 0;
 }
 

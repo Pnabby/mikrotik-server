@@ -51,16 +51,18 @@ def login(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
-    response.set_cookie(
-        CUSTOMER_SESSION_COOKIE,
-        result.token,
-        max_age=settings.customer_session_ttl_seconds,
-        expires=result.expires_at,
-        httponly=True,
-        secure=request.url.scheme == "https",
-        samesite="lax",
-        path="/",
-    )
+    cookie_options = {
+        "httponly": True,
+        "secure": request.url.scheme == "https",
+        "samesite": "lax",
+        "path": "/",
+    }
+    if result.persistent:
+        cookie_options.update(
+            max_age=settings.remembered_customer_session_ttl_seconds,
+            expires=result.expires_at,
+        )
+    response.set_cookie(CUSTOMER_SESSION_COOKIE, result.token, **cookie_options)
     return AuthenticatedCustomerResponse(username=result.customer.username)
 
 

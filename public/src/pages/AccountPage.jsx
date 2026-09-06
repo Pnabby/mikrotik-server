@@ -18,6 +18,8 @@ import {
   disconnectAccountDevice,
   getAccount,
   getAccountHotspotStatus,
+  initializePlanPurchase,
+  verifyPlanPurchase,
 } from '../services/accountApi'
 
 function formatMoney(amount, currency) {
@@ -42,6 +44,19 @@ function formatDate(value, fallback = '--') {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
+  }).format(date)
+}
+
+function formatDateTime(value, fallback = '--') {
+  if (!value) return fallback
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+  return new Intl.DateTimeFormat('en-GH', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
   }).format(date)
 }
 
@@ -72,9 +87,42 @@ function friendlyPaymentStatus(status) {
   return labels[status] || 'Unavailable'
 }
 
-function friendlyPlanStatus(status) {
-  const labels = { cancelled: 'Cancelled', expired: 'Expired', superseded: 'Replaced' }
-  return labels[status] || 'Ended'
+function noticeForPaymentResult(result) {
+  if (result.payment_status === 'failed') return 'failed'
+  if (result.payment_status === 'success' && result.activation_status === 'success') return 'active'
+  if (result.payment_status === 'success' && result.activation_status === 'superseded') return 'promo_already_used'
+  return result.payment_status === 'success' ? 'activation_pending' : 'pending'
+}
+
+const AUTOMATIC_ACTIVATION_STATUSES = new Set([
+  'not_started',
+  'processing',
+  'provisioning',
+  'retry_required',
+  'reconciliation_required',
+])
+
+const PAYMENT_NOTICE_COPY = {
+  active: {
+    title: 'Payment successful — your plan is active.',
+    detail: 'You can now open the WiFi login page and connect.',
+  },
+  activation_pending: {
+    title: 'Payment successful — your plan is being activated.',
+    detail: 'Your payment is safe. We are automatically retrying the router; you can also retry it now.',
+  },
+  pending: {
+    title: 'Your payment is still being confirmed.',
+    detail: 'Check again shortly to see the latest status.',
+  },
+  promo_already_used: {
+    title: 'This promotional plan was already claimed.',
+    detail: 'Only the first successful purchase can activate this one-time offer. Please contact support about the later payment.',
+  },
+  failed: {
+    title: 'The payment was not completed.',
+    detail: 'No plan was activated. You can select a plan and try again.',
+  },
 }
 
 function DeviceCard({ device, onDisconnect }) {
@@ -110,7 +158,23 @@ export default function AccountPage() {
   const [disconnecting, setDisconnecting] = useState(false)
   const [disconnectError, setDisconnectError] = useState('')
   const [showAllPlans, setShowAllPlans] = useState(false)
+  const [showAllPurchases, setShowAllPurchases] = useState(false)
   const [activeSection, setActiveSection] = useState('overview')
+  const [purchasingPlanId, setPurchasingPlanId] = useState('')
+  const [purchaseError, setPurchaseError] = useState('')
+  const [purchaseTarget, setPurchaseTarget] = useState(null)
+  const [paymentNotice, setPaymentNotice] = useState(() => {
+    const value = new URLSearchParams(window.location.search).get('payment')
+    return ['active', 'activation_pending', 'pending', 'failed', 'promo_already_used'].includes(value) ? value : ''
+  })
+  const [paymentReference] = useState(() => new URLSearchParams(window.location.search).get('reference') || '')
+  const [checkingPayment, setCheckingPayment] = useState(false)
+  const recoverablePurchase = account?.purchases?.find((purchase) => (
+    purchase.status === 'success'
+      && AUTOMATIC_ACTIVATION_STATUSES.has(purchase.activation_status)
+  ))
+  const activationReference = paymentReference || recoverablePurchase?.reference || ''
+  const visiblePaymentNotice = paymentNotice || (recoverablePurchase ? 'activation_pending' : '')
 
   useEffect(() => {
     document.title = 'Overview | FLINT WiFi'
@@ -195,6 +259,48 @@ export default function AccountPage() {
     }
   }, [accountPhase])
 
+  useEffect(() => {
+    if (!activationReference || !['activation_pending', 'pending'].includes(visiblePaymentNotice)) return undefined
+
+    let active = true
+    let timerId = null
+    let attempts = 0
+
+    async function pollPayment() {
+      if (!active) return
+      attempts += 1
+      setCheckingPayment(true)
+      try {
+        const result = await verifyPlanPurchase(activationReference)
+        if (!active) return
+        const nextNotice = noticeForPaymentResult(result)
+        if (nextNotice === 'active') {
+          window.location.replace('/account?payment=active')
+          return
+        }
+        setPaymentNotice(nextNotice)
+        if (nextNotice !== 'failed' && attempts < 20) {
+          timerId = window.setTimeout(pollPayment, 3000)
+        }
+      } catch (error) {
+        if (!active) return
+        if (error instanceof AccountApiError && error.status === 401) {
+          window.location.replace('/')
+          return
+        }
+        if (attempts < 20) timerId = window.setTimeout(pollPayment, 3000)
+      } finally {
+        if (active) setCheckingPayment(false)
+      }
+    }
+
+    timerId = window.setTimeout(pollPayment, 1500)
+    return () => {
+      active = false
+      if (timerId !== null) window.clearTimeout(timerId)
+    }
+  }, [activationReference, visiblePaymentNotice])
+
   async function refreshNetworkStatus() {
     if (networkPhase === 'loading') return
     setNetworkPhase('loading')
@@ -230,6 +336,59 @@ export default function AccountPage() {
     }
   }
 
+  async function purchasePlan(plan) {
+    if (!plan.purchase_available || purchasingPlanId) return
+    setPurchasingPlanId(plan.id)
+    setPurchaseError('')
+    try {
+      const checkout = await initializePlanPurchase(plan.id)
+      window.location.assign(checkout.authorization_url)
+    } catch (error) {
+      if (error instanceof AccountApiError && error.status === 401) {
+        window.location.replace('/')
+        return
+      }
+      setPurchaseError(
+        error instanceof AccountApiError && error.status === 503
+          ? 'The router is currently unreachable. Please contact support.'
+          : 'Checkout could not be started. Please try again in a moment.',
+      )
+      setPurchaseTarget(null)
+      setPurchasingPlanId('')
+    }
+  }
+
+  function requestPlanPurchase(plan) {
+    setPurchaseError('')
+    if (account?.current_plan) {
+      setPurchaseTarget(plan)
+      return
+    }
+    purchasePlan(plan)
+  }
+
+  async function checkPayment(reference = activationReference) {
+    if (!reference || checkingPayment) return
+    setCheckingPayment(true)
+    try {
+      const result = await verifyPlanPurchase(reference)
+      const nextNotice = noticeForPaymentResult(result)
+      if (nextNotice === 'active') {
+        window.location.replace('/account?payment=active')
+        return
+      }
+      setPaymentNotice(nextNotice)
+    } catch (error) {
+      if (error instanceof AccountApiError && error.status === 401) {
+        window.location.replace('/')
+        return
+      }
+      setPaymentNotice('pending')
+    } finally {
+      setCheckingPayment(false)
+    }
+  }
+
   if (accountPhase === 'loading') {
     return (
       <main className="account-page account-state-page" aria-busy="true">
@@ -254,16 +413,39 @@ export default function AccountPage() {
   const devices = networkStatus?.connected_devices || []
   const statusUnavailable = networkPhase === 'error'
   const planName = currentPlan?.name || ''
-  const loginDate = networkStatus?.logged_in_date || currentPlan?.starts_at
-  const expiryDate = networkStatus?.expiry_date || currentPlan?.expires_at
+  // Login and expiry timing come from RouterOS, never from the payment timestamp.
+  const loginDate = networkStatus?.logged_in_date || null
+  const expiryDate = networkStatus?.expiry_date || null
+  const loginDateLabel = formatDate(loginDate, 'Awaiting first login')
+  const expiryDateLabel = expiryDate
+    ? formatDate(expiryDate)
+    : currentPlan?.duration_seconds === null || currentPlan?.duration_seconds === undefined
+      ? 'Non expiry'
+      : loginDate
+        ? 'Managed by WiFi portal'
+        : 'Starts after first login'
   const availablePlans = account.available_plans || []
   const visiblePlans = showAllPlans ? availablePlans : availablePlans.slice(0, 3)
   const previousPlans = account.previous_plans || []
+  const purchases = account.purchases || []
+  const visiblePurchases = showAllPurchases ? purchases : purchases.slice(0, 5)
+  const paymentNoticeCopy = PAYMENT_NOTICE_COPY[visiblePaymentNotice]
 
   return (
     <main className="account-page">
       <AccountHeader account={account} activeSection={activeSection} />
       <div className="account-shell">
+        {visiblePaymentNotice && (
+          <div className={`payment-notice payment-notice-${visiblePaymentNotice}`} role="status">
+            <div>
+              <strong>{paymentNoticeCopy.title}</strong>
+              <span>{paymentNoticeCopy.detail}</span>
+            </div>
+            {activationReference && ['activation_pending', 'pending'].includes(visiblePaymentNotice) && (
+              <button type="button" disabled={checkingPayment} onClick={() => checkPayment()}>{checkingPayment ? 'Retrying...' : 'Retry activation'}</button>
+            )}
+          </div>
+        )}
         <section className="dashboard-heading" id="overview">
           <div>
             <span className="account-eyebrow">Overview</span>
@@ -311,8 +493,8 @@ export default function AccountPage() {
             </div>
             <dl className="plan-breakdown-list">
               <div><dt>Plan</dt><dd>{planName}</dd></div>
-              <div><dt>Login date</dt><dd>{formatDate(loginDate)}</dd></div>
-              <div><dt>Expiry date</dt><dd>{formatDate(expiryDate, 'Non expiry')}</dd></div>
+              <div><dt>Login date</dt><dd>{loginDateLabel}</dd></div>
+              <div><dt>Expiry date</dt><dd>{expiryDateLabel}</dd></div>
               <div><dt>Data limit</dt><dd>{formatData(networkStatus?.data_limit_bytes ?? currentPlan.data_limit_bytes)}</dd></div>
               <div><dt>Device allowance</dt><dd>{currentPlan.device_limit ? `${currentPlan.device_limit} device${currentPlan.device_limit === 1 ? '' : 's'}` : 'Unlimited devices'}</dd></div>
               <div><dt>Download speed</dt><dd>{currentPlan.download_speed || 'Not listed'}</dd></div>
@@ -360,11 +542,15 @@ export default function AccountPage() {
           </div>
           {availablePlans.length ? (
             <>
+              {purchaseError && <div className="plan-purchase-error" role="alert">{purchaseError}</div>}
               <div className="plans-grid">
                 {visiblePlans.map((plan) => (
-                  <article className="plan-card" key={plan.id}>
+                  <article className={`plan-card${plan.is_promotional ? ' plan-card-promo' : ''}`} key={plan.id}>
                     <div>
-                      <span className="plan-duration">{formatDuration(plan.duration_seconds)}</span>
+                      <div className="plan-card-labels">
+                        <span className="plan-duration">{formatDuration(plan.duration_seconds)}</span>
+                        {plan.is_promotional && <span className="plan-promo-label">Promo · once per customer</span>}
+                      </div>
                       <h3>{plan.name}</h3>
                       <p>{plan.description || 'Reliable WiFi access for your stay.'}</p>
                     </div>
@@ -375,8 +561,12 @@ export default function AccountPage() {
                     </ul>
                     <div className="plan-card-footer">
                       <strong>{formatMoney(plan.amount, plan.currency)}</strong>
-                      <button type="button" disabled={!plan.purchase_available}>
-                        {plan.purchase_available ? 'Purchase plan' : 'Payments unavailable'}
+                      <button
+                        type="button"
+                        disabled={!plan.purchase_available || Boolean(purchasingPlanId)}
+                        onClick={() => requestPlanPurchase(plan)}
+                      >
+                        {purchasingPlanId === plan.id ? 'Opening checkout...' : plan.promo_claimed ? 'Promo already claimed' : plan.purchase_available ? 'Purchase plan' : 'Payments unavailable'}
                       </button>
                     </div>
                   </article>
@@ -409,10 +599,8 @@ export default function AccountPage() {
                     <div><h3>{plan.name}</h3><small>Previous subscription</small></div>
                   </div>
                   <dl>
-                    <div><dt>Login date</dt><dd>{formatDate(plan.starts_at)}</dd></div>
-                    <div><dt>Expiry date</dt><dd>{formatDate(plan.expires_at || plan.ended_at, 'Non expiry')}</dd></div>
+                    <div><dt>Purchase date</dt><dd>{formatDateTime(plan.purchased_at)}</dd></div>
                   </dl>
-                  <span className={`previous-plan-status status-${plan.status}`}>{friendlyPlanStatus(plan.status)}</span>
                 </article>
               ))}
             </div>
@@ -426,23 +614,44 @@ export default function AccountPage() {
             <div><span className="account-eyebrow">Billing</span><h2>Purchase history</h2><p>Your latest plan purchases and payment status.</p></div>
             <VoucherIcon />
           </div>
-          {account.purchases.length ? (
-            <div className="purchase-table-wrap">
-              <table className="purchase-table">
-                <thead><tr><th>Plan</th><th>Date</th><th>Amount</th><th>Status</th><th>Reference</th></tr></thead>
-                <tbody>
-                  {account.purchases.map((purchase) => (
-                    <tr key={purchase.reference}>
-                      <td><strong>{purchase.plan_name}</strong></td>
-                      <td>{formatDate(purchase.paid_at || purchase.purchased_at)}</td>
-                      <td>{formatMoney(purchase.amount, purchase.currency)}</td>
-                      <td><span className={`purchase-status purchase-${purchase.status}`}>{friendlyPaymentStatus(purchase.status)}</span></td>
-                      <td><code>{purchase.reference}</code></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          {purchases.length ? (
+            <>
+              <div className="purchase-table-wrap">
+                <table className="purchase-table">
+                  <thead><tr><th>Plan</th><th>Date</th><th>Amount</th><th>Status</th><th>Reference</th></tr></thead>
+                  <tbody>
+                    {visiblePurchases.map((purchase) => (
+                      <tr key={purchase.reference}>
+                        <td><strong>{purchase.plan_name}</strong></td>
+                        <td>{formatDateTime(purchase.paid_at || purchase.purchased_at)}</td>
+                        <td>{formatMoney(purchase.amount, purchase.currency)}</td>
+                        <td>
+                          <span className={`purchase-status purchase-${purchase.status}`}>{friendlyPaymentStatus(purchase.status)}</span>
+                          {purchase.status === 'success' && purchase.activation_status && !['success', 'superseded'].includes(purchase.activation_status) && (
+                            <button
+                              className="purchase-activation-retry"
+                              type="button"
+                              disabled={checkingPayment}
+                              onClick={() => checkPayment(purchase.reference)}
+                            >
+                              {checkingPayment && activationReference === purchase.reference ? 'Retrying...' : 'Retry activation'}
+                            </button>
+                          )}
+                        </td>
+                        <td><code>{purchase.reference}</code></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {purchases.length > 5 && (
+                <div className="plan-list-actions">
+                  <button type="button" aria-expanded={showAllPurchases} onClick={() => setShowAllPurchases((current) => !current)}>
+                    {showAllPurchases ? 'Show fewer purchases' : `View more purchases (${purchases.length - 5})`}
+                  </button>
+                </div>
+              )}
+            </>
           ) : (
             <div className="account-empty"><VoucherIcon /><h3>No purchases yet</h3><p>Your plan purchases will appear here.</p></div>
           )}
@@ -461,6 +670,29 @@ export default function AccountPage() {
             <div className="portal-modal-actions">
               <button type="button" onClick={() => setDisconnectTarget(null)} disabled={disconnecting}>Cancel</button>
               <button className="danger" type="button" onClick={disconnectDevice} disabled={disconnecting}>{disconnecting ? 'Disconnecting...' : 'Disconnect'}</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {purchaseTarget && (
+        <div className="portal-modal-backdrop" role="presentation" onMouseDown={() => !purchasingPlanId && setPurchaseTarget(null)}>
+          <section className="portal-modal" role="dialog" aria-modal="true" aria-labelledby="replace-plan-title" onMouseDown={(event) => event.stopPropagation()}>
+            <span className="portal-modal-icon plan-replace-icon"><WarningIcon /></span>
+            <h2 id="replace-plan-title">Replace your active plan?</h2>
+            <p>
+              You currently have <strong>{currentPlan.name}</strong>. Purchasing <strong>{purchaseTarget.name}</strong> will immediately replace it. Any remaining time or data on your current plan will not carry over. All connected devices will be logged out and every device must sign in through the WiFi portal again.
+            </p>
+            <div className="portal-modal-actions">
+              <button type="button" onClick={() => setPurchaseTarget(null)} disabled={Boolean(purchasingPlanId)}>Keep current plan</button>
+              <button
+                className="confirm"
+                type="button"
+                disabled={Boolean(purchasingPlanId)}
+                onClick={() => purchasePlan(purchaseTarget)}
+              >
+                {purchasingPlanId ? 'Opening checkout...' : 'Replace and continue'}
+              </button>
             </div>
           </section>
         </div>

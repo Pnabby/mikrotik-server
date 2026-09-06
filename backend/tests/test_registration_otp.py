@@ -183,6 +183,7 @@ def registration_payload() -> RegistrationStartRequest:
         username="amab",
         router_id="platinum",
         pin="483265",
+        accepted_terms=True,
     )
 
 
@@ -194,6 +195,7 @@ def completion_payload(challenge_id: object, code: str) -> RegistrationCompleteR
         username="amab",
         router_id="platinum",
         pin="483265",
+        accepted_terms=True,
     )
 
 
@@ -227,6 +229,10 @@ def test_username_suggestions_skip_random_candidates_already_in_database(
                 account_status=AccountStatus.INACTIVE,
                 email_verified_at=now,
                 mikrotik_user_verified_at=now,
+                last_activity_at=now,
+                terms_accepted_at=now,
+                terms_version="legacy-test",
+                privacy_notice_version="legacy-test",
             ),
             Customer(
                 router=router,
@@ -236,6 +242,10 @@ def test_username_suggestions_skip_random_candidates_already_in_database(
                 account_status=AccountStatus.INACTIVE,
                 email_verified_at=now,
                 mikrotik_user_verified_at=now,
+                last_activity_at=now,
+                terms_accepted_at=now,
+                terms_version="legacy-test",
+                privacy_notice_version="legacy-test",
             ),
         ]
     )
@@ -495,6 +505,7 @@ def test_unavailable_router_prevents_otp_email_and_challenge(
                 "username": "amab",
                 "router_id": "platinum",
                 "pin": "483265",
+                "accepted_terms": True,
             },
         )
 
@@ -576,6 +587,7 @@ def test_registration_endpoints_create_router_and_database_users(
                 "username": "amab",
                 "router_id": "platinum",
                 "pin": "483265",
+                "accepted_terms": True,
             },
         )
         assert started.status_code == status.HTTP_201_CREATED
@@ -591,6 +603,7 @@ def test_registration_endpoints_create_router_and_database_users(
                 "username": "amab",
                 "router_id": "platinum",
                 "pin": "483265",
+                "accepted_terms": True,
                 "code": sender.messages[0]["code"],
             },
         )

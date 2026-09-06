@@ -54,6 +54,18 @@ class Settings(BaseSettings):
         ge=60 * 60,
         le=60 * 60 * 24 * 30,
     )
+    remembered_customer_session_ttl_seconds: int = Field(
+        default=60 * 60 * 24 * 30,
+        ge=60 * 60 * 24,
+        le=60 * 60 * 24 * 90,
+    )
+    inactive_account_retention_days: int = Field(default=365, ge=30, le=3650)
+    inactive_account_cleanup_enabled: bool = False
+    inactive_account_cleanup_interval_seconds: int = Field(
+        default=60 * 60 * 24,
+        ge=60 * 5,
+        le=60 * 60 * 24 * 7,
+    )
     admin_session_ttl_seconds: int = Field(
         default=60 * 60 * 12,
         ge=15 * 60,
@@ -74,6 +86,9 @@ class Settings(BaseSettings):
 
     paystack_secret_key: SecretStr | None = None
     paystack_public_key: str | None = None
+    paystack_callback_url: str | None = None
+    paystack_api_url: str = "https://api.paystack.co"
+    paystack_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
     paystack_webhook_secret: SecretStr | None = None
 
     @property

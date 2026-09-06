@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { WifiIcon } from '../components/Icons'
-import { AccountApiError, login } from '../services/accountApi'
+import { AccountApiError, getAccount, login } from '../services/accountApi'
 
 const USERNAME_PATTERN = /^[a-z0-9]{3,64}$/
 const PIN_PATTERN = /^[0-9]{6}$/
@@ -19,18 +19,32 @@ function validate(form) {
 }
 
 export default function LoginPage() {
-  const [form, setForm] = useState({ username: '', pin: '' })
+  const [form, setForm] = useState({ username: '', pin: '', rememberMe: false })
   const [errors, setErrors] = useState({})
   const [showPin, setShowPin] = useState(false)
   const [apiError, setApiError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [checkingSession, setCheckingSession] = useState(true)
 
   useEffect(() => {
     document.title = 'Log in | FLINT WiFi'
+    let active = true
+    getAccount()
+      .then(() => {
+        if (active) window.location.replace('/account')
+      })
+      .catch(() => {
+        if (active) setCheckingSession(false)
+      })
+    return () => { active = false }
   }, [])
 
   function updateField(event) {
-    const { name, value } = event.target
+    const { name, value, checked, type } = event.target
+    if (type === 'checkbox') {
+      setForm((current) => ({ ...current, [name]: checked }))
+      return
+    }
     const normalizedValue = name === 'username'
       ? value.toLowerCase().replace(/\s/g, '')
       : value.replace(/\D/g, '')
@@ -49,7 +63,7 @@ export default function LoginPage() {
 
     setBusy(true)
     try {
-      const result = await login(form.username, form.pin)
+      const result = await login(form.username, form.pin, form.rememberMe)
       window.location.assign(result.redirect_to || '/account')
     } catch (error) {
       if (error instanceof AccountApiError && error.status === 401) {
@@ -64,6 +78,10 @@ export default function LoginPage() {
     } finally {
       setBusy(false)
     }
+  }
+
+  if (checkingSession) {
+    return <main className="signup-page auth-session-check" aria-label="Checking your session" />
   }
 
   return (
@@ -127,6 +145,17 @@ export default function LoginPage() {
               {errors.pin && <span className="signup-field-error" id="login-pin-error">{errors.pin}</span>}
             </div>
 
+            <label className="auth-checkbox remember-checkbox" htmlFor="remember-me">
+              <input
+                checked={form.rememberMe}
+                id="remember-me"
+                name="rememberMe"
+                type="checkbox"
+                onChange={updateField}
+              />
+              <span>Remember me on this device</span>
+            </label>
+
             {apiError && <div className="otp-api-error" role="alert">{apiError}</div>}
 
             <button className="signup-submit" disabled={busy} type="submit">
@@ -138,6 +167,7 @@ export default function LoginPage() {
             <span>Do not have an account?</span>
             <a href="/signup">Create an account</a>
           </div>
+          <p className="auth-legal-links"><a href="/terms">Terms</a><span>&middot;</span><a href="/privacy">Privacy</a></p>
         </section>
       </div>
     </main>

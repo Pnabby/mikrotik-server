@@ -1,7 +1,6 @@
 import { AccountIcon, WifiIcon } from './Icons'
 
-export default function AccountHeader({ account, activePage = 'account', activeSection = 'overview' }) {
-  const initial = account.username.slice(0, 1).toUpperCase()
+export default function AccountHeader({ activePage = 'account', activeSection = 'overview' }) {
   const onAccountPage = activePage === 'account'
   const sections = [
     { id: 'overview', label: 'Overview' },
@@ -37,11 +36,6 @@ export default function AccountHeader({ account, activePage = 'account', activeS
         href="/profile"
         aria-label="Open profile"
       >
-        <span className="account-avatar" aria-hidden="true">{initial}</span>
-        <span className="account-profile-copy">
-          <strong>{account.username}</strong>
-          <small>Profile</small>
-        </span>
         <AccountIcon />
       </a>
     </header>

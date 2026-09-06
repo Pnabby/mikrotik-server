@@ -1,3 +1,5 @@
+import pytest
+
 from app.integrations.mikrotik.client import MikroTikClient, MikroTikConfig, infer_device_type
 
 
@@ -5,6 +7,7 @@ class FakeResource:
     def __init__(self, records: list[dict[str, str]]) -> None:
         self.records = records
         self.removed_ids: list[str] = []
+        self.calls: list[tuple[str, dict[str, str]]] = []
 
     def get(self, **filters: str) -> list[dict[str, str]]:
         if not filters:
@@ -27,6 +30,25 @@ class FakeResource:
     def add(self, **values: str) -> None:
         self.records.append({"id": f"*{len(self.records) + 1}", **values})
 
+    def set(self, **values: str) -> None:
+        record_id = values.pop("id", None)
+        if record_id is None:
+            raise AssertionError("Expected id when updating a HotSpot user")
+        for record in self.records:
+            if record.get("id") == record_id:
+                record.update(values)
+                return
+        raise AssertionError("HotSpot user was not found")
+
+    def call(self, command: str, arguments: dict[str, str]) -> list[dict[str, str]]:
+        self.calls.append((command, arguments))
+        if command == "reset-counters":
+            for record in self.records:
+                if record.get("id") == arguments.get("numbers"):
+                    record["bytes-in"] = "0"
+                    record["bytes-out"] = "0"
+        return []
+
 
 class FakeApi:
     def __init__(
@@ -35,11 +57,13 @@ class FakeApi:
         users: list[dict[str, str]] | None = None,
         leases: list[dict[str, str]] | None = None,
         profiles: list[dict[str, str]] | None = None,
+        cookies: list[dict[str, str]] | None = None,
     ) -> None:
         self.active_resource = FakeResource(sessions)
         self.user_resource = FakeResource(users or [])
         self.lease_resource = FakeResource(leases or [])
         self.profile_resource = FakeResource(profiles or [])
+        self.cookie_resource = FakeResource(cookies or [])
 
     def get_resource(self, path: str) -> FakeResource:
         if path == "/ip/hotspot/active":
@@ -50,6 +74,8 @@ class FakeApi:
             return self.lease_resource
         if path == "/ip/hotspot/user/profile":
             return self.profile_resource
+        if path == "/ip/hotspot/cookie":
+            return self.cookie_resource
         raise AssertionError(f"Unexpected path: {path}")
 
 
@@ -66,6 +92,31 @@ def test_get_hotspot_active_device_count_counts_matching_sessions() -> None:
     )
 
     assert client.get_hotspot_active_device_count("alice") == 2
+
+
+def test_delete_hotspot_user_removes_sessions_cookies_and_identity() -> None:
+    client = MikroTikClient(
+        MikroTikConfig(host="router", username="admin", password="secret")
+    )
+    client._api = FakeApi(
+        [
+            {"id": "*A1", "user": "alice"},
+            {"id": "*A2", "user": "bob"},
+        ],
+        users=[
+            {"id": "*U1", "name": "alice"},
+            {"id": "*U2", "name": "bob"},
+        ],
+        cookies=[
+            {"id": "*C1", "user": "alice"},
+            {"id": "*C2", "user": "bob"},
+        ],
+    )
+
+    assert client.delete_hotspot_user("alice") is True
+    assert client._api.active_resource.get() == [{"id": "*A2", "user": "bob"}]
+    assert client._api.cookie_resource.get() == [{"id": "*C2", "user": "bob"}]
+    assert client._api.user_resource.get() == [{"id": "*U2", "name": "bob"}]
 
 
 def test_get_hotspot_active_devices_returns_matching_sessions() -> None:
@@ -407,7 +458,12 @@ def test_remove_hotspot_active_device_removes_only_selected_session() -> None:
             {"id": "*1", "user": "alice", "mac-address": "AA:BB:CC:DD:EE:01"},
             {"id": "*2", "user": "alice", "mac-address": "AA:BB:CC:DD:EE:02"},
             {"id": "*3", "user": "bob", "mac-address": "AA:BB:CC:DD:EE:03"},
-        ]
+        ],
+        cookies=[
+            {"id": "*C1", "user": "alice", "mac-address": "AA:BB:CC:DD:EE:01"},
+            {"id": "*C2", "user": "alice", "mac-address": "AA:BB:CC:DD:EE:02"},
+            {"id": "*C3", "user": "bob", "mac-address": "AA:BB:CC:DD:EE:02"},
+        ],
     )
     client._api = fake_api
 
@@ -417,6 +473,11 @@ def test_remove_hotspot_active_device_removes_only_selected_session() -> None:
     assert fake_api.active_resource.removed_ids == ["*2"]
     assert fake_api.active_resource.get(user="alice") == [
         {"id": "*1", "user": "alice", "mac-address": "AA:BB:CC:DD:EE:01"}
+    ]
+    assert fake_api.cookie_resource.removed_ids == ["*C2"]
+    assert fake_api.cookie_resource.get() == [
+        {"id": "*C1", "user": "alice", "mac-address": "AA:BB:CC:DD:EE:01"},
+        {"id": "*C3", "user": "bob", "mac-address": "AA:BB:CC:DD:EE:02"},
     ]
 
 
@@ -525,3 +586,90 @@ def test_get_hotspot_total_bytes_used_matches_routeros_script_logic() -> None:
     )
 
     assert client.get_hotspot_total_bytes_used("alice") == 2500
+
+
+def test_activate_hotspot_user_applies_profile_limit_and_enables_user() -> None:
+    client = MikroTikClient(
+        MikroTikConfig(host="router", username="admin", password="secret")
+    )
+    client._api = FakeApi(
+        [
+            {"id": "*A1", "user": "alice"},
+            {"id": "*A2", "user": "alice"},
+            {"id": "*B1", "user": "bob"},
+        ],
+        users=[
+            {
+                "id": "*1",
+                "name": "alice",
+                "profile": "disabled",
+                "disabled": "yes",
+                "comment": "login=2026-08-01 09:00:00;activation=ACT-OLD",
+            }
+        ],
+        profiles=[{"id": "*P1", "name": "weekly-20gb"}],
+        cookies=[
+            {"id": "*C1", "user": "alice", "mac-address": "AA:00:00:00:00:01"},
+            {"id": "*C2", "user": "alice", "mac-address": "AA:00:00:00:00:02"},
+            {"id": "*C3", "user": "bob", "mac-address": "BB:00:00:00:00:01"},
+        ],
+    )
+
+    updated = client.activate_hotspot_user(
+        username="alice",
+        profile="weekly-20gb",
+        comment="activation=ACT-123",
+        data_limit_bytes=20 * 1024**3,
+    )
+
+    assert updated["profile"] == "weekly-20gb"
+    assert updated["disabled"] == "no"
+    assert updated["limit-bytes-total"] == str(20 * 1024**3)
+    assert updated["comment"] == "activation=ACT-123"
+    assert "login=" not in updated["comment"]
+    assert client._api.user_resource.calls == [("reset-counters", {"numbers": "*1"})]
+    assert client._api.active_resource.removed_ids == ["*A1", "*A2"]
+    assert client._api.active_resource.records == [{"id": "*B1", "user": "bob"}]
+    assert client._api.cookie_resource.removed_ids == ["*C1", "*C2"]
+    assert client._api.cookie_resource.records == [
+        {"id": "*C3", "user": "bob", "mac-address": "BB:00:00:00:00:01"}
+    ]
+
+
+def test_activation_cleanup_failure_does_not_disable_or_replace_existing_plan() -> None:
+    client = MikroTikClient(
+        MikroTikConfig(host="router", username="admin", password="secret")
+    )
+    client._api = FakeApi(
+        [],
+        users=[
+            {
+                "id": "*1",
+                "name": "alice",
+                "profile": "existing-plan",
+                "disabled": "no",
+                "comment": "activation=ACT-OLD",
+            }
+        ],
+        profiles=[{"id": "*P1", "name": "new-plan"}],
+        cookies=[{"id": "*C1", "user": "alice"}],
+    )
+
+    def fail_remove(**_filters: str) -> None:
+        raise OSError("router connection dropped")
+
+    client._api.cookie_resource.remove = fail_remove
+
+    with pytest.raises(OSError, match="router connection dropped"):
+        client.activate_hotspot_user(
+            username="alice",
+            profile="new-plan",
+            comment="activation=ACT-NEW",
+            data_limit_bytes=1024,
+        )
+
+    unchanged = client.get_hotspot_user("alice")
+    assert unchanged is not None
+    assert unchanged["disabled"] == "no"
+    assert unchanged["profile"] == "existing-plan"
+    assert unchanged["comment"] == "activation=ACT-OLD"

@@ -171,6 +171,7 @@ def test_admin_configures_customer_facing_profile_and_audits_change(
             "data_limit_bytes": 21474836480,
             "device_limit": 2,
             "download_speed": "15 Mbps",
+            "is_promotional": True,
             "is_visible": True,
         },
     )
@@ -181,12 +182,14 @@ def test_admin_configures_customer_facing_profile_and_audits_change(
     assert payload["amount"] == "25.00"
     assert payload["is_visible"] is True
     assert payload["download_speed"] == "15 Mbps"
+    assert payload["is_promotional"] is True
     mapping = admin_profile_session.scalar(select(RouterPackageProfile))
     package = admin_profile_session.scalar(select(Package))
     audit_log = admin_profile_session.scalar(select(AuditLog))
     assert mapping is not None and mapping.display_name == "Campus Weekly Plus"
     assert mapping is not None and mapping.download_speed == "15 Mbps"
     assert package is not None and package.name == "Campus Weekly Plus"
+    assert package.is_promotional is True
     assert package.code == "platinum-weekly-20gb"
     assert audit_log is not None
     assert audit_log.action == "router_profile.configured"
@@ -202,6 +205,7 @@ def test_admin_configures_customer_facing_profile_and_audits_change(
             "currency": "GHS",
             "duration_seconds": None,
             "download_speed": "20 Mbps",
+            "is_promotional": True,
             "is_visible": True,
         },
     )

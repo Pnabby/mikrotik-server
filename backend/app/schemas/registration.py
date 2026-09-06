@@ -9,6 +9,8 @@ from app.models.enums import AccountStatus
 
 USERNAME_PATTERN = re.compile(r"^[a-z0-9]{3,64}$")
 PIN_PATTERN = re.compile(r"^[0-9]{6}$")
+TERMS_VERSION = "2026-09-05"
+PRIVACY_NOTICE_VERSION = "2026-09-05"
 
 
 def normalize_username(value: str) -> str:
@@ -27,6 +29,7 @@ class RegistrationStartRequest(BaseModel):
     username: str
     router_id: str
     pin: SecretStr
+    accepted_terms: bool
 
     @field_validator("email")
     @classmethod
@@ -61,6 +64,13 @@ class RegistrationStartRequest(BaseModel):
     def validate_pin(cls, value: SecretStr) -> SecretStr:
         if not PIN_PATTERN.fullmatch(value.get_secret_value()):
             raise ValueError("PIN must contain exactly 6 digits.")
+        return value
+
+    @field_validator("accepted_terms")
+    @classmethod
+    def require_terms_acceptance(cls, value: bool) -> bool:
+        if not value:
+            raise ValueError("You must accept the Terms and Conditions.")
         return value
 
 

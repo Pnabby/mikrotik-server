@@ -60,6 +60,7 @@ class CreatedCustomerSession:
     customer: Customer
     token: str
     expires_at: datetime
+    persistent: bool
 
 
 class CustomerAuthenticationService:
@@ -95,7 +96,12 @@ class CustomerAuthenticationService:
             raise ServiceError(status.HTTP_403_FORBIDDEN, "Account access is unavailable.")
 
         now = datetime.now(UTC)
-        expires_at = now + timedelta(seconds=self._settings.customer_session_ttl_seconds)
+        ttl_seconds = (
+            self._settings.remembered_customer_session_ttl_seconds
+            if request.remember_me
+            else self._settings.customer_session_ttl_seconds
+        )
+        expires_at = now + timedelta(seconds=ttl_seconds)
         token = secrets.token_urlsafe(48)
         customer_session = CustomerSession(
             customer=customer,
@@ -106,6 +112,7 @@ class CustomerAuthenticationService:
             user_agent=(user_agent or "")[:2000] or None,
         )
         customer.last_login_at = now
+        customer.last_activity_at = now
         self._session.add(customer_session)
         try:
             self._session.commit()
@@ -121,6 +128,7 @@ class CustomerAuthenticationService:
             customer=customer,
             token=token,
             expires_at=expires_at,
+            persistent=request.remember_me,
         )
 
     def authenticate(self, token: str | None) -> Customer:
@@ -143,6 +151,7 @@ class CustomerAuthenticationService:
         if customer.account_status in {AccountStatus.SUSPENDED, AccountStatus.CLOSED}:
             raise ServiceError(status.HTTP_403_FORBIDDEN, "Account access is unavailable.")
         customer_session.last_seen_at = now
+        customer.last_activity_at = now
         self._session.commit()
         return customer
 

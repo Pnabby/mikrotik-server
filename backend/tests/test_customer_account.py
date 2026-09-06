@@ -15,6 +15,7 @@ from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401 - register all relationship targets with SQLAlchemy
 from app.core.config import Settings, get_settings
+from app.core.exceptions import ServiceError
 from app.core.security import Argon2PinHasher
 from app.db.base import Base
 from app.db.session import get_db_session
@@ -28,6 +29,7 @@ from app.models.subscription import Subscription
 from app.models.transaction import Transaction
 from app.routes.account import get_customer_hotspot_service
 from app.schemas.hotspot import DeviceLogoutResponse, HotspotStatusResponse
+from app.services.account_deletion import AccountDeletionService
 from app.services.customer_auth import CUSTOMER_SESSION_COOKIE
 
 
@@ -78,6 +80,10 @@ def customer(db_session: Session, account_settings: Settings) -> Customer:
         account_status=AccountStatus.INACTIVE,
         email_verified_at=now,
         mikrotik_user_verified_at=now,
+        last_activity_at=now,
+        terms_accepted_at=now,
+        terms_version="legacy-test",
+        privacy_notice_version="legacy-test",
     )
     db_session.add(customer)
     db_session.commit()
@@ -121,6 +127,8 @@ def test_login_creates_hashed_session_and_opens_account(
     assert stored_session.token_hash == hashlib.sha256(
         f"customer-session:{raw_token}".encode()
     ).hexdigest()
+    assert "Max-Age" not in response.headers["set-cookie"]
+    assert "expires=" not in response.headers["set-cookie"].lower()
 
     account_response = client.get("/api/account")
     assert account_response.status_code == status.HTTP_200_OK
@@ -134,6 +142,50 @@ def test_login_creates_hashed_session_and_opens_account(
         "previous_plans": [],
         "purchases": [],
     }
+
+
+def test_remember_me_creates_persistent_cookie(
+    client: TestClient,
+    customer: Customer,
+) -> None:
+    response = client.post(
+        "/api/auth/login",
+        json={"username": customer.username, "pin": "483265", "remember_me": True},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    cookie = response.headers["set-cookie"]
+    assert "Max-Age=2592000" in cookie
+    assert "expires=" in cookie.lower()
+
+
+def test_account_deletion_requires_pin_and_erases_customer(
+    db_session: Session,
+    account_settings: Settings,
+    customer: Customer,
+) -> None:
+    class RecordingDeletionClient:
+        def __init__(self) -> None:
+            self.deleted_usernames: list[str] = []
+
+        def delete_hotspot_user(self, username: str) -> bool:
+            self.deleted_usernames.append(username)
+            return True
+
+    router_client = RecordingDeletionClient()
+    service = AccountDeletionService(db_session)
+    pin_hasher = Argon2PinHasher.from_settings(account_settings)
+
+    with pytest.raises(ServiceError):
+        service.delete_with_pin(customer, "111111", pin_hasher, router_client)
+    assert db_session.get(Customer, customer.id) is not None
+    assert router_client.deleted_usernames == []
+
+    customer_id = customer.id
+    service.delete_with_pin(customer, "483265", pin_hasher, router_client)
+
+    assert router_client.deleted_usernames == ["amab"]
+    assert db_session.get(Customer, customer_id) is None
 
 
 def test_login_rejects_wrong_pin_without_creating_session(
@@ -184,6 +236,7 @@ def test_account_lists_hostel_plans_and_purchase_history(
         duration_seconds=7 * 24 * 60 * 60,
         data_limit_bytes=20 * 1024**3,
         device_limit=2,
+        is_promotional=True,
     )
     db_session.add_all(
         [
@@ -232,11 +285,14 @@ def test_account_lists_hostel_plans_and_purchase_history(
             "data_limit_bytes": 20 * 1024**3,
             "device_limit": 2,
             "download_speed": "10 Mbps",
+            "is_promotional": True,
+            "promo_claimed": True,
             "purchase_available": False,
         }
     ]
     assert payload["purchases"][0]["reference"] == "purchase-test-001"
     assert payload["purchases"][0]["plan_name"] == "Platinum Week Pass"
+    assert payload["purchases"][0]["activation_status"] is None
     assert "mikrotik_profile" not in response.text
 
 
@@ -288,6 +344,7 @@ def test_account_lists_only_five_most_recent_previous_plans(
         "Previous plan 5",
     ]
     assert all(plan["status"] == "expired" for plan in previous_plans)
+    assert all(plan["purchased_at"] for plan in previous_plans)
 
 
 class RecordingCustomerHotspotService:

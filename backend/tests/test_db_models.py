@@ -110,6 +110,10 @@ def test_payment_and_activation_states_are_independent() -> None:
     } == set(activation.c.status.type.enums)
 
 
+def test_packages_support_promotional_purchase_limits() -> None:
+    assert "is_promotional" in _column_names("packages")
+
+
 def test_activation_records_a_retryable_target_and_ordered_router_receipt() -> None:
     activation_columns = _column_names("activations")
 

@@ -156,6 +156,7 @@ class AdminProfileService:
                 duration_seconds=update.duration_seconds,
                 data_limit_bytes=update.data_limit_bytes,
                 device_limit=update.device_limit,
+                is_promotional=update.is_promotional,
                 is_active=update.is_visible,
             )
             mapping = RouterPackageProfile(
@@ -179,6 +180,7 @@ class AdminProfileService:
         package.duration_seconds = update.duration_seconds
         package.data_limit_bytes = update.data_limit_bytes
         package.device_limit = update.device_limit
+        package.is_promotional = update.is_promotional
         package.is_active = update.is_visible
         router.status = RouterStatus.ONLINE
         router.last_seen_at = datetime.now(UTC)
@@ -200,6 +202,7 @@ class AdminProfileService:
                         "currency": update.currency,
                         "duration_seconds": update.duration_seconds,
                         "download_speed": update.download_speed,
+                        "is_promotional": update.is_promotional,
                     },
                     ip_address=(ip_address or "")[:64] or None,
                 )
@@ -246,6 +249,7 @@ class AdminProfileService:
                 if mapping and mapping.download_speed
                 else _download_speed(_profile_value(raw_profile, "rate-limit"))
             ),
+            is_promotional=bool(package and package.is_promotional),
             is_configured=mapping is not None,
             is_visible=bool(mapping and mapping.is_active and package and package.is_active),
             is_registration_profile=(
@@ -278,6 +282,7 @@ class AdminProfileService:
             duration_seconds=package.duration_seconds,
             data_limit_bytes=package.data_limit_bytes,
             device_limit=package.device_limit,
+            is_promotional=package.is_promotional,
             is_active=package.is_active,
         )
         mapping.package = isolated

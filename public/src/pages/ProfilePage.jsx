@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 import AccountHeader from '../components/AccountHeader'
 import { AccountIcon, GlobeIcon, ShieldIcon } from '../components/Icons'
-import { AccountApiError, getAccount, logout } from '../services/accountApi'
+import { AccountApiError, deleteAccount, getAccount, logout } from '../services/accountApi'
 
 function friendlyStatus(status) {
   const labels = {
@@ -18,6 +18,10 @@ export default function ProfilePage() {
   const [account, setAccount] = useState(null)
   const [phase, setPhase] = useState('loading')
   const [loggingOut, setLoggingOut] = useState(false)
+  const [showDelete, setShowDelete] = useState(false)
+  const [deletePin, setDeletePin] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   useEffect(() => {
     document.title = 'Profile | FLINT WiFi'
@@ -48,6 +52,30 @@ export default function ProfilePage() {
       await logout()
     } finally {
       window.location.replace('/')
+    }
+  }
+
+  async function permanentlyDelete(event) {
+    event.preventDefault()
+    if (!/^[0-9]{6}$/.test(deletePin) || deleting) {
+      setDeleteError('Enter your 6-digit PIN to confirm deletion.')
+      return
+    }
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await deleteAccount(deletePin)
+      window.location.replace('/')
+    } catch (error) {
+      if (error instanceof AccountApiError && error.status === 401) {
+        setDeleteError('The PIN is incorrect. Your account was not deleted.')
+      } else if (error instanceof AccountApiError && [502, 503].includes(error.status)) {
+        setDeleteError('The network is temporarily unavailable. Nothing was deleted; please try again.')
+      } else {
+        setDeleteError('Your account could not be completely deleted. Please try again or contact support.')
+      }
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -114,6 +142,40 @@ export default function ProfilePage() {
             {loggingOut ? 'Logging out...' : 'Log out'}
           </button>
         </section>
+
+        <section className="profile-delete-card">
+          <div>
+            <h2>Delete account permanently</h2>
+            <p>This removes your Flint account, plan history, sessions, hotspot user, and remembered hotspot cookies. This cannot be undone.</p>
+          </div>
+          {!showDelete ? (
+            <button className="delete-account-open" type="button" onClick={() => setShowDelete(true)}>Delete account</button>
+          ) : (
+            <form className="delete-account-form" onSubmit={permanentlyDelete}>
+              <label htmlFor="delete-account-pin">Enter your PIN to confirm</label>
+              <input
+                autoComplete="off"
+                id="delete-account-pin"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="6-digit PIN"
+                type="password"
+                value={deletePin}
+                onChange={(event) => {
+                  setDeletePin(event.target.value.replace(/\D/g, ''))
+                  setDeleteError('')
+                }}
+              />
+              {deleteError && <p className="delete-account-error" role="alert">{deleteError}</p>}
+              <div>
+                <button type="button" onClick={() => { setShowDelete(false); setDeletePin(''); setDeleteError('') }}>Cancel</button>
+                <button className="confirm-delete" disabled={deleting} type="submit">{deleting ? 'Deleting...' : 'Delete permanently'}</button>
+              </div>
+            </form>
+          )}
+        </section>
+
+        <p className="profile-legal-links"><a href="/terms">Terms</a><span>&middot;</span><a href="/privacy">Privacy</a></p>
       </div>
     </main>
   )

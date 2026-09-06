@@ -10,6 +10,7 @@ def test_registration_contract_normalizes_identity_and_keeps_hostel_assignment()
         username=" AmaB ",
         router_id=" platinum ",
         pin="483265",
+        accepted_terms=True,
     )
 
     assert request.email == "ama@example.com"
@@ -27,6 +28,7 @@ def test_registration_contract_rejects_invalid_pin(pin: str) -> None:
             username="amab",
             router_id="platinum",
             pin=pin,
+            accepted_terms=True,
         )
 
 
@@ -38,6 +40,7 @@ def test_registration_completion_keeps_pin_and_code_out_of_repr() -> None:
         router_id="platinum",
         pin="483265",
         code="042731",
+        accepted_terms=True,
     )
 
     assert "483265" not in repr(request)
@@ -52,4 +55,16 @@ def test_registration_contract_rejects_special_characters(username: str) -> None
             username=username,
             router_id="platinum",
             pin="483265",
+            accepted_terms=True,
+        )
+
+
+def test_registration_contract_requires_terms_acceptance() -> None:
+    with pytest.raises(ValidationError):
+        RegistrationStartRequest(
+            email="ama@example.com",
+            username="amab",
+            router_id="platinum",
+            pin="483265",
+            accepted_terms=False,
         )

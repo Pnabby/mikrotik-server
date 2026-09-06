@@ -109,6 +109,7 @@ function ProfileEditor({ hostel, profile, onClose, onSave }) {
     dataLimitGb: profile.data_limit_bytes ? profile.data_limit_bytes / 1024 ** 3 : '',
     deviceLimit: profile.device_limit || profile.shared_users || 1,
     downloadSpeed: profile.download_speed || '',
+    isPromotional: profile.is_promotional || false,
     isVisible: profile.is_registration_profile ? false : profile.is_visible,
   })
   const [error, setError] = useState('')
@@ -150,6 +151,7 @@ function ProfileEditor({ hostel, profile, onClose, onSave }) {
           : Math.round(Number(form.dataLimitGb) * 1024 ** 3),
         device_limit: form.deviceLimit === '' ? null : Number(form.deviceLimit),
         download_speed: form.downloadSpeed.trim() || null,
+        is_promotional: profile.is_registration_profile ? false : form.isPromotional,
         is_visible: profile.is_registration_profile ? false : form.isVisible,
       })
     } catch (saveError) {
@@ -253,6 +255,11 @@ function ProfileEditor({ hostel, profile, onClose, onSave }) {
 
           <section className="visibility-section">
             <label className={profile.is_registration_profile ? 'publish-toggle disabled' : 'publish-toggle'}>
+              <div><strong>Promotional package</strong><small>{profile.is_registration_profile ? 'The registration profile cannot be used as a promotion.' : 'Highlight this offer publicly and allow each customer to purchase it only once.'}</small></div>
+              <input checked={profile.is_registration_profile ? false : form.isPromotional} disabled={profile.is_registration_profile} name="isPromotional" type="checkbox" onChange={change} />
+              <span aria-hidden="true" />
+            </label>
+            <label className={profile.is_registration_profile ? 'publish-toggle disabled' : 'publish-toggle'}>
               <div><strong>Publish to customers</strong><small>{profile.is_registration_profile ? 'This system profile is reserved for registration.' : 'Make this plan available on the customer purchase page.'}</small></div>
               <input checked={form.isVisible} disabled={profile.is_registration_profile} name="isVisible" type="checkbox" onChange={change} />
               <span aria-hidden="true" />
@@ -297,7 +304,13 @@ function ProfileTable({ profiles, query, filter, onEdit }) {
                 <td>
                   <div className="profile-name-cell">
                     <span className={profile.is_visible ? 'profile-table-icon active' : 'profile-table-icon'}><Icon name="tag" /></span>
-                    <div><strong>{profile.display_name || titleFromProfile(profile.mikrotik_profile)}</strong><small>{profile.mikrotik_profile}</small></div>
+                    <div>
+                      <span className="profile-title-line">
+                        <strong>{profile.display_name || titleFromProfile(profile.mikrotik_profile)}</strong>
+                        {profile.is_promotional && <em>Promo</em>}
+                      </span>
+                      <small>{profile.mikrotik_profile}</small>
+                    </div>
                   </div>
                 </td>
                 <td><div className="router-details"><span>{profile.rate_limit || 'No rate limit'}</span><small>{profile.download_speed ? `${profile.download_speed} download` : 'Download speed not set'}</small></div></td>

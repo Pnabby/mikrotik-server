@@ -172,6 +172,67 @@ class MikroTikClient:
             disabled="yes" if disabled else "no",
         )
 
+    def activate_hotspot_user(
+        self,
+        *,
+        username: str,
+        profile: str,
+        comment: str,
+        data_limit_bytes: int | None,
+    ) -> dict[str, str]:
+        """Apply a paid plan to an existing HotSpot user and return read-back state."""
+        hotspot_user = self.get_hotspot_user(username)
+        if hotspot_user is None or not hotspot_user.get("id"):
+            raise RouterOsApiError("HotSpot user is missing an id.")
+        if self.get_hotspot_user_profile(profile) is None:
+            raise RouterOsApiError("HotSpot profile does not exist.")
+
+        api = self.connect()
+        user_resource = api.get_resource("/ip/hotspot/user")
+        # End every old-plan session before clearing counters. Otherwise RouterOS
+        # may write the terminated session's usage back after the reset. Do not
+        # disable an already-enabled customer during these preparatory operations:
+        # if RouterOS becomes unavailable midway through, their existing plan must
+        # remain usable and a later retry can safely repeat the cleanup.
+        active_resource = api.get_resource("/ip/hotspot/active")
+        normalized_username = _normalize_routeros_name(username)
+        self._remove_hotspot_records(active_resource, normalized_username)
+        cookie_resource = api.get_resource("/ip/hotspot/cookie")
+        self._remove_hotspot_records(cookie_resource, normalized_username)
+        user_resource.call("reset-counters", {"numbers": hotspot_user["id"]})
+        # Apply the allowance, marker, and enabled state together as the final
+        # operation. Replacing the comment deliberately removes any old login=
+        # timestamp so the new plan starts only after the next portal login.
+        user_resource.set(
+            **{
+                "id": hotspot_user["id"],
+                "profile": _normalize_routeros_name(profile),
+                "limit-bytes-total": str(data_limit_bytes or 0),
+                "comment": comment,
+                "disabled": "no",
+            }
+        )
+        updated_user = self.get_hotspot_user(username)
+        if updated_user is None:
+            raise RouterOsApiError("HotSpot user disappeared after activation.")
+        return updated_user
+
+    @staticmethod
+    def _remove_hotspot_records(resource, username: str) -> None:
+        """Remove sessions/cookies and tolerate RouterOS expiry races."""
+        for record in resource.get(user=username):
+            if record_id := record.get("id"):
+                try:
+                    resource.remove(id=record_id)
+                except RouterOsApiError:
+                    # Active sessions and their cookies can disappear together.
+                    # A fresh read below distinguishes that harmless race from an
+                    # actual cleanup failure.
+                    pass
+
+        if resource.get(user=username):
+            raise RouterOsApiError("HotSpot authentication records could not be cleared.")
+
     def remove_hotspot_user(self, username: str, *, expected_comment: str) -> bool:
         hotspot_user = self.get_hotspot_user(username)
         if hotspot_user is None:
@@ -183,6 +244,26 @@ class MikroTikClient:
         if not hotspot_user_id:
             return False
         api = self.connect()
+        api.get_resource("/ip/hotspot/user").remove(id=hotspot_user_id)
+        return self.get_hotspot_user(username) is None
+
+    def delete_hotspot_user(self, username: str) -> bool:
+        """Remove a customer's RouterOS identity and every reusable login record."""
+        hotspot_user = self.get_hotspot_user(username)
+        if hotspot_user is None:
+            return True
+
+        hotspot_user_id = hotspot_user.get("id")
+        if not hotspot_user_id:
+            return False
+        api = self.connect()
+        normalized_username = _normalize_routeros_name(username)
+        self._remove_hotspot_records(
+            api.get_resource("/ip/hotspot/active"), normalized_username
+        )
+        self._remove_hotspot_records(
+            api.get_resource("/ip/hotspot/cookie"), normalized_username
+        )
         api.get_resource("/ip/hotspot/user").remove(id=hotspot_user_id)
         return self.get_hotspot_user(username) is None
 
@@ -261,8 +342,45 @@ class MikroTikClient:
         if not target_session_id:
             return False
 
+        # Clear only this device's saved HotSpot login before ending its active
+        # session. Doing this first ensures a cookie-cleanup failure does not leave
+        # the UI reporting a completed logout while the device can still auto-login.
+        target_mac_address = _normalize_mac_address(
+            target_session.get("mac-address") or mac_address
+        )
+        if target_mac_address:
+            self._remove_hotspot_device_cookie(
+                api.get_resource("/ip/hotspot/cookie"),
+                _normalize_routeros_name(username),
+                target_mac_address,
+            )
         active_resource.remove(id=target_session_id)
         return True
+
+    @staticmethod
+    def _remove_hotspot_device_cookie(
+        cookie_resource,
+        username: str,
+        mac_address: str,
+    ) -> None:
+        def matching_cookies() -> list[dict[str, str]]:
+            return [
+                cookie
+                for cookie in cookie_resource.get(user=username)
+                if _normalize_mac_address(cookie.get("mac-address")) == mac_address
+            ]
+
+        for hotspot_cookie in matching_cookies():
+            if cookie_id := hotspot_cookie.get("id"):
+                try:
+                    cookie_resource.remove(id=cookie_id)
+                except RouterOsApiError:
+                    # RouterOS may expire a cookie between the read and remove.
+                    # The verification below treats that race as success.
+                    pass
+
+        if matching_cookies():
+            raise RouterOsApiError("The device HotSpot cookie could not be cleared.")
 
     def get_hotspot_total_bytes_used(self, username: str) -> int:
         hotspot_user = self.get_hotspot_user(username)

@@ -1,23 +1,33 @@
 from collections.abc import Generator
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings, get_settings
 from app.core.exceptions import ServiceError
+from app.core.security import Argon2PinHasher
 from app.db.session import get_db_session
 from app.dependencies import ROUTER_UNAVAILABLE_DETAIL, mikrotik_client_context
 from app.integrations.mikrotik.registry import UnknownRouterError, get_router
+from app.integrations.paystack import paystack_is_configured
 from app.models.customer import Customer
 from app.routes.auth import get_authenticated_customer
-from app.schemas.account import CustomerAccountResponse
+from app.schemas.account import (
+    CustomerAccountResponse,
+    DeleteAccountRequest,
+    DeleteAccountResponse,
+)
 from app.schemas.hotspot import DeviceLogoutResponse, HotspotStatusResponse
+from app.services.account_deletion import AccountDeletionService
 from app.services.customer_account import CustomerAccountService
+from app.services.customer_auth import CUSTOMER_SESSION_COOKIE
 from app.services.hotspot import HotspotService
 
 router = APIRouter(prefix="/api/account", tags=["account"])
 SessionDependency = Annotated[Session, Depends(get_db_session)]
 CustomerDependency = Annotated[Customer, Depends(get_authenticated_customer)]
+SettingsDependency = Annotated[Settings, Depends(get_settings)]
 
 
 def get_customer_hotspot_service(
@@ -44,8 +54,12 @@ CustomerHotspotServiceDependency = Annotated[
 def account_overview(
     customer: CustomerDependency,
     session: SessionDependency,
+    settings: SettingsDependency,
 ) -> CustomerAccountResponse:
-    return CustomerAccountService(session).overview(customer)
+    return CustomerAccountService(
+        session,
+        payments_enabled=paystack_is_configured(settings),
+    ).overview(customer)
 
 
 @router.get("/hotspot-status", response_model=HotspotStatusResponse)
@@ -73,3 +87,36 @@ def logout_customer_hotspot_device(
         mac_address=mac_address,
         ip_address=ip_address,
     )
+
+
+@router.post("/delete", response_model=DeleteAccountResponse)
+def delete_customer_account(
+    payload: DeleteAccountRequest,
+    request: Request,
+    response: Response,
+    customer: CustomerDependency,
+    session: SessionDependency,
+    settings: SettingsDependency,
+) -> DeleteAccountResponse:
+    try:
+        router_definition = get_router(session, customer.router_id)
+    except UnknownRouterError as exc:
+        raise ServiceError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            ROUTER_UNAVAILABLE_DETAIL,
+        ) from exc
+    with mikrotik_client_context(router_definition) as client:
+        AccountDeletionService(session).delete_with_pin(
+            customer,
+            payload.pin.get_secret_value(),
+            Argon2PinHasher.from_settings(settings),
+            client,
+        )
+    response.delete_cookie(
+        CUSTOMER_SESSION_COOKIE,
+        path="/",
+        secure=request.url.scheme == "https",
+        httponly=True,
+        samesite="lax",
+    )
+    return DeleteAccountResponse()

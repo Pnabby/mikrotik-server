@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, SecretStr, field_validator
 
-from app.models.enums import AccountStatus, PaymentStatus, SubscriptionStatus
+from app.models.enums import AccountStatus, ActivationStatus, PaymentStatus, SubscriptionStatus
 from app.schemas.registration import PIN_PATTERN, normalize_username
 
 
@@ -15,6 +15,7 @@ class CustomerLoginRequest(BaseModel):
 
     username: str
     pin: SecretStr
+    remember_me: bool = False
 
     @field_validator("username")
     @classmethod
@@ -38,11 +39,27 @@ class LogoutResponse(BaseModel):
     logged_out: bool = True
 
 
+class DeleteAccountRequest(BaseModel):
+    pin: SecretStr
+
+    @field_validator("pin")
+    @classmethod
+    def validate_pin(cls, value: SecretStr) -> SecretStr:
+        if not PIN_PATTERN.fullmatch(value.get_secret_value()):
+            raise ValueError("Enter your 6-digit PIN.")
+        return value
+
+
+class DeleteAccountResponse(BaseModel):
+    deleted: bool = True
+
+
 class CurrentPlanResponse(BaseModel):
     name: str
     status: SubscriptionStatus
     starts_at: datetime | None
     expires_at: datetime | None
+    duration_seconds: int | None
     data_limit_bytes: int | None
     device_limit: int | None
     download_speed: str | None
@@ -58,6 +75,8 @@ class AvailablePlanResponse(BaseModel):
     data_limit_bytes: int | None
     device_limit: int | None
     download_speed: str | None
+    is_promotional: bool
+    promo_claimed: bool
     purchase_available: bool
 
 
@@ -65,6 +84,7 @@ class PreviousPlanResponse(BaseModel):
     id: uuid.UUID
     name: str
     status: SubscriptionStatus
+    purchased_at: datetime
     starts_at: datetime | None
     expires_at: datetime | None
     ended_at: datetime | None
@@ -76,6 +96,7 @@ class PurchaseHistoryResponse(BaseModel):
     amount: Decimal
     currency: str
     status: PaymentStatus
+    activation_status: ActivationStatus | None
     purchased_at: datetime
     paid_at: datetime | None
 

@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,9 +22,13 @@ from app.routes import (
     health,
     hotspot,
     pages,
+    payments,
     registration,
     routers,
 )
+from app.services.retention import delete_inactive_accounts
+
+logger = logging.getLogger(__name__)
 
 _PUBLIC_ERROR_DETAILS = {
     status.HTTP_400_BAD_REQUEST: "Invalid request.",
@@ -41,9 +50,40 @@ def _public_error_detail(status_code: int) -> str:
     return _PUBLIC_ERROR_DETAILS.get(status_code, "Request failed.")
 
 
+async def _retention_worker() -> None:
+    settings = get_settings()
+    # Let startup and migrations settle before the first pass.
+    await asyncio.sleep(60)
+    while True:
+        try:
+            deleted_count = await asyncio.to_thread(delete_inactive_accounts, settings)
+            if deleted_count:
+                logger.info("Deleted %s inactive customer account(s).", deleted_count)
+        except Exception:
+            logger.exception("Inactive account cleanup failed and will retry.")
+        await asyncio.sleep(settings.inactive_account_cleanup_interval_seconds)
+
+
+@asynccontextmanager
+async def _lifespan(_application: FastAPI):
+    settings = get_settings()
+    retention_task = None
+    if settings.inactive_account_cleanup_enabled:
+        retention_task = asyncio.create_task(_retention_worker())
+    try:
+        yield
+    finally:
+        if retention_task is not None:
+            retention_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await retention_task
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
-    application = FastAPI(title="MikroTik Hotspot API", version="0.3.0")
+    application = FastAPI(
+        title="MikroTik Hotspot API", version="0.3.0", lifespan=_lifespan
+    )
     origins = settings.cors_origins
     application.add_middleware(
         CORSMiddleware,
@@ -59,6 +99,7 @@ def create_app() -> FastAPI:
     application.include_router(registration.router)
     application.include_router(auth.router)
     application.include_router(account.router)
+    application.include_router(payments.router)
     application.include_router(admin_auth.router)
     application.include_router(admin_profiles.router)
     application.include_router(pages.router)

@@ -19,6 +19,7 @@ const INITIAL_FORM = {
   routerId: '',
   pin: '',
   confirmPin: '',
+  acceptedTerms: false,
 }
 
 function validate(form, routers) {
@@ -44,6 +45,8 @@ function validate(form, routers) {
 
   if (!form.confirmPin) errors.confirmPin = 'Enter the 6-digit PIN again.'
   else if (form.pin !== form.confirmPin) errors.confirmPin = 'The PINs do not match.'
+
+  if (!form.acceptedTerms) errors.acceptedTerms = 'Accept the Terms and Conditions to continue.'
 
   return errors
 }
@@ -220,7 +223,13 @@ export default function SignupPage() {
   }, [form.routerId, form.username, step, usernameAvailability])
 
   function updateField(event) {
-    const { name, value } = event.target
+    const { name, value, checked, type } = event.target
+    if (type === 'checkbox') {
+      setForm((current) => ({ ...current, [name]: checked }))
+      setErrors((current) => ({ ...current, [name]: '' }))
+      setApiError('')
+      return
+    }
     let normalizedValue = value
     if (name === 'username') normalizedValue = value.toLowerCase().replace(/[^a-z0-9]/g, '')
     if (name === 'pin' || name === 'confirmPin') normalizedValue = value.replace(/\D/g, '')
@@ -239,6 +248,7 @@ export default function SignupPage() {
         username: form.username.trim().toLowerCase(),
         router_id: form.routerId,
         pin: form.pin,
+        accepted_terms: form.acceptedTerms,
       })
       setChallenge(result)
       setOtpCode('')
@@ -289,6 +299,7 @@ export default function SignupPage() {
           username: form.username.trim().toLowerCase(),
           router_id: form.routerId,
           pin: form.pin,
+          accepted_terms: form.acceptedTerms,
         },
         otpCode,
       )
@@ -571,6 +582,22 @@ export default function SignupPage() {
               <FieldError id="signup-confirm-pin-error" message={errors.confirmPin} />
             </div>
 
+            <div className="signup-field signup-field-wide terms-field">
+              <label className="auth-checkbox" htmlFor="accepted-terms">
+                <input
+                  checked={form.acceptedTerms}
+                  id="accepted-terms"
+                  name="acceptedTerms"
+                  type="checkbox"
+                  onChange={updateField}
+                  aria-describedby={errors.acceptedTerms ? 'accepted-terms-error' : undefined}
+                  aria-invalid={Boolean(errors.acceptedTerms)}
+                />
+                <span>I agree to the <a href="/terms" target="_blank" rel="noreferrer">Terms and Conditions</a> and acknowledge the <a href="/privacy" target="_blank" rel="noreferrer">Privacy Notice</a>.</span>
+              </label>
+              <FieldError id="accepted-terms-error" message={errors.acceptedTerms} />
+            </div>
+
             {apiError && <div className="otp-api-error signup-field-wide" role="alert">{apiError}</div>}
 
             <button
@@ -589,6 +616,7 @@ export default function SignupPage() {
           </form>
 
           <p className="signup-footer-link">Already have an account? <a href="/">Log in</a></p>
+          <p className="auth-legal-links"><a href="/terms">Terms</a><span>&middot;</span><a href="/privacy">Privacy</a></p>
         </section>
       </div>
     </main>

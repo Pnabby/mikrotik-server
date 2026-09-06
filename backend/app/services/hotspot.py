@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from calendar import monthrange
-from datetime import datetime, timedelta
 import hmac
+from calendar import monthrange
+from datetime import UTC, datetime, timedelta
 
 from fastapi import status
 
@@ -10,7 +10,6 @@ from app.core.exceptions import ServiceError
 from app.integrations.mikrotik.client import MikroTikClient, infer_device_type
 from app.integrations.mikrotik.registry import RouterDefinition
 from app.schemas.hotspot import DeviceLogoutResponse, DeviceSession, HotspotStatusResponse
-
 
 LOGIN_COMMENT_PREFIX = "login="
 LOGIN_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -93,7 +92,7 @@ class HotspotService:
             username=resolved_username,
             session_id=normalized_session_id,
             removed=True,
-            detail="Device session logged out successfully.",
+            detail="Device session and saved login removed successfully.",
         )
 
     def _build_status(
@@ -177,7 +176,7 @@ def _resolve_hotspot_username(hotspot_user: dict[str, str], fallback_username: s
 
 def _resolve_logged_in_date(comment: object) -> str | None:
     login_datetime = _parse_login_datetime(comment)
-    return _format_datetime(login_datetime) if login_datetime else _normalize_optional_text(comment)
+    return _format_datetime(login_datetime) if login_datetime else None
 
 
 def _resolve_expiry_date(profile: object, comment: object) -> str | None:
@@ -209,14 +208,15 @@ def _resolve_expiry_profile(profile: object) -> str | None:
 def _parse_login_datetime(comment: object) -> datetime | None:
     if not isinstance(comment, str):
         return None
-    normalized_comment = comment.strip()
-    if not normalized_comment.lower().startswith(LOGIN_COMMENT_PREFIX):
-        return None
-    datetime_value = normalized_comment[len(LOGIN_COMMENT_PREFIX) :].strip()
-    try:
-        return datetime.strptime(datetime_value, LOGIN_DATETIME_FORMAT)
-    except ValueError:
-        return None
+    for component in comment.strip().split(";"):
+        key, separator, value = component.partition("=")
+        if not separator or key.strip().casefold() != LOGIN_COMMENT_PREFIX.rstrip("="):
+            continue
+        try:
+            return datetime.strptime(value.strip(), LOGIN_DATETIME_FORMAT).replace(tzinfo=UTC)
+        except ValueError:
+            return None
+    return None
 
 
 def _add_one_month(value: datetime) -> datetime:

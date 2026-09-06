@@ -6,7 +6,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.customer import Customer
-from app.models.enums import SubscriptionStatus
+from app.models.enums import PaymentStatus, SubscriptionStatus
 from app.models.package import Package, RouterPackageProfile
 from app.models.subscription import Subscription
 from app.models.transaction import Transaction
@@ -20,8 +20,9 @@ from app.schemas.account import (
 
 
 class CustomerAccountService:
-    def __init__(self, session: Session) -> None:
+    def __init__(self, session: Session, *, payments_enabled: bool = False) -> None:
         self._session = session
+        self._payments_enabled = payments_enabled
 
     def overview(self, customer: Customer) -> CustomerAccountResponse:
         now = datetime.now(UTC)
@@ -44,7 +45,10 @@ class CustomerAccountService:
 
         previous_subscriptions = self._session.scalars(
             select(Subscription)
-            .options(joinedload(Subscription.package))
+            .options(
+                joinedload(Subscription.package),
+                joinedload(Subscription.transaction),
+            )
             .where(
                 Subscription.customer_id == customer.id,
                 or_(
@@ -75,11 +79,19 @@ class CustomerAccountService:
                 RouterPackageProfile.is_active.is_(True),
                 Package.is_active.is_(True),
             )
-            .order_by(Package.amount, Package.duration_seconds)
+            .order_by(Package.is_promotional.desc(), Package.amount, Package.duration_seconds)
         ).all()
+        successfully_purchased_package_ids = set(
+            self._session.scalars(
+                select(Transaction.package_id).where(
+                    Transaction.customer_id == customer.id,
+                    Transaction.payment_status == PaymentStatus.SUCCESS,
+                )
+            ).all()
+        )
         transactions = self._session.scalars(
             select(Transaction)
-            .options(joinedload(Transaction.package))
+            .options(joinedload(Transaction.package), joinedload(Transaction.activation))
             .where(Transaction.customer_id == customer.id)
             .order_by(Transaction.created_at.desc())
             .limit(50)
@@ -118,6 +130,7 @@ class CustomerAccountService:
                     status=current_subscription.status,
                     starts_at=current_subscription.starts_at,
                     expires_at=current_subscription.expires_at,
+                    duration_seconds=current_subscription.package.duration_seconds,
                     data_limit_bytes=current_subscription.package.data_limit_bytes,
                     device_limit=current_subscription.package.device_limit,
                     download_speed=_download_speed(
@@ -138,8 +151,19 @@ class CustomerAccountService:
                     data_limit_bytes=mapping.package.data_limit_bytes,
                     device_limit=mapping.package.device_limit,
                     download_speed=_download_speed(mapping),
-                    # This becomes true only when a purchase endpoint is connected.
-                    purchase_available=False,
+                    is_promotional=mapping.package.is_promotional,
+                    promo_claimed=(
+                        mapping.package.is_promotional
+                        and mapping.package.id in successfully_purchased_package_ids
+                    ),
+                    purchase_available=(
+                        self._payments_enabled
+                        and mapping.package.amount > 0
+                        and not (
+                            mapping.package.is_promotional
+                            and mapping.package.id in successfully_purchased_package_ids
+                        )
+                    ),
                 )
                 for mapping in plan_mappings
             ],
@@ -151,6 +175,12 @@ class CustomerAccountService:
                         presentation_by_package.get(subscription.package_id),
                     ),
                     status=subscription.status,
+                    purchased_at=(
+                        subscription.transaction.paid_at
+                        or subscription.transaction.created_at
+                        if subscription.transaction is not None
+                        else subscription.created_at
+                    ),
                     starts_at=subscription.starts_at,
                     expires_at=subscription.expires_at,
                     ended_at=subscription.ended_at,
@@ -167,6 +197,9 @@ class CustomerAccountService:
                     amount=transaction.amount,
                     currency=transaction.currency,
                     status=transaction.payment_status,
+                    activation_status=(
+                        transaction.activation.status if transaction.activation else None
+                    ),
                     purchased_at=transaction.created_at,
                     paid_at=transaction.paid_at,
                 )

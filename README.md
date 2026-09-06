@@ -136,7 +136,20 @@ metadata is stored in PostgreSQL. In particular:
   and defaults to `disabled`; the RouterOS user itself is also created disabled.
 - `API_CORS_ORIGINS`, `FRONTEND_URL`, and optionally `FRONTEND_DIST_DIR` control
   public-app/backend deployment boundaries.
-- Paystack environment names are reserved, but no payment implementation is enabled.
+- `PAYSTACK_SECRET_KEY` and `PAYSTACK_PUBLIC_KEY` hold keys from the same Paystack mode.
+  `PAYSTACK_CALLBACK_URL` must be the public HTTPS backend callback URL. Paystack signs
+  webhooks with the secret key, so `PAYSTACK_WEBHOOK_SECRET` normally stays empty.
+
+For local Paystack testing, expose backend port 8000 through an HTTPS tunnel and configure
+these two URLs in the Paystack dashboard, replacing `YOUR_TUNNEL_HOST` with the active host:
+
+```text
+Callback URL: https://YOUR_TUNNEL_HOST/api/payments/paystack/callback
+Webhook URL:  https://YOUR_TUNNEL_HOST/api/payments/paystack/webhook
+```
+
+Quick-tunnel addresses are temporary. When the tunnel changes, update both the dashboard
+and `PAYSTACK_CALLBACK_URL` before testing another purchase.
 
 Do not commit `backend/.env`. Database passwords, shared router credentials, Paystack keys,
 and other deployment-specific secrets do not have tracked defaults.
@@ -198,14 +211,16 @@ npm run build --prefix admin
   for verification, activation, reconciliation, and subscriptions.
 - `backend/app/integrations/mikrotik/` contains RouterOS behavior and database catalogue
   resolution.
-- `backend/app/integrations/paystack/` is the future Paystack adapter boundary.
+- `backend/app/integrations/paystack/` owns server-side checkout initialization and
+  transaction verification.
 - `backend/app/db/` owns the engine/session factory; database access is injectable.
 - `public/src/services/` owns HTTP calls while `pages/` owns the signup, login, and
   authenticated account workflows.
 
-Registration email OTP delivery, account provisioning, login sessions, and the account
-overview are implemented. Signup creates and verifies a disabled RouterOS HotSpot user
-before committing the inactive customer to PostgreSQL. Plan purchasing stays disabled in
-the portal until the Paystack payment and activation workflow is implemented and packages
-are configured. PIN recovery, activation/retry jobs, and reconciliation remain separate
+Registration email OTP delivery, account provisioning, login sessions, the account
+overview, Paystack checkout, signed webhooks, payment verification, and RouterOS package
+activation are implemented. Signup creates and verifies a disabled RouterOS HotSpot user
+before committing the inactive customer to PostgreSQL. A verified payment is recorded
+independently from router activation, and customers can retry a pending activation without
+being charged again. Automated scheduled reconciliation and PIN recovery remain separate
 vertical slices.

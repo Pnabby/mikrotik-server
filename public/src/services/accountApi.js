@@ -1,10 +1,11 @@
 const API_URL = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
 
 export class AccountApiError extends Error {
-  constructor(status) {
+  constructor(status, detail = '') {
     super(`Account request failed with status ${status}`)
     this.name = 'AccountApiError'
     this.status = status
+    this.detail = detail
   }
 }
 
@@ -17,14 +18,24 @@ async function request(path, options = {}) {
     },
     ...options,
   })
-  if (!response.ok) throw new AccountApiError(response.status)
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}))
+    throw new AccountApiError(response.status, body.detail || '')
+  }
   return response.json()
 }
 
-export function login(username, pin) {
+export function login(username, pin, rememberMe = false) {
   return request('/api/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ username, pin }),
+    body: JSON.stringify({ username, pin, remember_me: rememberMe }),
+  })
+}
+
+export function deleteAccount(pin) {
+  return request('/api/account/delete', {
+    method: 'POST',
+    body: JSON.stringify({ pin }),
   })
 }
 
@@ -38,6 +49,17 @@ export function getAccount() {
 
 export function getAccountHotspotStatus() {
   return request('/api/account/hotspot-status')
+}
+
+export function initializePlanPurchase(packageId) {
+  return request('/api/payments/initialize', {
+    method: 'POST',
+    body: JSON.stringify({ package_id: packageId }),
+  })
+}
+
+export function verifyPlanPurchase(reference) {
+  return request(`/api/payments/${encodeURIComponent(reference)}/verify`, { method: 'POST' })
 }
 
 export function disconnectAccountDevice(device) {
