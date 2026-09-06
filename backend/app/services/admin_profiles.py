@@ -19,7 +19,9 @@ from app.models.enums import AuditActorType, RouterStatus
 from app.models.package import Package, RouterPackageProfile
 from app.models.router import Router
 from app.schemas.admin_profiles import (
+    AdminHostelCreate,
     AdminHostelSummary,
+    AdminHostelUpdate,
     AdminProfileUpdate,
     AdminRouterProfileResponse,
 )
@@ -49,18 +51,129 @@ class AdminProfileService:
             )
         }
         return [
-            AdminHostelSummary(
-                router_id=router.id,
-                name=router.name,
-                location=router.location,
-                status=router.status,
-                is_active=router.is_active,
-                last_seen_at=router.last_seen_at,
-                configured_profiles=int(profile_counts.get(router.id, (0, 0))[0] or 0),
-                published_profiles=int(profile_counts.get(router.id, (0, 0))[1] or 0),
-            )
+            self._hostel_response(router, profile_counts.get(router.id, (0, 0)))
             for router in routers
         ]
+
+    def update_hostel(
+        self,
+        *,
+        router: Router,
+        update: AdminHostelUpdate,
+        admin: AdminUser,
+        ip_address: str | None,
+    ) -> AdminHostelSummary:
+        before = {
+            "name": router.name,
+            "location": router.location,
+            "vpn_host": router.vpn_host,
+            "api_port": router.api_port,
+            "hotspot_network": router.hotspot_network,
+            "display_order": router.display_order,
+            "is_active": router.is_active,
+        }
+        router.name = update.name
+        router.location = update.location
+        router.vpn_host = update.vpn_host
+        router.api_port = update.api_port
+        router.hotspot_network = update.hotspot_network
+        router.display_order = update.display_order
+        router.is_active = update.is_active
+        try:
+            self._session.add(
+                AuditLog(
+                    actor_type=AuditActorType.ADMIN,
+                    admin_user_id=admin.id,
+                    action="router.updated",
+                    entity_type="router",
+                    entity_id=router.id,
+                    details={"before": before, "after": update.model_dump()},
+                    ip_address=(ip_address or "")[:64] or None,
+                )
+            )
+            self._session.commit()
+        except IntegrityError as exc:
+            self._session.rollback()
+            raise ServiceError(
+                status.HTTP_409_CONFLICT,
+                "Another hostel already uses this VPN host.",
+            ) from exc
+        except SQLAlchemyError as exc:
+            self._session.rollback()
+            raise ServiceError(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "The hostel details could not be saved.",
+            ) from exc
+        counts = self._session.execute(
+            select(
+                func.count(RouterPackageProfile.id),
+                func.sum(RouterPackageProfile.is_active.cast(Integer)),
+            ).where(RouterPackageProfile.router_id == router.id)
+        ).one()
+        return self._hostel_response(router, counts)
+
+    def create_hostel(
+        self,
+        *,
+        create: AdminHostelCreate,
+        admin: AdminUser,
+        ip_address: str | None,
+    ) -> AdminHostelSummary:
+        router = Router(
+            id=create.router_id,
+            name=create.name,
+            location=create.location,
+            vpn_host=create.vpn_host,
+            api_port=create.api_port,
+            hotspot_network=create.hotspot_network,
+            display_order=create.display_order,
+            is_active=create.is_active,
+        )
+        self._session.add(router)
+        try:
+            self._session.flush()
+            self._session.add(
+                AuditLog(
+                    actor_type=AuditActorType.ADMIN,
+                    admin_user_id=admin.id,
+                    action="router.created",
+                    entity_type="router",
+                    entity_id=router.id,
+                    details={"after": create.model_dump()},
+                    ip_address=(ip_address or "")[:64] or None,
+                )
+            )
+            self._session.commit()
+        except IntegrityError as exc:
+            self._session.rollback()
+            raise ServiceError(
+                status.HTTP_409_CONFLICT,
+                "A hostel with this ID or VPN host already exists.",
+            ) from exc
+        except SQLAlchemyError as exc:
+            self._session.rollback()
+            raise ServiceError(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "The hostel could not be created.",
+            ) from exc
+        return self._hostel_response(router, (0, 0))
+
+    @staticmethod
+    def _hostel_response(router: Router, counts: tuple[object, object]) -> AdminHostelSummary:
+        return AdminHostelSummary(
+            router_id=router.id,
+            name=router.name,
+            location=router.location,
+            vpn_host=router.vpn_host,
+            api_port=router.api_port,
+            hotspot_network=router.hotspot_network,
+            display_order=router.display_order,
+            status=router.status,
+            is_active=router.is_active,
+            last_seen_at=router.last_seen_at,
+            configured_profiles=int(counts[0] or 0),
+            published_profiles=int(counts[1] or 0),
+        )
 
     def list_profiles(
         self,

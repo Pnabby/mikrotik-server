@@ -13,7 +13,9 @@ from app.models.enums import AdminRole
 from app.models.router import Router
 from app.routes.admin_auth import get_authenticated_admin
 from app.schemas.admin_profiles import (
+    AdminHostelCreate,
     AdminHostelSummary,
+    AdminHostelUpdate,
     AdminProfileUpdate,
     AdminRouterProfileResponse,
 )
@@ -32,6 +34,49 @@ def list_hostels(
     settings: SettingsDependency,
 ) -> list[AdminHostelSummary]:
     return AdminProfileService(session, settings).list_hostels()
+
+
+@router.post(
+    "/hostels",
+    response_model=AdminHostelSummary,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_hostel(
+    payload: AdminHostelCreate,
+    request: Request,
+    admin: AdminDependency,
+    session: SessionDependency,
+    settings: SettingsDependency,
+) -> AdminHostelSummary:
+    if admin.role not in {AdminRole.OPERATOR, AdminRole.ADMINISTRATOR}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    return AdminProfileService(session, settings).create_hostel(
+        create=payload,
+        admin=admin,
+        ip_address=request.client.host if request.client else None,
+    )
+
+
+@router.put("/hostels/{router_id}", response_model=AdminHostelSummary)
+def update_hostel(
+    router_id: str,
+    payload: AdminHostelUpdate,
+    request: Request,
+    admin: AdminDependency,
+    session: SessionDependency,
+    settings: SettingsDependency,
+) -> AdminHostelSummary:
+    if admin.role not in {AdminRole.OPERATOR, AdminRole.ADMINISTRATOR}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    router_model = session.get(Router, router_id)
+    if router_model is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    return AdminProfileService(session, settings).update_hostel(
+        router=router_model,
+        update=payload,
+        admin=admin,
+        ip_address=request.client.host if request.client else None,
+    )
 
 
 @router.get(

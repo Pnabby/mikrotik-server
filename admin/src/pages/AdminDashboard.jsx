@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 
 import {
   AdminApiError,
+  createHostel,
   listHostelProfiles,
   listHostels,
   logout,
   saveHostelProfile,
+  updateHostel,
 } from '../services/adminApi'
 
 const DURATION_UNITS = {
@@ -278,6 +280,132 @@ function ProfileEditor({ hostel, profile, onClose, onSave }) {
   )
 }
 
+function HostelEditor({ hostel, canEdit, onClose, onSave }) {
+  const isNew = !hostel
+  const [form, setForm] = useState({
+    routerId: hostel?.router_id || '',
+    name: hostel?.name || '',
+    location: hostel?.location || '',
+    vpnHost: hostel?.vpn_host || '',
+    apiPort: hostel?.api_port || 8728,
+    hotspotNetwork: hostel?.hotspot_network || '',
+    displayOrder: hostel?.display_order ?? 0,
+    isActive: hostel?.is_active ?? true,
+  })
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  function change(event) {
+    const { name, value, checked, type } = event.target
+    setForm((current) => ({ ...current, [name]: type === 'checkbox' ? checked : value }))
+    setError('')
+  }
+
+  async function submit(event) {
+    event.preventDefault()
+    if (!canEdit) return
+    if ((isNew && !/^[a-z0-9][a-z0-9-]{1,63}$/.test(form.routerId)) || form.name.trim().length < 2 || !form.vpnHost.trim() || (isNew && !form.hotspotNetwork.trim())) {
+      setError(isNew ? 'Enter a valid hostel ID, name, VPN host, and hotspot network.' : 'Enter a hostel name and VPN host.')
+      return
+    }
+    setSaving(true)
+    try {
+      await onSave({
+        ...(isNew ? { router_id: form.routerId } : {}),
+        name: form.name.trim(),
+        location: form.location.trim() || null,
+        vpn_host: form.vpnHost.trim(),
+        api_port: Number(form.apiPort),
+        hotspot_network: form.hotspotNetwork.trim() || null,
+        display_order: Number(form.displayOrder),
+        is_active: form.isActive,
+      })
+    } catch (saveError) {
+      setError(saveError.message || 'The hostel details could not be saved.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="profile-drawer-backdrop" role="presentation" onMouseDown={onClose}>
+      <aside aria-labelledby="hostel-editor-title" aria-modal="true" className="profile-drawer hostel-drawer" role="dialog" onMouseDown={(event) => event.stopPropagation()}>
+        <header className="profile-drawer-header">
+          <div><p className="dashboard-kicker">Database record</p><h2 id="hostel-editor-title">{isNew ? 'Add hostel' : 'Hostel details'}</h2></div>
+          <button aria-label="Close hostel details" type="button" onClick={onClose}><Icon name="close" /></button>
+        </header>
+
+        {!isNew && <div className="hostel-record-summary">
+          <span><Icon name="building" /></span>
+          <div><small>Stable hostel ID</small><strong>{hostel.router_id}</strong><p>This identifier cannot be changed because customer and payment records refer to it.</p></div>
+        </div>}
+
+        <form className="profile-editor-form hostel-editor-form" onSubmit={submit}>
+          <section>
+            <div className="editor-section-heading"><span>1</span><div><h3>Public details</h3><p>The name and location shown across the service.</p></div></div>
+            {isNew && <label className="editor-field"><span>Hostel ID</span><input autoCapitalize="none" maxLength="64" name="routerId" placeholder="e.g. platinum-hostel" spellCheck="false" value={form.routerId} onChange={(event) => setForm((current) => ({ ...current, routerId: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') }))} /><small>Use lowercase letters, numbers, and hyphens. This cannot be changed later.</small></label>}
+            <label className="editor-field"><span>Hostel name</span><input disabled={!canEdit} maxLength="120" name="name" value={form.name} onChange={change} /></label>
+            <label className="editor-field"><span>Location <em>Optional</em></span><input disabled={!canEdit} maxLength="255" name="location" placeholder="e.g. North campus" value={form.location} onChange={change} /></label>
+          </section>
+
+          <section>
+            <div className="editor-section-heading"><span>2</span><div><h3>Router connection</h3><p>Database settings used to reach this hostel&apos;s MikroTik router.</p></div></div>
+            <label className="editor-field"><span>VPN host</span><input disabled={!canEdit} maxLength="255" name="vpnHost" value={form.vpnHost} onChange={change} /></label>
+            <div className="editor-two-columns">
+              <label className="editor-field"><span>API port</span><input disabled={!canEdit} max="65535" min="1" name="apiPort" step="1" type="number" value={form.apiPort} onChange={change} /></label>
+              <label className="editor-field"><span>Display order</span><input disabled={!canEdit} min="0" name="displayOrder" step="1" type="number" value={form.displayOrder} onChange={change} /></label>
+            </div>
+            <label className="editor-field"><span>Hotspot network <em>Optional</em></span><input disabled={!canEdit} maxLength="255" name="hotspotNetwork" placeholder="e.g. 192.168.88.0/24" value={form.hotspotNetwork} onChange={change} /></label>
+          </section>
+
+          <section className="visibility-section">
+            <label className={canEdit ? 'publish-toggle' : 'publish-toggle disabled'}>
+              <div><strong>Hostel active</strong><small>Allow customers to select and use this hostel.</small></div>
+              <input checked={form.isActive} disabled={!canEdit} name="isActive" type="checkbox" onChange={change} /><span aria-hidden="true" />
+            </label>
+          </section>
+
+          {!canEdit && !isNew && <div className="hostel-readonly-note"><Icon name="alert" />Your viewer role has read-only access to these details.</div>}
+          {error && <div className="editor-error" role="alert"><Icon name="alert" />{error}</div>}
+          <footer className="profile-drawer-actions">
+            <button className="drawer-cancel" disabled={saving} type="button" onClick={onClose}>{canEdit ? 'Cancel' : 'Close'}</button>
+            {canEdit && <button className="drawer-save" disabled={saving} type="submit">{saving ? 'Saving details...' : isNew ? 'Add hostel' : 'Save details'}</button>}
+          </footer>
+        </form>
+      </aside>
+    </div>
+  )
+}
+
+function HostelTable({ hostels, canEdit, loading, onAdd, onEdit, onProfiles }) {
+  return (
+    <section className="hostels-card">
+      <header className="hostels-card-heading">
+        <div><h2>All hostels</h2><p>View and manage the router locations stored in the database.</p></div>
+        {canEdit && <button type="button" onClick={onAdd}>+ Add hostel</button>}
+      </header>
+      {loading ? (
+        <div className="profiles-loading"><span className="admin-page-spinner" /><p>Loading hostel records...</p></div>
+      ) : !hostels.length ? (
+        <div className="profiles-empty"><Icon name="building" /><h3>No hostels added</h3><p>Add your first hostel to begin configuring WiFi plans.</p></div>
+      ) : (
+        <div className="hostels-table-wrap">
+          <table className="hostels-table">
+            <thead><tr><th>Hostel</th><th>Connection</th><th>Plans</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr></thead>
+            <tbody>{hostels.map((hostel) => <tr key={hostel.router_id}>
+              <td><div className="hostel-name-cell"><span><Icon name="building" /></span><div><strong>{hostel.name}</strong><small>{hostel.location || hostel.router_id}</small></div></div></td>
+              <td><div className="router-details"><span>{hostel.vpn_host}:{hostel.api_port}</span><small>{hostel.hotspot_network || 'Network not set'}</small></div></td>
+              <td><div className="router-details"><span>{hostel.published_profiles} published</span><small>{hostel.configured_profiles} configured</small></div></td>
+              <td><span className={`hostel-state ${hostel.is_active ? 'active' : ''}`}><i />{hostel.is_active ? 'Active' : 'Inactive'}</span></td>
+              <td><div className="hostel-row-actions"><button type="button" onClick={() => onEdit(hostel.router_id)}>{canEdit ? 'Edit' : 'View'}</button><button type="button" onClick={() => onProfiles(hostel.router_id)}>Plans</button></div></td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  )
+}
+
 function ProfileTable({ profiles, query, filter, onEdit }) {
   const visibleProfiles = profiles.filter((profile) => {
     const matchesQuery = `${profile.display_name || ''} ${profile.mikrotik_profile}`
@@ -327,6 +455,7 @@ function ProfileTable({ profiles, query, filter, onEdit }) {
 }
 
 export default function AdminDashboard({ admin, onSessionExpired }) {
+  const [view, setView] = useState('profiles')
   const [hostels, setHostels] = useState([])
   const [selectedId, setSelectedId] = useState('')
   const [profiles, setProfiles] = useState([])
@@ -336,6 +465,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('all')
   const [editingProfile, setEditingProfile] = useState(null)
+  const [viewingHostel, setViewingHostel] = useState(false)
   const [toast, setToast] = useState('')
   const [signingOut, setSigningOut] = useState(false)
 
@@ -368,7 +498,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
   }, [])
 
   useEffect(() => {
-    if (!selectedId) return
+    if (!selectedId || view !== 'profiles') return
     let active = true
     setLoadingProfiles(true)
     setPageError('')
@@ -391,7 +521,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
       })
       .finally(() => { if (active) setLoadingProfiles(false) })
     return () => { active = false }
-  }, [selectedId])
+  }, [selectedId, view])
 
   async function refreshProfiles() {
     if (!selectedId) return
@@ -441,14 +571,58 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
     try { await logout() } finally { onSessionExpired() }
   }
 
+  async function saveHostel(payload) {
+    try {
+      const saved = await updateHostel(selectedId, payload)
+      setHostels((current) => current
+        .map((hostel) => hostel.router_id === saved.router_id ? saved : hostel)
+        .sort((left, right) => left.display_order - right.display_order || left.name.localeCompare(right.name)))
+      setViewingHostel(false)
+      setToast('Hostel details saved.')
+      window.setTimeout(() => setToast(''), 3500)
+    } catch (error) {
+      if (error instanceof AdminApiError && error.status === 401) onSessionExpired()
+      throw new Error(error instanceof AdminApiError && error.status === 409
+        ? 'That VPN host is already assigned to another hostel.'
+        : 'The hostel details could not be saved. Please try again.')
+    }
+  }
+
+  async function addHostel(payload) {
+    try {
+      const saved = await createHostel(payload)
+      setHostels((current) => [...current, saved]
+        .sort((left, right) => left.display_order - right.display_order || left.name.localeCompare(right.name)))
+      setSelectedId(saved.router_id)
+      setViewingHostel(false)
+      setToast('Hostel added successfully.')
+      window.setTimeout(() => setToast(''), 3500)
+    } catch (error) {
+      if (error instanceof AdminApiError && error.status === 401) onSessionExpired()
+      throw new Error(error instanceof AdminApiError && error.status === 409
+        ? 'That hostel ID or VPN host is already in use.'
+        : 'The hostel could not be added. Please try again.')
+    }
+  }
+
+  function openHostel(routerId) {
+    setSelectedId(routerId)
+    setViewingHostel('details')
+  }
+
+  function openProfiles(routerId) {
+    setSelectedId(routerId)
+    setView('profiles')
+  }
+
   return (
     <div className="admin-dashboard">
       <aside className="dashboard-sidebar">
         <Brand />
         <nav aria-label="Admin navigation">
           <p>Workspace</p>
-          <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}><Icon name="grid" />Overview</button>
-          <button className="active" type="button"><Icon name="tag" />Profile catalogue</button>
+          <button className={view === 'hostels' ? 'active' : ''} type="button" onClick={() => setView('hostels')}><Icon name="building" />Hostels</button>
+          <button className={view === 'profiles' ? 'active' : ''} type="button" onClick={() => setView('profiles')}><Icon name="tag" />Profile catalogue</button>
           <p>Management</p>
           <button className="coming-soon" disabled type="button"><Icon name="users" />Customers<small>Soon</small></button>
           <button className="coming-soon" disabled type="button"><Icon name="receipt" />Transactions<small>Soon</small></button>
@@ -468,6 +642,13 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
         </header>
 
         <div className="dashboard-content">
+          <div className="dashboard-mobile-tabs"><button className={view === 'hostels' ? 'active' : ''} type="button" onClick={() => setView('hostels')}>Hostels</button><button className={view === 'profiles' ? 'active' : ''} type="button" onClick={() => setView('profiles')}>Profiles</button></div>
+          {view === 'hostels' ? <>
+            <header className="dashboard-page-heading">
+              <div><p className="dashboard-kicker">Network management</p><h1>Hostels</h1><p>Add and manage the hostel routers stored in the database.</p></div>
+            </header>
+            <HostelTable canEdit={admin.role !== 'viewer'} hostels={hostels} loading={loadingHostels} onAdd={() => setViewingHostel('new')} onEdit={openHostel} onProfiles={openProfiles} />
+          </> : <>
           <header className="dashboard-page-heading">
             <div><p className="dashboard-kicker">Network catalogue</p><h1>Hostel profiles</h1><p>Turn MikroTik profiles into clear, customer-ready WiFi plans.</p></div>
             <div className="hostel-selector">
@@ -488,7 +669,10 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
                 <span className={`hostel-live-dot ${selectedHostel?.status === 'online' ? 'online' : ''}`} />
                 <div><h2>{selectedHostel?.name || 'Select a hostel'}</h2><p>{selectedHostel?.location || selectedHostel?.router_id || 'Choose a hostel to view its router profiles.'}</p></div>
               </div>
-              <button disabled={loadingProfiles || !selectedHostel?.is_active} type="button" onClick={refreshProfiles}><Icon name="refresh" />{loadingProfiles ? 'Syncing...' : 'Sync from router'}</button>
+              <div className="catalogue-heading-actions">
+                <button disabled={!selectedHostel} type="button" onClick={() => setViewingHostel('details')}><Icon name="settings" />View details</button>
+                <button disabled={loadingProfiles || !selectedHostel?.is_active} type="button" onClick={refreshProfiles}><Icon name="refresh" />{loadingProfiles ? 'Syncing...' : 'Sync from router'}</button>
+              </div>
             </header>
 
             <div className="catalogue-toolbar">
@@ -506,10 +690,13 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
               <ProfileTable filter={filter} profiles={profiles} query={query} onEdit={setEditingProfile} />
             )}
           </section>
+          </>}
         </div>
       </main>
 
       {editingProfile && selectedHostel && <ProfileEditor hostel={selectedHostel} profile={editingProfile} onClose={() => setEditingProfile(null)} onSave={saveProfile} />}
+      {viewingHostel === 'details' && selectedHostel && <HostelEditor canEdit={admin.role !== 'viewer'} hostel={selectedHostel} onClose={() => setViewingHostel(false)} onSave={saveHostel} />}
+      {viewingHostel === 'new' && <HostelEditor canEdit hostel={null} onClose={() => setViewingHostel(false)} onSave={addHostel} />}
       {toast && <div className="dashboard-toast" role="status"><Icon name="check" />{toast}</div>}
     </div>
   )

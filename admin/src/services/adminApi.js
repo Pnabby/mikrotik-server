@@ -40,6 +40,20 @@ export function listHostels() {
   return request('/api/admin/hostels')
 }
 
+export function createHostel(hostel) {
+  return request('/api/admin/hostels', {
+    method: 'POST',
+    body: JSON.stringify(hostel),
+  })
+}
+
+export function updateHostel(routerId, hostel) {
+  return request(`/api/admin/hostels/${encodeURIComponent(routerId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(hostel),
+  })
+}
+
 export function listHostelProfiles(routerId) {
   return request(`/api/admin/hostels/${encodeURIComponent(routerId)}/profiles`)
 }

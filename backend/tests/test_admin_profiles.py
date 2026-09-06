@@ -135,6 +135,10 @@ def test_admin_lists_hostels_and_live_router_profiles(profile_client: TestClient
         "router_id": "platinum",
         "name": "Platinum Hostel",
         "location": "North campus",
+        "vpn_host": "192.0.2.3",
+        "api_port": 8728,
+        "hotspot_network": "198.51.100.64/26",
+        "display_order": 0,
         "status": "unknown",
         "is_active": True,
         "last_seen_at": None,
@@ -152,6 +156,96 @@ def test_admin_lists_hostels_and_live_router_profiles(profile_client: TestClient
     assert profiles[0]["shared_users"] == 2
     assert profiles[0]["is_configured"] is False
     assert profiles[1]["is_registration_profile"] is True
+
+
+def test_admin_updates_hostel_database_details_and_audits_change(
+    profile_client: TestClient,
+    admin_profile_session: Session,
+) -> None:
+    _login(profile_client)
+
+    response = profile_client.put(
+        "/api/admin/hostels/platinum",
+        json={
+            "name": "Platinum Hall",
+            "location": "West campus",
+            "vpn_host": "192.0.2.44",
+            "api_port": 8729,
+            "hotspot_network": "198.51.100.128/26",
+            "display_order": 4,
+            "is_active": False,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Platinum Hall"
+    assert response.json()["vpn_host"] == "192.0.2.44"
+    router = admin_profile_session.get(Router, "platinum")
+    assert router is not None
+    assert router.location == "West campus"
+    assert router.api_port == 8729
+    assert router.is_active is False
+    audit_log = admin_profile_session.scalar(
+        select(AuditLog).where(AuditLog.action == "router.updated")
+    )
+    assert audit_log is not None
+    assert audit_log.details is not None
+    assert audit_log.details["before"]["name"] == "Platinum Hostel"
+    assert audit_log.details["after"]["name"] == "Platinum Hall"
+
+    response = profile_client.put(
+        "/api/admin/hostels/platinum",
+        json={**response.json(), "is_active": True},
+    )
+    assert response.status_code == 200
+    assert response.json()["is_active"] is True
+
+
+def test_admin_adds_a_hostel_to_the_database_catalogue(
+    profile_client: TestClient,
+    admin_profile_session: Session,
+) -> None:
+    _login(profile_client)
+
+    response = profile_client.post(
+        "/api/admin/hostels",
+        json={
+            "router_id": "gold-hostel",
+            "name": "Gold Hostel",
+            "location": "South campus",
+            "vpn_host": "192.0.2.55",
+            "api_port": 8728,
+            "hotspot_network": "203.0.113.0/25",
+            "display_order": 2,
+            "is_active": True,
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["router_id"] == "gold-hostel"
+    assert response.json()["configured_profiles"] == 0
+    created = admin_profile_session.get(Router, "gold-hostel")
+    assert created is not None
+    assert created.name == "Gold Hostel"
+    audit_log = admin_profile_session.scalar(
+        select(AuditLog).where(AuditLog.action == "router.created")
+    )
+    assert audit_log is not None
+    assert audit_log.entity_id == "gold-hostel"
+
+    duplicate = profile_client.post(
+        "/api/admin/hostels",
+        json={
+            "router_id": "another-hostel",
+            "name": "Another Hostel",
+            "vpn_host": "192.0.2.55",
+            "api_port": 8728,
+            "hotspot_network": "203.0.113.128/25",
+            "display_order": 3,
+            "is_active": True,
+        },
+    )
+    assert duplicate.status_code == 409
 
 
 def test_admin_configures_customer_facing_profile_and_audits_change(
@@ -295,3 +389,17 @@ def test_viewer_cannot_change_profile_configuration(
 
     assert response.status_code == 403
     assert response.json() == {"detail": "Access denied."}
+
+    create_response = profile_client.post(
+        "/api/admin/hostels",
+        json={
+            "router_id": "viewer-hostel",
+            "name": "Viewer Hostel",
+            "vpn_host": "192.0.2.99",
+            "api_port": 8728,
+            "hotspot_network": "203.0.113.0/25",
+            "display_order": 5,
+            "is_active": True,
+        },
+    )
+    assert create_response.status_code == 403

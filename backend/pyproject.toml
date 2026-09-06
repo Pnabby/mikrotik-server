@@ -31,6 +31,7 @@ dev = [
 [project.scripts]
 flintwifi-api = "app.__main__:main"
 mikrotik = "app.cli:main"
+flintwifi-seed = "app.commands.seed:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
