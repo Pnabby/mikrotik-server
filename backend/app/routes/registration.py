@@ -48,6 +48,21 @@ class _UnavailableEmailSender:
     ) -> None:
         raise EmailDeliveryError("Brevo transactional email is not configured.")
 
+    def send_pin_reset_otp(
+        self, *, recipient: str, code: str, expires_in_minutes: int
+    ) -> None:
+        raise EmailDeliveryError("Brevo transactional email is not configured.")
+
+    def send_username_recovery_otp(
+        self, *, recipient: str, code: str, expires_in_minutes: int
+    ) -> None:
+        raise EmailDeliveryError("Brevo transactional email is not configured.")
+
+    def send_account_unlock_otp(
+        self, *, recipient: str, code: str, expires_in_minutes: int
+    ) -> None:
+        raise EmailDeliveryError("Brevo transactional email is not configured.")
+
 
 EmailSenderDependency = Annotated[OtpEmailSender, Depends(get_otp_email_sender)]
 

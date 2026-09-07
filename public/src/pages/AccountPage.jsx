@@ -537,7 +537,7 @@ export default function AccountPage() {
 
         <section className="account-section" id="plans">
           <div className="account-section-heading">
-            <div><span className="account-eyebrow">Get connected</span><h2>Available plans</h2><p>Choose the plan that fits your needs.</p></div>
+            <div><span className="account-eyebrow">Get connected</span><h2>Available plans</h2><p>Choose the plan that fits your needs. Actual internet speeds may vary depending on network congestion and your distance from the WiFi access point.</p></div>
             <VoucherIcon />
           </div>
           {availablePlans.length ? (

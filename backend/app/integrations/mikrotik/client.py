@@ -217,6 +217,27 @@ class MikroTikClient:
             raise RouterOsApiError("HotSpot user disappeared after activation.")
         return updated_user
 
+    def change_hotspot_user_password(self, username: str, password: str) -> None:
+        """Change a HotSpot password after invalidating active and remembered logins."""
+        hotspot_user = self.get_hotspot_user(username)
+        if hotspot_user is None or not hotspot_user.get("id"):
+            raise RouterOsApiError("HotSpot user is missing an id.")
+        if not password:
+            raise ValueError("A HotSpot password is required.")
+
+        api = self.connect()
+        normalized_username = _normalize_routeros_name(username)
+        self._remove_hotspot_records(
+            api.get_resource("/ip/hotspot/active"), normalized_username
+        )
+        self._remove_hotspot_records(
+            api.get_resource("/ip/hotspot/cookie"), normalized_username
+        )
+        api.get_resource("/ip/hotspot/user").set(
+            id=hotspot_user["id"],
+            password=password,
+        )
+
     @staticmethod
     def _remove_hotspot_records(resource, username: str) -> None:
         """Remove sessions/cookies and tolerate RouterOS expiry races."""

@@ -23,6 +23,7 @@ class OtpPurpose(StrEnum):
     REGISTRATION = "registration"
     USERNAME_RECOVERY = "username_recovery"
     PIN_RESET = "pin_reset"
+    ACCOUNT_UNLOCK = "account_unlock"
 
 
 class PaymentStatus(StrEnum):

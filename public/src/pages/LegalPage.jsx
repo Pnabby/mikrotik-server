@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 
 import { WifiIcon } from '../components/Icons'
 
-const EFFECTIVE_DATE = '5 September 2026'
+const EFFECTIVE_DATE = '7 September 2026'
 
 function Terms() {
   return (
@@ -26,7 +26,8 @@ function Terms() {
       <p>Do not use the service for unlawful activity, harassment, fraud, infringement, attacks, malware, unauthorized access, excessive interference with other users, or resale. We may suspend or close an account where reasonably necessary to protect users, the network, comply with law, investigate abuse, or enforce these terms.</p>
 
       <h2>6. Availability and fair limits</h2>
-      <p>WiFi performance can vary with coverage, device capability, demand, maintenance, upstream providers, and events outside our reasonable control. Advertised speeds are maximums rather than guarantees. We will use reasonable care but cannot promise uninterrupted service.</p>
+      <p>Internet speeds stated for a plan describe the maximum speed configured for that plan. Actual speeds may vary because of network congestion, the number of users sharing the network, your device, interference, and your distance from the WiFi access point.</p>
+      <p>The WiFi system and its supporting equipment require electricity to operate. Power outages at a hostel, access point, router location, or other supporting facility may cause the service to slow down, disconnect, or become completely unavailable until power is restored. Maintenance, upstream-provider failures, equipment faults, and other events outside our reasonable control may also interrupt service. We will use reasonable care to operate the service but cannot promise uninterrupted availability.</p>
 
       <h2>7. Account closure</h2>
       <p>You can permanently delete your account from Profile after confirming your PIN. Accounts with no Flint account activity for 365 days are automatically deleted once no active or pending paid plan remains. Deletion removes the Flint account and MikroTik hotspot identity, subject to records that must be retained by law or remain with independent payment and infrastructure providers under their own legal duties.</p>

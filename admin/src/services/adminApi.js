@@ -67,3 +67,14 @@ export function saveHostelProfile(routerId, mikrotikProfile, profile) {
     },
   )
 }
+
+export function getSupportSettings() {
+  return request('/api/admin/support')
+}
+
+export function saveSupportSettings(settings) {
+  return request('/api/admin/support', {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  })
+}

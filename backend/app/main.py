@@ -25,6 +25,7 @@ from app.routes import (
     payments,
     registration,
     routers,
+    support,
 )
 from app.services.retention import delete_inactive_accounts
 
@@ -38,6 +39,7 @@ _PUBLIC_ERROR_DETAILS = {
     status.HTTP_405_METHOD_NOT_ALLOWED: "Method not allowed.",
     status.HTTP_409_CONFLICT: "The request could not be completed.",
     status.HTTP_422_UNPROCESSABLE_CONTENT: "Invalid request.",
+    status.HTTP_423_LOCKED: "Account locked. Unlock it with an email verification code.",
     status.HTTP_429_TOO_MANY_REQUESTS: "Too many requests. Please try again later.",
     status.HTTP_500_INTERNAL_SERVER_ERROR: "An internal server error occurred.",
     status.HTTP_502_BAD_GATEWAY: ROUTER_UNAVAILABLE_DETAIL,
@@ -102,6 +104,7 @@ def create_app() -> FastAPI:
     application.include_router(payments.router)
     application.include_router(admin_auth.router)
     application.include_router(admin_profiles.router)
+    application.include_router(support.router)
     application.include_router(pages.router)
 
     @application.exception_handler(ServiceError)

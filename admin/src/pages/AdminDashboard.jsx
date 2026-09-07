@@ -3,10 +3,12 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   AdminApiError,
   createHostel,
+  getSupportSettings,
   listHostelProfiles,
   listHostels,
   logout,
   saveHostelProfile,
+  saveSupportSettings,
   updateHostel,
 } from '../services/adminApi'
 
@@ -406,6 +408,95 @@ function HostelTable({ hostels, canEdit, loading, onAdd, onEdit, onProfiles }) {
   )
 }
 
+function SupportSettingsPanel({ canEdit, onSessionExpired }) {
+  const [form, setForm] = useState({ phoneNumber: '', whatsappUrl: '' })
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
+  useEffect(() => {
+    let active = true
+    getSupportSettings()
+      .then((settings) => {
+        if (!active) return
+        setForm({
+          phoneNumber: settings.phone_number || '',
+          whatsappUrl: settings.whatsapp_url || '',
+        })
+      })
+      .catch((requestError) => {
+        if (!active) return
+        if (requestError instanceof AdminApiError && requestError.status === 401) {
+          onSessionExpired()
+          return
+        }
+        setError('Support details could not be loaded.')
+      })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [onSessionExpired])
+
+  function change(event) {
+    const { name, value } = event.target
+    setForm((current) => ({ ...current, [name]: value }))
+    setError('')
+    setSuccess('')
+  }
+
+  async function submit(event) {
+    event.preventDefault()
+    const phoneDigits = form.phoneNumber.replace(/\D/g, '')
+    if (form.phoneNumber && (phoneDigits.length < 7 || phoneDigits.length > 15)) {
+      setError('Enter a valid support phone number.')
+      return
+    }
+    if (form.whatsappUrl && !/^(https:\/\/)?(wa\.me|api\.whatsapp\.com|web\.whatsapp\.com)\//i.test(form.whatsappUrl)) {
+      setError('Use an official WhatsApp link, such as https://wa.me/233XXXXXXXXX.')
+      return
+    }
+    setSaving(true)
+    setError('')
+    try {
+      const saved = await saveSupportSettings({
+        phone_number: form.phoneNumber.trim() || null,
+        whatsapp_url: form.whatsappUrl.trim() || null,
+      })
+      setForm({
+        phoneNumber: saved.phone_number || '',
+        whatsappUrl: saved.whatsapp_url || '',
+      })
+      setSuccess('Help and support details saved and published to the public pages.')
+    } catch (requestError) {
+      if (requestError instanceof AdminApiError && requestError.status === 401) {
+        onSessionExpired()
+        return
+      }
+      setError('Support details could not be saved. Check the values and try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <>
+      <header className="dashboard-page-heading"><div><p className="dashboard-kicker">Public contact</p><h1>Help &amp; support</h1><p>Manage the contact options displayed throughout the customer service.</p></div></header>
+      <section className="support-settings-card">
+        <header><span><Icon name="settings" /></span><div><h2>Support contacts</h2><p>Changes appear automatically on every public page.</p></div></header>
+        {loading ? <div className="profiles-loading"><span className="admin-page-spinner" /><p>Loading support details...</p></div> : <form onSubmit={submit}>
+          <label><span>Help and support phone number</span><input disabled={!canEdit} maxLength="40" name="phoneNumber" placeholder="e.g. +233 20 000 0000" type="tel" value={form.phoneNumber} onChange={change} /><small>Customers can tap this number to call from supported devices.</small></label>
+          <label><span>WhatsApp support link</span><input disabled={!canEdit} maxLength="500" name="whatsappUrl" placeholder="https://wa.me/233200000000" type="url" value={form.whatsappUrl} onChange={change} /><small>Use an official wa.me or whatsapp.com HTTPS link.</small></label>
+          <div className="support-settings-preview"><strong>Public preview</strong><div>{form.phoneNumber ? <span>☎ {form.phoneNumber}</span> : <em>No phone number</em>}{form.whatsappUrl ? <span className="whatsapp">◉ WhatsApp</span> : <em>No WhatsApp link</em>}</div></div>
+          {!canEdit && <div className="hostel-readonly-note"><Icon name="alert" />Your viewer role has read-only access to these settings.</div>}
+          {error && <div className="editor-error" role="alert"><Icon name="alert" />{error}</div>}
+          {success && <div className="support-settings-success" role="status"><Icon name="check" />{success}</div>}
+          {canEdit && <button className="support-settings-save" disabled={saving} type="submit">{saving ? 'Saving...' : 'Save and publish'}</button>}
+        </form>}
+      </section>
+    </>
+  )
+}
+
 function ProfileTable({ profiles, query, filter, onEdit }) {
   const visibleProfiles = profiles.filter((profile) => {
     const matchesQuery = `${profile.display_name || ''} ${profile.mikrotik_profile}`
@@ -626,7 +717,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
           <p>Management</p>
           <button className="coming-soon" disabled type="button"><Icon name="users" />Customers<small>Soon</small></button>
           <button className="coming-soon" disabled type="button"><Icon name="receipt" />Transactions<small>Soon</small></button>
-          <button className="coming-soon" disabled type="button"><Icon name="settings" />Settings<small>Soon</small></button>
+          <button className={view === 'support' ? 'active' : ''} type="button" onClick={() => setView('support')}><Icon name="settings" />Help &amp; support</button>
         </nav>
         <div className="sidebar-security"><span><Icon name="check" /></span><div><strong>Secure session</strong><small>Protected admin access</small></div></div>
       </aside>
@@ -642,8 +733,8 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
         </header>
 
         <div className="dashboard-content">
-          <div className="dashboard-mobile-tabs"><button className={view === 'hostels' ? 'active' : ''} type="button" onClick={() => setView('hostels')}>Hostels</button><button className={view === 'profiles' ? 'active' : ''} type="button" onClick={() => setView('profiles')}>Profiles</button></div>
-          {view === 'hostels' ? <>
+          <div className="dashboard-mobile-tabs"><button className={view === 'hostels' ? 'active' : ''} type="button" onClick={() => setView('hostels')}>Hostels</button><button className={view === 'profiles' ? 'active' : ''} type="button" onClick={() => setView('profiles')}>Profiles</button><button className={view === 'support' ? 'active' : ''} type="button" onClick={() => setView('support')}>Support</button></div>
+          {view === 'support' ? <SupportSettingsPanel canEdit={admin.role !== 'viewer'} onSessionExpired={onSessionExpired} /> : view === 'hostels' ? <>
             <header className="dashboard-page-heading">
               <div><p className="dashboard-kicker">Network management</p><h1>Hostels</h1><p>Add and manage the hostel routers stored in the database.</p></div>
             </header>

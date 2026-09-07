@@ -17,6 +17,18 @@ class OtpEmailSender(Protocol):
         self, *, recipient: str, code: str, expires_in_minutes: int
     ) -> None: ...
 
+    def send_pin_reset_otp(
+        self, *, recipient: str, code: str, expires_in_minutes: int
+    ) -> None: ...
+
+    def send_username_recovery_otp(
+        self, *, recipient: str, code: str, expires_in_minutes: int
+    ) -> None: ...
+
+    def send_account_unlock_otp(
+        self, *, recipient: str, code: str, expires_in_minutes: int
+    ) -> None: ...
+
 
 class BrevoEmailSender:
     """Small, secret-safe adapter around Brevo's transactional email API."""
@@ -53,6 +65,61 @@ class BrevoEmailSender:
     def send_registration_otp(
         self, *, recipient: str, code: str, expires_in_minutes: int
     ) -> None:
+        self._send_otp(
+            recipient=recipient,
+            code=code,
+            expires_in_minutes=expires_in_minutes,
+            subject="Your Flint WiFi verification code",
+            heading="Verify your email",
+            instruction="Enter this code to continue creating your Flint WiFi account:",
+        )
+
+    def send_pin_reset_otp(
+        self, *, recipient: str, code: str, expires_in_minutes: int
+    ) -> None:
+        self._send_otp(
+            recipient=recipient,
+            code=code,
+            expires_in_minutes=expires_in_minutes,
+            subject="Reset your Flint WiFi PIN",
+            heading="Reset your PIN",
+            instruction="Enter this code to choose a new Flint WiFi PIN:",
+        )
+
+    def send_username_recovery_otp(
+        self, *, recipient: str, code: str, expires_in_minutes: int
+    ) -> None:
+        self._send_otp(
+            recipient=recipient,
+            code=code,
+            expires_in_minutes=expires_in_minutes,
+            subject="Recover your Flint WiFi username",
+            heading="Recover your username",
+            instruction="Enter this code to view your Flint WiFi username:",
+        )
+
+    def send_account_unlock_otp(
+        self, *, recipient: str, code: str, expires_in_minutes: int
+    ) -> None:
+        self._send_otp(
+            recipient=recipient,
+            code=code,
+            expires_in_minutes=expires_in_minutes,
+            subject="Unlock your Flint WiFi account",
+            heading="Unlock your account",
+            instruction="Enter this code to unlock your Flint WiFi account:",
+        )
+
+    def _send_otp(
+        self,
+        *,
+        recipient: str,
+        code: str,
+        expires_in_minutes: int,
+        subject: str,
+        heading: str,
+        instruction: str,
+    ) -> None:
         safe_code = escape(code)
         expiry_copy = f"{expires_in_minutes} minute" + (
             "" if expires_in_minutes == 1 else "s"
@@ -60,16 +127,16 @@ class BrevoEmailSender:
         payload = {
             "sender": {"name": self._sender_name, "email": self._sender_email},
             "to": [{"email": recipient}],
-            "subject": "Your Flint WiFi verification code",
+            "subject": subject,
             "textContent": (
-                f"Your Flint WiFi verification code is {code}. "
+                f"Your Flint WiFi code is {code}. "
                 f"It expires in {expiry_copy}. If you did not request it, ignore this email."
             ),
             "htmlContent": (
                 "<!doctype html><html><body style=\"font-family:Arial,sans-serif;"
                 "color:#212529\"><div style=\"max-width:520px;margin:0 auto;padding:24px\">"
-                "<h1 style=\"color:#4361ee;font-size:24px\">Verify your email</h1>"
-                "<p>Enter this code to continue creating your Flint WiFi account:</p>"
+                f"<h1 style=\"color:#4361ee;font-size:24px\">{escape(heading)}</h1>"
+                f"<p>{escape(instruction)}</p>"
                 f"<p style=\"font-size:32px;font-weight:700;letter-spacing:8px\">{safe_code}</p>"
                 f"<p>This code expires in {expiry_copy}.</p>"
                 "<p style=\"color:#6c757d;font-size:13px\">If you did not request this "

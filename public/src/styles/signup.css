@@ -559,6 +559,55 @@
   font-size: 0.82rem;
 }
 
+.login-recovery-link,
+.login-unlock-link,
+.reset-back-link a {
+  width: fit-content;
+  color: var(--signup-primary);
+  font-size: 0.74rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.login-recovery-link:hover,
+.login-unlock-link:hover,
+.reset-back-link a:hover { text-decoration: underline; }
+
+.login-recovery-link { margin-top: 0.1rem; }
+.login-unlock-link { justify-self: start; }
+
+.recovery-mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin-bottom: 1.25rem;
+  padding: 0.3rem;
+  border: 1px solid #e0e4ec;
+  border-radius: 10px;
+  background: #f6f7fa;
+}
+.recovery-mode-tabs button { min-height: 38px; border: 0; border-radius: 7px; color: #697386; background: transparent; font-size: 0.75rem; font-weight: 700; cursor: pointer; }
+.recovery-mode-tabs button.active { color: var(--signup-primary); background: #fff; box-shadow: 0 2px 8px rgba(30, 41, 59, 0.08); }
+
+.reset-pin-card strong { color: var(--signup-dark); }
+.reset-back-link { margin-top: 1.4rem; text-align: center; }
+.reset-pin-success { display: grid; justify-items: center; padding: 1rem 0 0.4rem; text-align: center; }
+.reset-pin-success > span {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  border-radius: 50%;
+  color: #087f5b;
+  background: #e5f8f1;
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+.reset-pin-success h2 { margin-top: 1rem; color: var(--signup-dark); font-size: 1.15rem; }
+.reset-pin-success p { max-width: 390px; margin-top: 0.5rem; color: var(--signup-muted); font-size: 0.8rem; line-height: 1.6; }
+.recovered-username { margin-top: 0.7rem; padding: 0.65rem 1.1rem; border-radius: 8px; color: var(--signup-primary); background: #eef1ff; font-size: 1rem; letter-spacing: 0.04em; }
+.reset-pin-success .signup-submit { width: 100%; margin-top: 1.4rem; color: #fff; text-align: center; text-decoration: none; }
+
 .login-create-account a {
   color: var(--signup-primary);
   font-weight: 600;
@@ -620,6 +669,8 @@
   font-weight: 600;
   cursor: pointer;
 }
+
+.otp-actions button:disabled { cursor: not-allowed; opacity: 0.45; }
 
 .otp-actions button:hover:not(:disabled) {
   text-decoration: underline;
