@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -26,6 +26,9 @@ class Customer(TimestampMixin, Base):
         CheckConstraint("email = lower(email)", name="customer_email_normalized"),
         CheckConstraint("username = lower(username)", name="customer_username_normalized"),
         CheckConstraint("char_length(username) >= 3", name="customer_username_min_length"),
+        CheckConstraint(
+            "failed_login_attempts >= 0", name="customer_failed_login_attempts_non_negative"
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -46,6 +49,10 @@ class Customer(TimestampMixin, Base):
     mikrotik_user_verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    failed_login_attempts: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0"
+    )
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     terms_accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     terms_version: Mapped[str] = mapped_column(String(20))
     privacy_notice_version: Mapped[str] = mapped_column(String(20))

@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, SecretStr, field_validator, model_validator
 
 from app.models.enums import AccountStatus, ActivationStatus, PaymentStatus, SubscriptionStatus
 from app.schemas.registration import PIN_PATTERN, normalize_username
@@ -37,6 +37,147 @@ class AuthenticatedCustomerResponse(BaseModel):
 
 class LogoutResponse(BaseModel):
     logged_out: bool = True
+
+
+def normalize_customer_email(value: str) -> str:
+    normalized = value.strip().casefold()
+    local, separator, domain = normalized.partition("@")
+    if (
+        not separator
+        or not local
+        or "." not in domain
+        or domain.startswith(".")
+        or domain.endswith(".")
+        or len(normalized) > 320
+    ):
+        raise ValueError("Enter a valid email address.")
+    return normalized
+
+
+class PinResetStartRequest(BaseModel):
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        return normalize_customer_email(value)
+
+
+class PinResetStartResponse(BaseModel):
+    challenge_id: uuid.UUID
+    destination: str
+    expires_in_seconds: int
+    resend_after_seconds: int
+
+
+class UsernameRecoveryCompleteRequest(BaseModel):
+    challenge_id: uuid.UUID
+    email: str
+    code: SecretStr
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        return normalize_customer_email(value)
+
+    @field_validator("code")
+    @classmethod
+    def validate_code(cls, value: SecretStr) -> SecretStr:
+        if not PIN_PATTERN.fullmatch(value.get_secret_value()):
+            raise ValueError("Enter exactly six digits.")
+        return value
+
+
+class UsernameRecoveryResponse(BaseModel):
+    username: str
+
+
+class AccountUnlockStartRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    username: str
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: str) -> str:
+        return normalize_username(value)
+
+
+class AccountUnlockCompleteRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    challenge_id: uuid.UUID
+    username: str
+    code: SecretStr
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: str) -> str:
+        return normalize_username(value)
+
+    @field_validator("code")
+    @classmethod
+    def validate_code(cls, value: SecretStr) -> SecretStr:
+        if not PIN_PATTERN.fullmatch(value.get_secret_value()):
+            raise ValueError("Enter exactly six digits.")
+        return value
+
+
+class AccountUnlockResponse(BaseModel):
+    unlocked: bool = True
+
+
+class PinResetCompleteRequest(BaseModel):
+    challenge_id: uuid.UUID
+    email: str
+    code: SecretStr
+    new_pin: SecretStr
+    new_pin_confirmation: SecretStr
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        return normalize_customer_email(value)
+
+    @field_validator("code", "new_pin", "new_pin_confirmation")
+    @classmethod
+    def validate_six_digits(cls, value: SecretStr) -> SecretStr:
+        if not PIN_PATTERN.fullmatch(value.get_secret_value()):
+            raise ValueError("Enter exactly six digits.")
+        return value
+
+    @model_validator(mode="after")
+    def pins_match(self) -> PinResetCompleteRequest:
+        if self.new_pin.get_secret_value() != self.new_pin_confirmation.get_secret_value():
+            raise ValueError("PIN confirmation does not match.")
+        return self
+
+
+class ChangePinRequest(BaseModel):
+    old_pin: SecretStr
+    new_pin: SecretStr
+    new_pin_confirmation: SecretStr
+
+    @field_validator("old_pin", "new_pin", "new_pin_confirmation")
+    @classmethod
+    def validate_six_digits(cls, value: SecretStr) -> SecretStr:
+        if not PIN_PATTERN.fullmatch(value.get_secret_value()):
+            raise ValueError("Enter exactly six digits.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_new_pin(self) -> ChangePinRequest:
+        old_pin = self.old_pin.get_secret_value()
+        new_pin = self.new_pin.get_secret_value()
+        if new_pin != self.new_pin_confirmation.get_secret_value():
+            raise ValueError("PIN confirmation does not match.")
+        if new_pin == old_pin:
+            raise ValueError("Choose a different PIN.")
+        return self
+
+
+class ChangePinResponse(BaseModel):
+    changed: bool = True
 
 
 class DeleteAccountRequest(BaseModel):

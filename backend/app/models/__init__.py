@@ -10,6 +10,7 @@ from app.models.package import Package, RouterPackageProfile
 from app.models.payment_event import PaymentEvent
 from app.models.router import Router
 from app.models.subscription import Subscription
+from app.models.support_settings import SupportSettings
 from app.models.transaction import Transaction
 
 __all__ = [
@@ -26,5 +27,6 @@ __all__ = [
     "Router",
     "RouterPackageProfile",
     "Subscription",
+    "SupportSettings",
     "Transaction",
 ]

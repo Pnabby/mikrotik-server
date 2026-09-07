@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 import AccountHeader from '../components/AccountHeader'
 import { AccountIcon, GlobeIcon, ShieldIcon } from '../components/Icons'
-import { AccountApiError, deleteAccount, getAccount, logout } from '../services/accountApi'
+import { AccountApiError, changePin, deleteAccount, getAccount, logout } from '../services/accountApi'
 
 function friendlyStatus(status) {
   const labels = {
@@ -22,6 +22,10 @@ export default function ProfilePage() {
   const [deletePin, setDeletePin] = useState('')
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
+  const [pinForm, setPinForm] = useState({ oldPin: '', newPin: '', confirmation: '' })
+  const [changingPin, setChangingPin] = useState(false)
+  const [pinError, setPinError] = useState('')
+  const [pinSuccess, setPinSuccess] = useState('')
 
   useEffect(() => {
     document.title = 'Profile | FLINT WiFi'
@@ -79,6 +83,47 @@ export default function ProfilePage() {
     }
   }
 
+  function updatePin(event) {
+    const { name, value } = event.target
+    setPinForm((current) => ({ ...current, [name]: value.replace(/\D/g, '').slice(0, 6) }))
+    setPinError('')
+    setPinSuccess('')
+  }
+
+  async function submitPinChange(event) {
+    event.preventDefault()
+    if (!/^[0-9]{6}$/.test(pinForm.oldPin) || !/^[0-9]{6}$/.test(pinForm.newPin)) {
+      setPinError('Enter your current PIN and a new 6-digit PIN.')
+      return
+    }
+    if (pinForm.newPin !== pinForm.confirmation) {
+      setPinError('The new PINs do not match.')
+      return
+    }
+    if (pinForm.newPin === pinForm.oldPin) {
+      setPinError('Choose a new PIN that is different from your current PIN.')
+      return
+    }
+    setChangingPin(true)
+    setPinError('')
+    setPinSuccess('')
+    try {
+      await changePin(pinForm.oldPin, pinForm.newPin, pinForm.confirmation)
+      setPinForm({ oldPin: '', newPin: '', confirmation: '' })
+      setPinSuccess('Your PIN was changed successfully on Flint and your hostel router.')
+    } catch (error) {
+      if (error instanceof AccountApiError && error.status === 401) {
+        setPinError('Your current PIN is incorrect.')
+      } else if (error instanceof AccountApiError && [502, 503].includes(error.status)) {
+        setPinError('Your hostel router is unavailable. Your PIN was not changed.')
+      } else {
+        setPinError('Your PIN could not be changed. Please try again.')
+      }
+    } finally {
+      setChangingPin(false)
+    }
+  }
+
   if (phase === 'loading') {
     return (
       <main className="account-page account-state-page" aria-busy="true">
@@ -132,6 +177,24 @@ export default function ProfilePage() {
             <p>Your account is tied to {account.hostel_name}. Contact help and support if this is incorrect.</p>
           </aside>
         </div>
+
+        <section className="profile-pin-card">
+          <div>
+            <h2>Change password (PIN)</h2>
+            <p>Enter your current PIN, then enter your new 6-digit PIN twice. We will verify your hostel router before changing it.</p>
+          </div>
+          <form className="profile-pin-form" noValidate onSubmit={submitPinChange}>
+            <label htmlFor="current-pin">Current PIN</label>
+            <input autoComplete="current-password" id="current-pin" inputMode="numeric" maxLength="6" name="oldPin" placeholder="Current 6-digit PIN" type="password" value={pinForm.oldPin} onChange={updatePin} />
+            <div className="profile-pin-columns">
+              <div><label htmlFor="new-pin">New PIN</label><input autoComplete="new-password" id="new-pin" inputMode="numeric" maxLength="6" name="newPin" placeholder="New 6-digit PIN" type="password" value={pinForm.newPin} onChange={updatePin} /></div>
+              <div><label htmlFor="confirm-new-pin">Confirm new PIN</label><input autoComplete="new-password" id="confirm-new-pin" inputMode="numeric" maxLength="6" name="confirmation" placeholder="Repeat new PIN" type="password" value={pinForm.confirmation} onChange={updatePin} /></div>
+            </div>
+            {pinError && <p className="profile-pin-message error" role="alert">{pinError}</p>}
+            {pinSuccess && <p className="profile-pin-message success" role="status">{pinSuccess}</p>}
+            <button disabled={changingPin} type="submit">{changingPin ? 'Checking router...' : 'Change PIN'}</button>
+          </form>
+        </section>
 
         <section className="profile-signout-card">
           <div>

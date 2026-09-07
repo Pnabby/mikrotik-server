@@ -14,6 +14,8 @@ from app.integrations.paystack import paystack_is_configured
 from app.models.customer import Customer
 from app.routes.auth import get_authenticated_customer
 from app.schemas.account import (
+    ChangePinRequest,
+    ChangePinResponse,
     CustomerAccountResponse,
     DeleteAccountRequest,
     DeleteAccountResponse,
@@ -23,6 +25,7 @@ from app.services.account_deletion import AccountDeletionService
 from app.services.customer_account import CustomerAccountService
 from app.services.customer_auth import CUSTOMER_SESSION_COOKIE
 from app.services.hotspot import HotspotService
+from app.services.pin_management import PinManagementService
 
 router = APIRouter(prefix="/api/account", tags=["account"])
 SessionDependency = Annotated[Session, Depends(get_db_session)]
@@ -120,3 +123,37 @@ def delete_customer_account(
         samesite="lax",
     )
     return DeleteAccountResponse()
+
+
+@router.post("/change-pin", response_model=ChangePinResponse)
+def change_customer_pin(
+    payload: ChangePinRequest,
+    request: Request,
+    customer: CustomerDependency,
+    session: SessionDependency,
+    settings: SettingsDependency,
+) -> ChangePinResponse:
+    try:
+        router_definition = get_router(session, customer.router_id)
+    except UnknownRouterError as exc:
+        raise ServiceError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            ROUTER_UNAVAILABLE_DETAIL,
+        ) from exc
+    try:
+        pin_hasher = Argon2PinHasher.from_settings(settings)
+    except ValueError as exc:
+        raise ServiceError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "PIN change is not configured.",
+        ) from exc
+    with mikrotik_client_context(router_definition) as client:
+        PinManagementService(session, settings).change_pin(
+            customer,
+            payload,
+            pin_hasher,
+            client,
+            current_session_token=request.cookies.get(CUSTOMER_SESSION_COOKIE),
+            ip_address=request.client.host if request.client else None,
+        )
+    return ChangePinResponse()

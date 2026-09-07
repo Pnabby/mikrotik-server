@@ -23,6 +23,7 @@ export default function LoginPage() {
   const [errors, setErrors] = useState({})
   const [showPin, setShowPin] = useState(false)
   const [apiError, setApiError] = useState('')
+  const [accountLocked, setAccountLocked] = useState(false)
   const [busy, setBusy] = useState(false)
   const [checkingSession, setCheckingSession] = useState(true)
 
@@ -52,6 +53,7 @@ export default function LoginPage() {
     setForm((current) => ({ ...current, [name]: normalizedValue }))
     setErrors((current) => ({ ...current, [name]: '' }))
     setApiError('')
+    setAccountLocked(false)
   }
 
   async function submit(event) {
@@ -59,6 +61,7 @@ export default function LoginPage() {
     const nextErrors = validate(form)
     setErrors(nextErrors)
     setApiError('')
+    setAccountLocked(false)
     if (Object.keys(nextErrors).length) return
 
     setBusy(true)
@@ -70,6 +73,9 @@ export default function LoginPage() {
         setApiError('The username or PIN is incorrect.')
       } else if (error instanceof AccountApiError && error.status === 403) {
         setApiError('This account is currently unavailable. Please contact help and support.')
+      } else if (error instanceof AccountApiError && error.status === 423) {
+        setApiError('This account is locked after 5 failed login attempts.')
+        setAccountLocked(true)
       } else if (error instanceof AccountApiError && error.status === 429) {
         setApiError('Too many login attempts. Please wait before trying again.')
       } else {
@@ -143,6 +149,7 @@ export default function LoginPage() {
                 <button type="button" onClick={() => setShowPin((shown) => !shown)}>{showPin ? 'Hide' : 'Show'}</button>
               </div>
               {errors.pin && <span className="signup-field-error" id="login-pin-error">{errors.pin}</span>}
+              <a className="login-recovery-link" href="/forgot-password">Forgot username or PIN?</a>
             </div>
 
             <label className="auth-checkbox remember-checkbox" htmlFor="remember-me">
@@ -157,6 +164,7 @@ export default function LoginPage() {
             </label>
 
             {apiError && <div className="otp-api-error" role="alert">{apiError}</div>}
+            {accountLocked && <a className="login-unlock-link" href={`/forgot-password?mode=unlock&username=${encodeURIComponent(form.username)}`}>Unlock account with OTP</a>}
 
             <button className="signup-submit" disabled={busy} type="submit">
               {busy ? 'Logging in...' : 'Log in'}

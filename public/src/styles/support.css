@@ -1,0 +1,46 @@
+.public-support-contact {
+  position: fixed;
+  z-index: 45;
+  right: 1rem;
+  bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.55rem 0.65rem 0.55rem 0.85rem;
+  border: 1px solid #dde2ec;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 10px 30px rgba(30, 41, 59, 0.14);
+  backdrop-filter: blur(12px);
+}
+
+.public-support-contact > span { color: #667085; font-size: 0.66rem; font-weight: 700; }
+.public-support-contact > div { display: flex; gap: 0.4rem; }
+.public-support-contact a {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0 0.65rem;
+  border-radius: 8px;
+  font-size: 0.67rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+.public-support-contact i { font-style: normal; }
+.support-phone { color: #4058c8; background: #eef1ff; }
+.support-whatsapp { color: #087f5b; background: #e7f8f1; }
+
+@media (max-width: 560px) {
+  body { padding-bottom: 68px; }
+
+  .public-support-contact {
+    right: 0.65rem;
+    bottom: 0.65rem;
+    left: 0.65rem;
+    justify-content: space-between;
+  }
+  .public-support-contact > span { display: none; }
+  .public-support-contact > div { width: 100%; }
+  .public-support-contact a { flex: 1; justify-content: center; }
+}

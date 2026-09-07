@@ -9,7 +9,7 @@ from app.models.enums import AccountStatus
 
 USERNAME_PATTERN = re.compile(r"^[a-z0-9]{3,64}$")
 PIN_PATTERN = re.compile(r"^[0-9]{6}$")
-TERMS_VERSION = "2026-09-05"
+TERMS_VERSION = "2026-09-07"
 PRIVACY_NOTICE_VERSION = "2026-09-05"
 
 

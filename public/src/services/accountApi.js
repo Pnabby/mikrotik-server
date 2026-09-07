@@ -32,6 +32,65 @@ export function login(username, pin, rememberMe = false) {
   })
 }
 
+export function startPinReset(email) {
+  return request('/api/auth/pin-reset/start', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}
+
+export function completePinReset(challengeId, email, code, newPin, confirmation) {
+  return request('/api/auth/pin-reset/complete', {
+    method: 'POST',
+    body: JSON.stringify({
+      challenge_id: challengeId,
+      email,
+      code,
+      new_pin: newPin,
+      new_pin_confirmation: confirmation,
+    }),
+  })
+}
+
+export function startUsernameRecovery(email) {
+  return request('/api/auth/username-recovery/start', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}
+
+export function completeUsernameRecovery(challengeId, email, code) {
+  return request('/api/auth/username-recovery/complete', {
+    method: 'POST',
+    body: JSON.stringify({ challenge_id: challengeId, email, code }),
+  })
+}
+
+export function startAccountUnlock(username) {
+  return request('/api/auth/account-unlock/start', {
+    method: 'POST',
+    body: JSON.stringify({ username }),
+  })
+}
+
+export function completeAccountUnlock(challengeId, username, code) {
+  return request('/api/auth/account-unlock/complete', {
+    method: 'POST',
+    body: JSON.stringify({ challenge_id: challengeId, username, code }),
+  })
+}
+
+export function changePin(oldPin, newPin, confirmation) {
+  return request('/api/account/change-pin', {
+    method: 'POST',
+    body: JSON.stringify({
+      old_pin: oldPin,
+      new_pin: newPin,
+      new_pin_confirmation: confirmation,
+    }),
+  })
+}
+
 export function deleteAccount(pin) {
   return request('/api/account/delete', {
     method: 'POST',

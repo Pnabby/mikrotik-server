@@ -9,16 +9,17 @@ from threading import Lock
 from time import monotonic
 
 from fastapi import status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import Settings
 from app.core.exceptions import ServiceError
 from app.core.security import PinHasher, PinHashingError
+from app.models.audit_log import AuditLog
 from app.models.customer import Customer
 from app.models.customer_session import CustomerSession
-from app.models.enums import AccountStatus
+from app.models.enums import AccountStatus, AuditActorType
 from app.schemas.account import CustomerLoginRequest
 
 CUSTOMER_SESSION_COOKIE = "flint_customer_session"
@@ -51,6 +52,13 @@ class LoginAttemptLimiter:
         with self._lock:
             self._attempts.pop(key, None)
 
+    def clear_for_username(self, username: str) -> None:
+        suffix = f":{username}"
+        with self._lock:
+            for key in tuple(self._attempts):
+                if key.endswith(suffix):
+                    self._attempts.pop(key, None)
+
 
 login_attempt_limiter = LoginAttemptLimiter()
 
@@ -77,21 +85,60 @@ class CustomerAuthenticationService:
         user_agent: str | None,
     ) -> CreatedCustomerSession:
         attempt_key = f"{ip_address or 'unknown'}:{request.username}"
-        login_attempt_limiter.enforce(attempt_key)
         customer = self._session.scalar(
-            select(Customer).where(Customer.username == request.username).limit(1)
+            select(Customer)
+            .where(Customer.username == request.username)
+            .with_for_update()
+            .limit(1)
         )
         pin = request.pin.get_secret_value()
         if customer is None:
+            login_attempt_limiter.enforce(attempt_key)
             try:
                 pin_hasher.hash(pin)
             except PinHashingError:
                 pass
             login_attempt_limiter.record_failure(attempt_key)
             raise ServiceError(status.HTTP_401_UNAUTHORIZED, "Invalid username or PIN.")
+        if customer.locked_at is not None:
+            raise ServiceError(status.HTTP_423_LOCKED, "Account is locked.")
         if not pin_hasher.verify(customer.pin_hash, pin):
-            login_attempt_limiter.record_failure(attempt_key)
-            raise ServiceError(status.HTTP_401_UNAUTHORIZED, "Invalid username or PIN.")
+            customer.failed_login_attempts += 1
+            locked = customer.failed_login_attempts >= _LOGIN_ATTEMPT_LIMIT
+            if locked:
+                now = datetime.now(UTC)
+                customer.locked_at = now
+                self._session.execute(
+                    update(CustomerSession)
+                    .where(
+                        CustomerSession.customer_id == customer.id,
+                        CustomerSession.revoked_at.is_(None),
+                    )
+                    .values(revoked_at=now)
+                )
+                self._session.add(
+                    AuditLog(
+                        actor_type=AuditActorType.SYSTEM,
+                        customer_id=customer.id,
+                        action="customer.account_locked",
+                        entity_type="customer",
+                        entity_id=str(customer.id),
+                        details={"failed_login_attempts": customer.failed_login_attempts},
+                        ip_address=(ip_address or "")[:64] or None,
+                    )
+                )
+            try:
+                self._session.commit()
+            except SQLAlchemyError as exc:
+                self._session.rollback()
+                raise ServiceError(
+                    status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    "Login attempt could not be recorded.",
+                ) from exc
+            raise ServiceError(
+                status.HTTP_423_LOCKED if locked else status.HTTP_401_UNAUTHORIZED,
+                "Account is locked." if locked else "Invalid username or PIN.",
+            )
         if customer.account_status in {AccountStatus.SUSPENDED, AccountStatus.CLOSED}:
             raise ServiceError(status.HTTP_403_FORBIDDEN, "Account access is unavailable.")
 
@@ -113,6 +160,7 @@ class CustomerAuthenticationService:
         )
         customer.last_login_at = now
         customer.last_activity_at = now
+        customer.failed_login_attempts = 0
         self._session.add(customer_session)
         try:
             self._session.commit()
@@ -148,6 +196,8 @@ class CustomerAuthenticationService:
         if customer_session is None:
             raise ServiceError(status.HTTP_401_UNAUTHORIZED, "Login is required.")
         customer = customer_session.customer
+        if customer.locked_at is not None:
+            raise ServiceError(status.HTTP_423_LOCKED, "Account is locked.")
         if customer.account_status in {AccountStatus.SUSPENDED, AccountStatus.CLOSED}:
             raise ServiceError(status.HTTP_403_FORBIDDEN, "Account access is unavailable.")
         customer_session.last_seen_at = now
