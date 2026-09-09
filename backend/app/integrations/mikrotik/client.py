@@ -123,6 +123,11 @@ class MikroTikClient:
         api = self.connect()
         return api.get_resource("/interface").get()
 
+    def force_ip_cloud_update(self) -> None:
+        """Ask RouterOS IP Cloud to refresh its DDNS/BTH address immediately."""
+        api = self.connect()
+        api.get_resource("/ip/cloud").call("force-update")
+
     def get_hotspot_user(self, username: str) -> dict[str, str] | None:
         api = self.connect()
         normalized_username = _normalize_routeros_name(username)

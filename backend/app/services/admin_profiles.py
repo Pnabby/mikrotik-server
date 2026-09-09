@@ -30,6 +30,8 @@ from app.schemas.admin_profiles import (
 class RouterProfileClient(Protocol):
     def get_hotspot_user_profiles(self) -> list[dict[str, str]]: ...
 
+    def force_ip_cloud_update(self) -> None: ...
+
 
 class AdminProfileService:
     def __init__(self, session: Session, settings: Settings) -> None:
@@ -54,6 +56,44 @@ class AdminProfileService:
             self._hostel_response(router, profile_counts.get(router.id, (0, 0)))
             for router in routers
         ]
+
+    def force_ip_cloud_update(
+        self,
+        *,
+        router: Router,
+        router_client: RouterProfileClient,
+        admin: AdminUser,
+        ip_address: str | None,
+    ) -> AdminHostelSummary:
+        """Run the RouterOS IP Cloud force-update action for one hostel."""
+        try:
+            router_client.force_ip_cloud_update()
+        except (OSError, RouterOsApiError):
+            router.status = RouterStatus.OFFLINE
+            self._session.commit()
+            raise
+
+        router.status = RouterStatus.ONLINE
+        router.last_seen_at = datetime.now(UTC)
+        self._session.add(
+            AuditLog(
+                actor_type=AuditActorType.ADMIN,
+                admin_user_id=admin.id,
+                action="router.ip_cloud_force_updated",
+                entity_type="router",
+                entity_id=router.id,
+                details={"router_id": router.id},
+                ip_address=(ip_address or "")[:64] or None,
+            )
+        )
+        self._session.commit()
+        counts = self._session.execute(
+            select(
+                func.count(RouterPackageProfile.id),
+                func.sum(RouterPackageProfile.is_active.cast(Integer)),
+            ).where(RouterPackageProfile.router_id == router.id)
+        ).one()
+        return self._hostel_response(router, counts)
 
     def update_hostel(
         self,
@@ -339,6 +379,62 @@ class AdminProfileService:
             mapping=mapping,
         )
 
+    def delete_profile_configuration(
+        self,
+        *,
+        router: Router,
+        mikrotik_profile: str,
+        admin: AdminUser,
+        ip_address: str | None,
+    ) -> None:
+        """Remove the local plan mapping without changing the RouterOS profile."""
+        normalized_profile = mikrotik_profile.strip()
+        if not normalized_profile or len(normalized_profile) > 120:
+            raise ServiceError(status.HTTP_404_NOT_FOUND, "Router profile was not found.")
+
+        mapping = self._session.scalar(
+            select(RouterPackageProfile)
+            .where(
+                RouterPackageProfile.router_id == router.id,
+                func.lower(RouterPackageProfile.mikrotik_profile)
+                == normalized_profile.casefold(),
+            )
+            .limit(1)
+        )
+        # Treat an already-unconfigured profile as success so bulk removal can
+        # safely target every hostel and retries remain idempotent.
+        if mapping is None:
+            return
+
+        mapping_id = str(mapping.id)
+        package_id = str(mapping.package_id)
+        canonical_name = mapping.mikrotik_profile
+        try:
+            self._session.delete(mapping)
+            self._session.add(
+                AuditLog(
+                    actor_type=AuditActorType.ADMIN,
+                    admin_user_id=admin.id,
+                    action="router_profile.configuration_deleted",
+                    entity_type="router_package_profile",
+                    entity_id=mapping_id,
+                    details={
+                        "router_id": router.id,
+                        "mikrotik_profile": canonical_name,
+                        "package_id": package_id,
+                        "router_profile_deleted": False,
+                    },
+                    ip_address=(ip_address or "")[:64] or None,
+                )
+            )
+            self._session.commit()
+        except SQLAlchemyError as exc:
+            self._session.rollback()
+            raise ServiceError(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "The router profile configuration could not be deleted.",
+            ) from exc
+
     def _profile_response(
         self,
         *,
@@ -356,7 +452,7 @@ class AdminProfileService:
             currency=package.currency if package else "GHS",
             duration_seconds=package.duration_seconds if package else None,
             data_limit_bytes=package.data_limit_bytes if package else None,
-            device_limit=package.device_limit if package else _positive_int(raw_profile, "shared-users"),
+            device_limit=package.device_limit if package else None,
             download_speed=(
                 mapping.download_speed
                 if mapping and mapping.download_speed

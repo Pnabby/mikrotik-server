@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
@@ -79,6 +79,30 @@ def update_hostel(
     )
 
 
+@router.post(
+    "/hostels/{router_id}/ip-cloud/force-update",
+    response_model=AdminHostelSummary,
+)
+def force_ip_cloud_update(
+    request: Request,
+    admin: AdminDependency,
+    router_definition: RouterDependency,
+    router_client: MikroTikClientDependency,
+    session: SessionDependency,
+    settings: SettingsDependency,
+) -> AdminHostelSummary:
+    if admin.role not in {AdminRole.OPERATOR, AdminRole.ADMINISTRATOR}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    router_model = session.get(Router, router_definition.router_id)
+    assert router_model is not None
+    return AdminProfileService(session, settings).force_ip_cloud_update(
+        router=router_model,
+        router_client=router_client,
+        admin=admin,
+        ip_address=request.client.host if request.client else None,
+    )
+
+
 @router.get(
     "/hostels/{router_id}/profiles",
     response_model=list[AdminRouterProfileResponse],
@@ -121,3 +145,29 @@ def save_router_profile(
         admin=admin,
         ip_address=request.client.host if request.client else None,
     )
+
+
+@router.delete(
+    "/hostels/{router_id}/profiles/{mikrotik_profile}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_router_profile_configuration(
+    router_id: str,
+    mikrotik_profile: str,
+    request: Request,
+    admin: AdminDependency,
+    session: SessionDependency,
+    settings: SettingsDependency,
+) -> Response:
+    if admin.role not in {AdminRole.OPERATOR, AdminRole.ADMINISTRATOR}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    router_model = session.get(Router, router_id)
+    if router_model is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    AdminProfileService(session, settings).delete_profile_configuration(
+        router=router_model,
+        mikrotik_profile=mikrotik_profile,
+        admin=admin,
+        ip_address=request.client.host if request.client else None,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
