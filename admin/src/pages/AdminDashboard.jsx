@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   AdminApiError,
   createHostel,
+  forceHostelIpCloudUpdate,
   getSupportSettings,
   listHostelProfiles,
   listHostels,
@@ -18,6 +19,20 @@ const DURATION_UNITS = {
   weeks: 7 * 24 * 60 * 60,
   months: 30 * 24 * 60 * 60,
 }
+const ALL_HOSTELS_ID = '__all_hostels__'
+const BULK_PROFILE_FIELDS = [
+  'display_name',
+  'description',
+  'amount',
+  'currency',
+  'duration_seconds',
+  'data_limit_bytes',
+  'device_limit',
+  'download_speed',
+  'is_promotional',
+  'is_visible',
+  'is_configured',
+]
 
 function Icon({ name }) {
   const paths = {
@@ -93,28 +108,86 @@ function titleFromProfile(name) {
 function statusFor(profile) {
   if (profile.is_registration_profile) return { label: 'System', className: 'system' }
   if (!profile.available_on_router) return { label: 'Missing on router', className: 'missing' }
+  if (profile.bulk_mode && !profile.configuration_consistent) return { label: 'Mixed settings', className: 'mixed' }
   if (profile.is_visible) return { label: 'Published', className: 'published' }
   if (profile.is_configured) return { label: 'Draft', className: 'draft' }
   return { label: 'Not configured', className: 'unconfigured' }
 }
 
+function profilesCommonToAll(profileLists) {
+  if (!profileLists.length) return []
+
+  return profileLists[0]
+    .filter((profile) => profile.available_on_router)
+    .map((firstProfile) => {
+      const profileName = firstProfile.mikrotik_profile.toLocaleLowerCase()
+      const matches = profileLists.map((profiles) => profiles.find((profile) => (
+        profile.available_on_router
+        && profile.mikrotik_profile.toLocaleLowerCase() === profileName
+      )))
+      if (matches.some((profile) => !profile)) return null
+
+      const sharedValue = (key, fallback = null) => (
+        matches.every((profile) => Object.is(profile[key], matches[0][key]))
+          ? matches[0][key]
+          : fallback
+      )
+      const mixedFields = BULK_PROFILE_FIELDS.filter((key) => (
+        !matches.every((profile) => Object.is(profile[key], matches[0][key]))
+      ))
+
+      return {
+        ...firstProfile,
+        package_id: null,
+        display_name: sharedValue('display_name'),
+        description: sharedValue('description'),
+        amount: sharedValue('amount'),
+        currency: sharedValue('currency', 'GHS'),
+        duration_seconds: sharedValue('duration_seconds'),
+        data_limit_bytes: sharedValue('data_limit_bytes'),
+        device_limit: sharedValue('device_limit'),
+        download_speed: sharedValue('download_speed'),
+        is_promotional: sharedValue('is_promotional', false),
+        is_configured: matches.every((profile) => profile.is_configured),
+        is_visible: matches.every((profile) => profile.is_visible),
+        is_registration_profile: matches.every((profile) => profile.is_registration_profile),
+        rate_limit: sharedValue('rate_limit'),
+        shared_users: sharedValue('shared_users'),
+        session_timeout: sharedValue('session_timeout'),
+        idle_timeout: sharedValue('idle_timeout'),
+        address_pool: sharedValue('address_pool'),
+        available_on_router: true,
+        bulk_mode: true,
+        configuration_consistent: mixedFields.length === 0,
+        configured_hostels: matches.filter((profile) => profile.is_configured).length,
+        published_hostels: matches.filter((profile) => profile.is_visible).length,
+        hostel_count: matches.length,
+        mixed_fields: mixedFields,
+      }
+    })
+    .filter(Boolean)
+}
+
 function ProfileEditor({ hostel, profile, onClose, onSave }) {
-  const startingDuration = durationParts(
-    profile.duration_seconds,
-    profile.is_configured ? null : profile.session_timeout,
-  )
+  const mixedFields = new Set(profile.mixed_fields || [])
+  const startingDuration = mixedFields.has('duration_seconds')
+    ? { value: '', unit: 'days' }
+    : durationParts(
+      profile.duration_seconds,
+      profile.is_configured ? null : profile.session_timeout,
+    )
   const [form, setForm] = useState({
-    displayName: profile.display_name || titleFromProfile(profile.mikrotik_profile),
-    description: profile.description || '',
-    amount: profile.amount ?? '',
+    displayName: mixedFields.has('display_name') ? '' : profile.display_name || titleFromProfile(profile.mikrotik_profile),
+    description: mixedFields.has('description') ? '' : profile.description || '',
+    amount: mixedFields.has('amount') ? '' : profile.amount ?? '',
     currency: profile.currency || 'GHS',
     durationValue: startingDuration.value,
     durationUnit: startingDuration.unit,
-    dataLimitGb: profile.data_limit_bytes ? profile.data_limit_bytes / 1024 ** 3 : '',
-    deviceLimit: profile.device_limit || profile.shared_users || 1,
-    downloadSpeed: profile.download_speed || '',
-    isPromotional: profile.is_promotional || false,
-    isVisible: profile.is_registration_profile ? false : profile.is_visible,
+    dataLimitGb: !mixedFields.has('data_limit_bytes') && profile.data_limit_bytes ? profile.data_limit_bytes / 1024 ** 3 : '',
+    deviceLimit: mixedFields.has('device_limit') ? '' : profile.device_limit || profile.shared_users || 1,
+    downloadSpeed: mixedFields.has('download_speed') ? '' : profile.download_speed || '',
+    isPromotional: mixedFields.has('is_promotional') ? false : profile.is_promotional || false,
+    isVisible: profile.is_registration_profile || mixedFields.has('is_visible') ? false : profile.is_visible,
   })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -190,6 +263,11 @@ function ProfileEditor({ hostel, profile, onClose, onSave }) {
             <p>The router profile name stays unchanged.</p>
           </div>
         </div>
+
+        {profile.bulk_mode && <div className={`bulk-profile-notice ${profile.configuration_consistent ? '' : 'mixed'}`}>
+          <Icon name={profile.configuration_consistent ? 'check' : 'alert'} />
+          <div><strong>Configure {profile.hostel_count} hostels together</strong><p>{profile.configuration_consistent ? 'Saving will apply these settings to every hostel where this profile exists.' : `${profile.configured_hostels} of ${profile.hostel_count} hostels are configured, with differing settings. Mixed fields are blank; saving will replace the settings on every hostel.`}</p></div>
+        </div>}
 
         <form className="profile-editor-form" onSubmit={submit}>
           <section>
@@ -379,13 +457,14 @@ function HostelEditor({ hostel, canEdit, onClose, onSave }) {
   )
 }
 
-function HostelTable({ hostels, canEdit, loading, onAdd, onEdit, onProfiles }) {
+function HostelTable({ actionError, forcingRouterId, hostels, canEdit, loading, onAdd, onEdit, onForceUpdate, onProfiles }) {
   return (
     <section className="hostels-card">
       <header className="hostels-card-heading">
         <div><h2>All hostels</h2><p>View and manage the router locations stored in the database.</p></div>
         {canEdit && <button type="button" onClick={onAdd}>+ Add hostel</button>}
       </header>
+      {actionError && <div className="hostel-action-error" role="alert"><Icon name="alert" />{actionError}</div>}
       {loading ? (
         <div className="profiles-loading"><span className="admin-page-spinner" /><p>Loading hostel records...</p></div>
       ) : !hostels.length ? (
@@ -399,7 +478,7 @@ function HostelTable({ hostels, canEdit, loading, onAdd, onEdit, onProfiles }) {
               <td><div className="router-details"><span>{hostel.vpn_host}:{hostel.api_port}</span><small>{hostel.hotspot_network || 'Network not set'}</small></div></td>
               <td><div className="router-details"><span>{hostel.published_profiles} published</span><small>{hostel.configured_profiles} configured</small></div></td>
               <td><span className={`hostel-state ${hostel.is_active ? 'active' : ''}`}><i />{hostel.is_active ? 'Active' : 'Inactive'}</span></td>
-              <td><div className="hostel-row-actions"><button type="button" onClick={() => onEdit(hostel.router_id)}>{canEdit ? 'Edit' : 'View'}</button><button type="button" onClick={() => onProfiles(hostel.router_id)}>Plans</button></div></td>
+              <td><div className="hostel-row-actions">{canEdit && <button disabled={Boolean(forcingRouterId)} title="Run IP Cloud Force Update on this router" type="button" onClick={() => onForceUpdate(hostel)}>{forcingRouterId === hostel.router_id ? 'Updating...' : 'Force IP update'}</button>}<button disabled={Boolean(forcingRouterId)} type="button" onClick={() => onEdit(hostel.router_id)}>{canEdit ? 'Edit' : 'View'}</button><button disabled={Boolean(forcingRouterId)} type="button" onClick={() => onProfiles(hostel.router_id)}>Plans</button></div></td>
             </tr>)}</tbody>
           </table>
         </div>
@@ -497,7 +576,7 @@ function SupportSettingsPanel({ canEdit, onSessionExpired }) {
   )
 }
 
-function ProfileTable({ profiles, query, filter, onEdit }) {
+function ProfileTable({ bulkMode, profiles, query, filter, onEdit }) {
   const visibleProfiles = profiles.filter((profile) => {
     const matchesQuery = `${profile.display_name || ''} ${profile.mikrotik_profile}`
       .toLowerCase().includes(query.toLowerCase())
@@ -508,7 +587,7 @@ function ProfileTable({ profiles, query, filter, onEdit }) {
   })
 
   if (!visibleProfiles.length) {
-    return <div className="profiles-empty"><Icon name="search" /><h3>No matching profiles</h3><p>Try another search or filter.</p></div>
+    return <div className="profiles-empty"><Icon name="search" /><h3>{bulkMode && !query && filter === 'all' ? 'No shared profiles' : 'No matching profiles'}</h3><p>{bulkMode && !query && filter === 'all' ? 'Only profiles available on every hostel are shown here.' : 'Try another search or filter.'}</p></div>
   }
 
   return (
@@ -535,7 +614,7 @@ function ProfileTable({ profiles, query, filter, onEdit }) {
                 <td><div className="router-details"><span>{profile.rate_limit || 'No rate limit'}</span><small>{profile.download_speed ? `${profile.download_speed} download` : 'Download speed not set'}</small></div></td>
                 <td><div className="router-details"><span>{formatMoney(profile.amount, profile.currency)}</span><small>{formatDuration(profile.duration_seconds)}</small></div></td>
                 <td><span className={`profile-status ${status.className}`}><i />{status.label}</span></td>
-                <td><button className="profile-edit-button" disabled={!profile.available_on_router} type="button" onClick={() => onEdit(profile)}>{profile.is_configured ? 'Edit' : 'Configure'}<Icon name="chevron" /></button></td>
+                <td><button className="profile-edit-button" disabled={!profile.available_on_router} type="button" onClick={() => onEdit(profile)}>{profile.bulk_mode ? (profile.is_configured ? 'Edit all' : 'Configure all') : (profile.is_configured ? 'Edit' : 'Configure')}<Icon name="chevron" /></button></td>
               </tr>
             )
           })}
@@ -558,9 +637,21 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
   const [editingProfile, setEditingProfile] = useState(null)
   const [viewingHostel, setViewingHostel] = useState(false)
   const [toast, setToast] = useState('')
+  const [hostelActionError, setHostelActionError] = useState('')
+  const [forcingRouterId, setForcingRouterId] = useState('')
   const [signingOut, setSigningOut] = useState(false)
 
-  const selectedHostel = hostels.find((hostel) => hostel.router_id === selectedId) || null
+  const bulkHostels = hostels.filter((hostel) => hostel.is_active)
+  const allHostelsSelected = selectedId === ALL_HOSTELS_ID
+  const selectedHostel = allHostelsSelected
+    ? {
+      router_id: ALL_HOSTELS_ID,
+      name: 'All hostels',
+      location: `${bulkHostels.length} active router${bulkHostels.length === 1 ? '' : 's'} selected`,
+      is_active: bulkHostels.length > 0,
+      status: bulkHostels.length > 0 && bulkHostels.every((hostel) => hostel.status === 'online') ? 'online' : 'unknown',
+    }
+    : hostels.find((hostel) => hostel.router_id === selectedId) || null
   const totals = useMemo(() => ({
     hostels: hostels.length,
     online: hostels.filter((hostel) => hostel.status === 'online').length,
@@ -573,6 +664,26 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
       return
     }
     setPageError(fallback)
+  }
+
+  async function listProfilesForSelection(routerId) {
+    if (routerId !== ALL_HOSTELS_ID) return listHostelProfiles(routerId)
+
+    const results = await Promise.allSettled(
+      bulkHostels.map((hostel) => listHostelProfiles(hostel.router_id)),
+    )
+    const failedRouterIds = new Set(results.flatMap((result, index) => (
+      result.status === 'rejected' ? [bulkHostels[index].router_id] : []
+    )))
+    setHostels((current) => current.map((hostel) => ({
+      ...hostel,
+      status: failedRouterIds.has(hostel.router_id) ? 'offline' : 'online',
+      ...(!failedRouterIds.has(hostel.router_id) ? { last_seen_at: new Date().toISOString() } : {}),
+    })))
+
+    const failedResult = results.find((result) => result.status === 'rejected')
+    if (failedResult) throw failedResult.reason
+    return profilesCommonToAll(results.map((result) => result.value))
   }
 
   useEffect(() => {
@@ -593,22 +704,28 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
     let active = true
     setLoadingProfiles(true)
     setPageError('')
-    listHostelProfiles(selectedId)
+    listProfilesForSelection(selectedId)
       .then((items) => {
         if (!active) return
         setProfiles(items)
-        setHostels((current) => current.map((hostel) => (
-          hostel.router_id === selectedId
-            ? { ...hostel, status: 'online', last_seen_at: new Date().toISOString() }
-            : hostel
-        )))
+        if (selectedId !== ALL_HOSTELS_ID) {
+          setHostels((current) => current.map((hostel) => (
+            hostel.router_id === selectedId
+              ? { ...hostel, status: 'online', last_seen_at: new Date().toISOString() }
+              : hostel
+          )))
+        }
       })
       .catch((error) => {
         if (!active) return
-        setHostels((current) => current.map((hostel) => (
-          hostel.router_id === selectedId ? { ...hostel, status: 'offline' } : hostel
-        )))
-        handleError(error, 'The router could not be reached. Check its connection and try again.')
+        if (selectedId !== ALL_HOSTELS_ID) {
+          setHostels((current) => current.map((hostel) => (
+            hostel.router_id === selectedId ? { ...hostel, status: 'offline' } : hostel
+          )))
+        }
+        handleError(error, selectedId === ALL_HOSTELS_ID
+          ? 'Every hostel must be reachable to list their shared profiles. Check the offline router and try again.'
+          : 'The router could not be reached. Check its connection and try again.')
       })
       .finally(() => { if (active) setLoadingProfiles(false) })
     return () => { active = false }
@@ -619,20 +736,56 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
     setLoadingProfiles(true)
     setPageError('')
     try {
-      setProfiles(await listHostelProfiles(selectedId))
-      setToast('Profiles refreshed from the router.')
+      setProfiles(await listProfilesForSelection(selectedId))
+      setToast(allHostelsSelected ? 'Shared profiles refreshed from all routers.' : 'Profiles refreshed from the router.')
       window.setTimeout(() => setToast(''), 3000)
     } catch (error) {
-      setHostels((current) => current.map((hostel) => (
-        hostel.router_id === selectedId ? { ...hostel, status: 'offline' } : hostel
-      )))
-      handleError(error, 'The router could not be reached. Check its connection and try again.')
+      if (!allHostelsSelected) {
+        setHostels((current) => current.map((hostel) => (
+          hostel.router_id === selectedId ? { ...hostel, status: 'offline' } : hostel
+        )))
+      }
+      handleError(error, allHostelsSelected
+        ? 'Every hostel must be reachable to list their shared profiles. Check the offline router and try again.'
+        : 'The router could not be reached. Check its connection and try again.')
     } finally {
       setLoadingProfiles(false)
     }
   }
 
   async function saveProfile(payload) {
+    if (allHostelsSelected) {
+      const results = await Promise.allSettled(bulkHostels.map((hostel) => (
+        saveHostelProfile(hostel.router_id, editingProfile.mikrotik_profile, payload)
+      )))
+      const sessionFailure = results.find((result) => (
+        result.status === 'rejected'
+        && result.reason instanceof AdminApiError
+        && result.reason.status === 401
+      ))
+      if (sessionFailure) onSessionExpired()
+
+      const savedCount = results.filter((result) => result.status === 'fulfilled').length
+      if (savedCount !== bulkHostels.length) {
+        try { setHostels(await listHostels()) } catch { /* Keep the current catalogue. */ }
+        throw new Error(`Saved ${savedCount} of ${bulkHostels.length} hostels. Retry to update the remaining hostels.`)
+      }
+
+      const saved = profilesCommonToAll(results.map((result) => [result.value]))[0]
+      setProfiles((current) => current.map((profile) => (
+        profile.mikrotik_profile.toLocaleLowerCase() === saved.mikrotik_profile.toLocaleLowerCase()
+          ? saved
+          : profile
+      )))
+      setEditingProfile(null)
+      setToast(`Plan saved for all ${bulkHostels.length} active hostels.`)
+      window.setTimeout(() => setToast(''), 3500)
+      try { setHostels(await listHostels()) } catch (error) {
+        if (error instanceof AdminApiError && error.status === 401) onSessionExpired()
+      }
+      return
+    }
+
     let saved
     try {
       saved = await saveHostelProfile(selectedId, editingProfile.mikrotik_profile, payload)
@@ -696,6 +849,32 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
     }
   }
 
+  async function forceIpCloudUpdate(hostel) {
+    setForcingRouterId(hostel.router_id)
+    setHostelActionError('')
+    try {
+      const updated = await forceHostelIpCloudUpdate(hostel.router_id)
+      setHostels((current) => current.map((item) => (
+        item.router_id === updated.router_id ? updated : item
+      )))
+      setToast(`IP Cloud force update sent to ${hostel.name}.`)
+      window.setTimeout(() => setToast(''), 3500)
+    } catch (error) {
+      if (error instanceof AdminApiError && error.status === 401) {
+        onSessionExpired()
+        return
+      }
+      if (error instanceof AdminApiError && [502, 503, 504].includes(error.status)) {
+        setHostels((current) => current.map((item) => (
+          item.router_id === hostel.router_id ? { ...item, status: 'offline' } : item
+        )))
+      }
+      setHostelActionError(`Could not force the IP Cloud update for ${hostel.name}. Check the router connection and try again.`)
+    } finally {
+      setForcingRouterId('')
+    }
+  }
+
   function openHostel(routerId) {
     setSelectedId(routerId)
     setViewingHostel('details')
@@ -738,13 +917,13 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
             <header className="dashboard-page-heading">
               <div><p className="dashboard-kicker">Network management</p><h1>Hostels</h1><p>Add and manage the hostel routers stored in the database.</p></div>
             </header>
-            <HostelTable canEdit={admin.role !== 'viewer'} hostels={hostels} loading={loadingHostels} onAdd={() => setViewingHostel('new')} onEdit={openHostel} onProfiles={openProfiles} />
+            <HostelTable actionError={hostelActionError} canEdit={admin.role !== 'viewer'} forcingRouterId={forcingRouterId} hostels={hostels} loading={loadingHostels} onAdd={() => setViewingHostel('new')} onEdit={openHostel} onForceUpdate={forceIpCloudUpdate} onProfiles={openProfiles} />
           </> : <>
           <header className="dashboard-page-heading">
             <div><p className="dashboard-kicker">Network catalogue</p><h1>Hostel profiles</h1><p>Turn MikroTik profiles into clear, customer-ready WiFi plans.</p></div>
             <div className="hostel-selector">
               <label htmlFor="hostel-select">Selected hostel</label>
-              <div><Icon name="building" /><select disabled={loadingHostels || !hostels.length} id="hostel-select" value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>{hostels.map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></div>
+              <div><Icon name="building" /><select disabled={loadingHostels || !hostels.length} id="hostel-select" value={selectedId} onChange={(event) => setSelectedId(event.target.value)}><option disabled={!bulkHostels.length} value={ALL_HOSTELS_ID}>All hostels ({bulkHostels.length} active)</option>{hostels.map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></div>
             </div>
           </header>
 
@@ -761,8 +940,8 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
                 <div><h2>{selectedHostel?.name || 'Select a hostel'}</h2><p>{selectedHostel?.location || selectedHostel?.router_id || 'Choose a hostel to view its router profiles.'}</p></div>
               </div>
               <div className="catalogue-heading-actions">
-                <button disabled={!selectedHostel} type="button" onClick={() => setViewingHostel('details')}><Icon name="settings" />View details</button>
-                <button disabled={loadingProfiles || !selectedHostel?.is_active} type="button" onClick={refreshProfiles}><Icon name="refresh" />{loadingProfiles ? 'Syncing...' : 'Sync from router'}</button>
+                <button disabled={!selectedHostel || allHostelsSelected} type="button" onClick={() => setViewingHostel('details')}><Icon name="settings" />View details</button>
+                <button disabled={loadingProfiles || !selectedHostel?.is_active} type="button" onClick={refreshProfiles}><Icon name="refresh" />{loadingProfiles ? 'Syncing...' : allHostelsSelected ? 'Sync all routers' : 'Sync from router'}</button>
               </div>
             </header>
 
@@ -778,7 +957,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
             ) : !selectedId ? (
               <div className="profiles-empty"><Icon name="building" /><h3>No hostels configured</h3><p>Add a router to the backend catalogue to get started.</p></div>
             ) : (
-              <ProfileTable filter={filter} profiles={profiles} query={query} onEdit={setEditingProfile} />
+              <ProfileTable bulkMode={allHostelsSelected} filter={filter} profiles={profiles} query={query} onEdit={setEditingProfile} />
             )}
           </section>
           </>}

@@ -86,9 +86,11 @@ Admin passwords are stored only as Argon2id hashes. Successful login uses a sepa
 HTTP-only admin session cookie. The admin workspace lets an administrator select a hostel,
 read its current HotSpot user profiles directly from MikroTik, and configure the display
 name, description, price, optional validity, data allowance, device limit, download speed,
-and customer visibility for each profile. Download speed is prefilled from the RouterOS
-rate limit when available and can be edited before saving. Profile changes are written to the audit log. The registration-only
-profile cannot be published for purchase.
+and customer visibility for each profile. Selecting **All hostels** shows only profile
+names present on every active router and applies one configuration to all of them. Download
+speed is prefilled from the RouterOS rate limit when available and can be edited before saving.
+Profile changes are written to the audit log. The registration-only profile cannot be
+published for purchase.
 
 Admin API routes:
 
@@ -97,6 +99,7 @@ POST /api/admin/auth/login
 GET  /api/admin/auth/session
 POST /api/admin/auth/logout
 GET  /api/admin/hostels
+POST /api/admin/hostels/{router_id}/ip-cloud/force-update
 GET  /api/admin/hostels/{router_id}/profiles
 PUT  /api/admin/hostels/{router_id}/profiles/{mikrotik_profile}
 ```

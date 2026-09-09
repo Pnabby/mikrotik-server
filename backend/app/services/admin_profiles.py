@@ -30,6 +30,8 @@ from app.schemas.admin_profiles import (
 class RouterProfileClient(Protocol):
     def get_hotspot_user_profiles(self) -> list[dict[str, str]]: ...
 
+    def force_ip_cloud_update(self) -> None: ...
+
 
 class AdminProfileService:
     def __init__(self, session: Session, settings: Settings) -> None:
@@ -54,6 +56,44 @@ class AdminProfileService:
             self._hostel_response(router, profile_counts.get(router.id, (0, 0)))
             for router in routers
         ]
+
+    def force_ip_cloud_update(
+        self,
+        *,
+        router: Router,
+        router_client: RouterProfileClient,
+        admin: AdminUser,
+        ip_address: str | None,
+    ) -> AdminHostelSummary:
+        """Run the RouterOS IP Cloud force-update action for one hostel."""
+        try:
+            router_client.force_ip_cloud_update()
+        except (OSError, RouterOsApiError):
+            router.status = RouterStatus.OFFLINE
+            self._session.commit()
+            raise
+
+        router.status = RouterStatus.ONLINE
+        router.last_seen_at = datetime.now(UTC)
+        self._session.add(
+            AuditLog(
+                actor_type=AuditActorType.ADMIN,
+                admin_user_id=admin.id,
+                action="router.ip_cloud_force_updated",
+                entity_type="router",
+                entity_id=router.id,
+                details={"router_id": router.id},
+                ip_address=(ip_address or "")[:64] or None,
+            )
+        )
+        self._session.commit()
+        counts = self._session.execute(
+            select(
+                func.count(RouterPackageProfile.id),
+                func.sum(RouterPackageProfile.is_active.cast(Integer)),
+            ).where(RouterPackageProfile.router_id == router.id)
+        ).one()
+        return self._hostel_response(router, counts)
 
     def update_hostel(
         self,

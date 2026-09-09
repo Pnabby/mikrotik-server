@@ -79,6 +79,30 @@ def update_hostel(
     )
 
 
+@router.post(
+    "/hostels/{router_id}/ip-cloud/force-update",
+    response_model=AdminHostelSummary,
+)
+def force_ip_cloud_update(
+    request: Request,
+    admin: AdminDependency,
+    router_definition: RouterDependency,
+    router_client: MikroTikClientDependency,
+    session: SessionDependency,
+    settings: SettingsDependency,
+) -> AdminHostelSummary:
+    if admin.role not in {AdminRole.OPERATOR, AdminRole.ADMINISTRATOR}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    router_model = session.get(Router, router_definition.router_id)
+    assert router_model is not None
+    return AdminProfileService(session, settings).force_ip_cloud_update(
+        router=router_model,
+        router_client=router_client,
+        admin=admin,
+        ip_address=request.client.host if request.client else None,
+    )
+
+
 @router.get(
     "/hostels/{router_id}/profiles",
     response_model=list[AdminRouterProfileResponse],

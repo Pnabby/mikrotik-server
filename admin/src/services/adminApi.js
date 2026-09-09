@@ -54,6 +54,13 @@ export function updateHostel(routerId, hostel) {
   })
 }
 
+export function forceHostelIpCloudUpdate(routerId) {
+  return request(
+    `/api/admin/hostels/${encodeURIComponent(routerId)}/ip-cloud/force-update`,
+    { method: 'POST' },
+  )
+}
+
 export function listHostelProfiles(routerId) {
   return request(`/api/admin/hostels/${encodeURIComponent(routerId)}/profiles`)
 }

@@ -1136,6 +1136,21 @@ a:focus-visible {
   cursor: pointer;
 }
 .hostel-row-actions button:hover { border-color: #b8afe0; background: #faf9ff; }
+.hostel-row-actions button:disabled { cursor: wait; opacity: 0.58; }
+.hostel-action-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.8rem 1rem 0;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid #f0c7c7;
+  border-radius: 8px;
+  color: #9b3333;
+  background: #fff7f7;
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+.hostel-action-error svg { width: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
 
 .catalogue-heading {
   display: flex;
@@ -1441,6 +1456,11 @@ a:focus-visible {
   background: #fff4db;
 }
 
+.profile-status.mixed {
+  color: #965a19;
+  background: #fff0dc;
+}
+
 .profile-status.system {
   color: #5e48c1;
   background: #efecfc;
@@ -1671,6 +1691,36 @@ a:focus-visible {
   color: #9792a5;
   font-size: 0.58rem;
 }
+
+.bulk-profile-notice {
+  display: flex;
+  gap: 0.7rem;
+  margin: 0.75rem 1.75rem 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #bfe6d7;
+  border-radius: 10px;
+  color: #176c50;
+  background: #f2fbf7;
+}
+
+.bulk-profile-notice.mixed {
+  border-color: #f0d2a9;
+  color: #8a5718;
+  background: #fff9ef;
+}
+
+.bulk-profile-notice > svg {
+  width: 17px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.bulk-profile-notice strong { display: block; font-size: 0.65rem; }
+.bulk-profile-notice p { margin: 0.18rem 0 0; font-size: 0.58rem; line-height: 1.5; }
 
 .hostel-record-summary {
   display: flex;
@@ -2192,7 +2242,8 @@ a:focus-visible {
     padding-left: 1.15rem;
   }
 
-  .native-profile-card {
+  .native-profile-card,
+  .bulk-profile-notice {
     margin-right: 1.15rem;
     margin-left: 1.15rem;
   }
