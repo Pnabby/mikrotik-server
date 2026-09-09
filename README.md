@@ -90,7 +90,9 @@ and customer visibility for each profile. Selecting **All hostels** shows only p
 names present on every active router and applies one configuration to all of them. Download
 speed is prefilled from the RouterOS rate limit when available and can be edited before saving.
 Profile changes are written to the audit log. The registration-only profile cannot be
-published for purchase.
+published for purchase. New configurations default to an unlimited device count. Deleting a
+configuration removes only its customer-facing plan mapping; it never deletes the profile from
+the MikroTik router.
 
 Admin API routes:
 
@@ -102,6 +104,7 @@ GET  /api/admin/hostels
 POST /api/admin/hostels/{router_id}/ip-cloud/force-update
 GET  /api/admin/hostels/{router_id}/profiles
 PUT  /api/admin/hostels/{router_id}/profiles/{mikrotik_profile}
+DELETE /api/admin/hostels/{router_id}/profiles/{mikrotik_profile}
 ```
 
 To build both React applications:

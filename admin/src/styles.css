@@ -2005,6 +2005,36 @@ a:focus-visible {
   stroke-width: 1.8;
 }
 
+.configuration-delete-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 0.8rem;
+  border: 1px solid #eed8d5;
+  border-radius: 9px;
+  background: #fffafa;
+}
+
+.configuration-delete-panel > div { display: grid; gap: 0.18rem; }
+.configuration-delete-panel strong { color: #803c36; font-size: 0.64rem; }
+.configuration-delete-panel small { color: #9a7773; font-size: 0.56rem; line-height: 1.45; }
+.configuration-delete-panel button {
+  min-height: 34px;
+  flex: 0 0 auto;
+  padding: 0 0.7rem;
+  border: 1px solid #dfaaa5;
+  border-radius: 8px;
+  color: #a13a32;
+  background: #fff;
+  font-size: 0.59rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.configuration-delete-panel button.confirming { color: #fff; background: #a13a32; }
+.configuration-delete-panel button:disabled { cursor: wait; opacity: 0.6; }
+
 .profile-drawer-actions {
   display: grid;
   grid-template-columns: 1fr 1.5fr;
@@ -2234,6 +2264,11 @@ a:focus-visible {
 
   .profile-name-cell {
     min-width: 170px;
+  }
+
+  .configuration-delete-panel {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .profile-drawer-header,

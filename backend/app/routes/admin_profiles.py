@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
@@ -145,3 +145,29 @@ def save_router_profile(
         admin=admin,
         ip_address=request.client.host if request.client else None,
     )
+
+
+@router.delete(
+    "/hostels/{router_id}/profiles/{mikrotik_profile}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_router_profile_configuration(
+    router_id: str,
+    mikrotik_profile: str,
+    request: Request,
+    admin: AdminDependency,
+    session: SessionDependency,
+    settings: SettingsDependency,
+) -> Response:
+    if admin.role not in {AdminRole.OPERATOR, AdminRole.ADMINISTRATOR}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    router_model = session.get(Router, router_id)
+    if router_model is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    AdminProfileService(session, settings).delete_profile_configuration(
+        router=router_model,
+        mikrotik_profile=mikrotik_profile,
+        admin=admin,
+        ip_address=request.client.host if request.client else None,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

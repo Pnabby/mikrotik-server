@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   AdminApiError,
   createHostel,
+  deleteHostelProfileConfiguration,
   forceHostelIpCloudUpdate,
   getSupportSettings,
   listHostelProfiles,
@@ -168,7 +169,29 @@ function profilesCommonToAll(profileLists) {
     .filter(Boolean)
 }
 
-function ProfileEditor({ hostel, profile, onClose, onSave }) {
+function withoutProfileConfiguration(profile) {
+  return {
+    ...profile,
+    package_id: null,
+    display_name: null,
+    description: null,
+    amount: null,
+    currency: 'GHS',
+    duration_seconds: null,
+    data_limit_bytes: null,
+    device_limit: null,
+    download_speed: null,
+    is_promotional: false,
+    is_configured: false,
+    is_visible: false,
+    configuration_consistent: true,
+    configured_hostels: 0,
+    published_hostels: 0,
+    mixed_fields: [],
+  }
+}
+
+function ProfileEditor({ hostel, profile, onClose, onDelete, onSave }) {
   const mixedFields = new Set(profile.mixed_fields || [])
   const startingDuration = mixedFields.has('duration_seconds')
     ? { value: '', unit: 'days' }
@@ -184,13 +207,16 @@ function ProfileEditor({ hostel, profile, onClose, onSave }) {
     durationValue: startingDuration.value,
     durationUnit: startingDuration.unit,
     dataLimitGb: !mixedFields.has('data_limit_bytes') && profile.data_limit_bytes ? profile.data_limit_bytes / 1024 ** 3 : '',
-    deviceLimit: mixedFields.has('device_limit') ? '' : profile.device_limit || profile.shared_users || 1,
+    deviceLimit: mixedFields.has('device_limit') ? '' : profile.device_limit || '',
     downloadSpeed: mixedFields.has('download_speed') ? '' : profile.download_speed || '',
     isPromotional: mixedFields.has('is_promotional') ? false : profile.is_promotional || false,
     isVisible: profile.is_registration_profile || mixedFields.has('is_visible') ? false : profile.is_visible,
   })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const canDelete = profile.is_configured || (profile.bulk_mode && profile.configured_hostels > 0)
 
   function change(event) {
     const { name, value, checked, type } = event.target
@@ -235,6 +261,25 @@ function ProfileEditor({ hostel, profile, onClose, onSave }) {
       setError(saveError.message || 'The profile could not be saved.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function removeConfiguration() {
+    if (!confirmingDelete) {
+      setConfirmingDelete(true)
+      setError('')
+      return
+    }
+
+    setDeleting(true)
+    setError('')
+    try {
+      await onDelete()
+    } catch (deleteError) {
+      setError(deleteError.message || 'The profile configuration could not be deleted.')
+      setConfirmingDelete(false)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -350,9 +395,14 @@ function ProfileEditor({ hostel, profile, onClose, onSave }) {
 
           {error && <div className="editor-error" role="alert"><Icon name="alert" />{error}</div>}
 
+          {canDelete && <div className="configuration-delete-panel">
+            <div><strong>Delete saved configuration</strong><small>This removes the customer plan settings only. The profile on the MikroTik router will not be deleted.</small></div>
+            <button className={confirmingDelete ? 'confirming' : ''} disabled={saving || deleting} type="button" onClick={removeConfiguration}>{deleting ? 'Deleting...' : confirmingDelete ? 'Confirm delete' : 'Delete configuration'}</button>
+          </div>}
+
           <footer className="profile-drawer-actions">
-            <button className="drawer-cancel" disabled={saving} type="button" onClick={onClose}>Cancel</button>
-            <button className="drawer-save" disabled={saving} type="submit">{saving ? 'Saving changes...' : 'Save changes'}</button>
+            <button className="drawer-cancel" disabled={saving || deleting} type="button" onClick={onClose}>Cancel</button>
+            <button className="drawer-save" disabled={saving || deleting} type="submit">{saving ? 'Saving changes...' : 'Save changes'}</button>
           </footer>
         </form>
       </aside>
@@ -810,6 +860,42 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
     }
   }
 
+  async function deleteProfileConfiguration() {
+    const targetHostels = allHostelsSelected ? bulkHostels : [selectedHostel]
+    const results = await Promise.allSettled(targetHostels.map((hostel) => (
+      deleteHostelProfileConfiguration(hostel.router_id, editingProfile.mikrotik_profile)
+    )))
+    const sessionFailure = results.find((result) => (
+      result.status === 'rejected'
+      && result.reason instanceof AdminApiError
+      && result.reason.status === 401
+    ))
+    if (sessionFailure) onSessionExpired()
+
+    const deletedCount = results.filter((result) => result.status === 'fulfilled').length
+    if (deletedCount !== targetHostels.length) {
+      try { setHostels(await listHostels()) } catch { /* Keep the current catalogue. */ }
+      throw new Error(allHostelsSelected
+        ? `Deleted ${deletedCount} of ${targetHostels.length} configurations. Retry to remove the remaining configurations.`
+        : 'The profile configuration could not be deleted. Please try again.')
+    }
+
+    setProfiles((current) => current.map((profile) => (
+      profile.mikrotik_profile.toLocaleLowerCase()
+        === editingProfile.mikrotik_profile.toLocaleLowerCase()
+        ? withoutProfileConfiguration(profile)
+        : profile
+    )))
+    setEditingProfile(null)
+    setToast(allHostelsSelected
+      ? `Configuration deleted from all ${targetHostels.length} active hostels. Router profiles were not changed.`
+      : 'Configuration deleted. The MikroTik profile was not changed.')
+    window.setTimeout(() => setToast(''), 4000)
+    try { setHostels(await listHostels()) } catch (error) {
+      if (error instanceof AdminApiError && error.status === 401) onSessionExpired()
+    }
+  }
+
   async function signOut() {
     setSigningOut(true)
     try { await logout() } finally { onSessionExpired() }
@@ -964,7 +1050,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
         </div>
       </main>
 
-      {editingProfile && selectedHostel && <ProfileEditor hostel={selectedHostel} profile={editingProfile} onClose={() => setEditingProfile(null)} onSave={saveProfile} />}
+      {editingProfile && selectedHostel && <ProfileEditor hostel={selectedHostel} profile={editingProfile} onClose={() => setEditingProfile(null)} onDelete={deleteProfileConfiguration} onSave={saveProfile} />}
       {viewingHostel === 'details' && selectedHostel && <HostelEditor canEdit={admin.role !== 'viewer'} hostel={selectedHostel} onClose={() => setViewingHostel(false)} onSave={saveHostel} />}
       {viewingHostel === 'new' && <HostelEditor canEdit hostel={null} onClose={() => setViewingHostel(false)} onSave={addHostel} />}
       {toast && <div className="dashboard-toast" role="status"><Icon name="check" />{toast}</div>}

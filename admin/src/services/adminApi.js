@@ -18,6 +18,7 @@ async function request(path, options = {}) {
     ...options,
   })
   if (!response.ok) throw new AdminApiError(response.status)
+  if (response.status === 204) return null
   return response.json()
 }
 
@@ -72,6 +73,13 @@ export function saveHostelProfile(routerId, mikrotikProfile, profile) {
       method: 'PUT',
       body: JSON.stringify(profile),
     },
+  )
+}
+
+export function deleteHostelProfileConfiguration(routerId, mikrotikProfile) {
+  return request(
+    `/api/admin/hostels/${encodeURIComponent(routerId)}/profiles/${encodeURIComponent(mikrotikProfile)}`,
+    { method: 'DELETE' },
   )
 }
 
