@@ -57,7 +57,6 @@ class CustomerNotificationService:
         customer: Customer,
         package_name: str,
         *,
-        send_sms: bool = True,
         send_email: bool = True,
     ) -> DeliveryResult:
         return self.send(
@@ -67,6 +66,6 @@ class CustomerNotificationService:
                 f"Hello {customer.username}, your {package_name} bundle has been activated "
                 "successfully. You can now connect to Vlad WiFi."
             ),
-            send_sms=send_sms,
+            send_sms=False,
             send_email=send_email,
         )

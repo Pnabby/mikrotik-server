@@ -293,7 +293,7 @@ class PackageActivationService:
         customer: Customer | None = None,
         package: Package | None = None,
     ) -> None:
-        if activation.sms_notified_at is not None and activation.email_notified_at is not None:
+        if activation.email_notified_at is not None:
             return
         customer = customer or self._session.get(Customer, activation.customer_id)
         package = package or self._session.get(Package, activation.package_id)
@@ -302,15 +302,12 @@ class PackageActivationService:
         result = self._notifications.send_bundle_activated(
             customer,
             package.name,
-            send_sms=activation.sms_notified_at is None,
             send_email=activation.email_notified_at is None,
         )
         now = datetime.now(UTC)
-        if result.sms_sent:
-            activation.sms_notified_at = now
         if result.email_sent:
             activation.email_notified_at = now
-        if result.sms_sent or result.email_sent:
+        if result.email_sent:
             self._session.commit()
 
     def _finish_without_router(
