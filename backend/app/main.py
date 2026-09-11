@@ -17,6 +17,7 @@ from app.dependencies import ROUTER_UNAVAILABLE_DETAIL
 from app.routes import (
     account,
     admin_auth,
+    admin_dashboard,
     admin_profiles,
     auth,
     health,
@@ -103,6 +104,7 @@ def create_app() -> FastAPI:
     application.include_router(account.router)
     application.include_router(payments.router)
     application.include_router(admin_auth.router)
+    application.include_router(admin_dashboard.router)
     application.include_router(admin_profiles.router)
     application.include_router(support.router)
     application.include_router(pages.router)

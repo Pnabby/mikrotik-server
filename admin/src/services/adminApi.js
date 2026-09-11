@@ -41,6 +41,11 @@ export function listHostels() {
   return request('/api/admin/hostels')
 }
 
+export function getDashboard(routerId = null) {
+  const query = routerId ? `?router_id=${encodeURIComponent(routerId)}` : ''
+  return request(`/api/admin/dashboard${query}`)
+}
+
 export function createHostel(hostel) {
   return request('/api/admin/hostels', {
     method: 'POST',
