@@ -34,6 +34,7 @@ from app.schemas.payments import (
 )
 from app.services.package_activation import RouterClientFactory
 from app.services.payment_verification import (
+    FreePlanClaimService,
     PaymentProcessingResult,
     PaymentVerificationError,
     PaymentVerificationService,
@@ -105,6 +106,43 @@ def initialize_payment(
         reference=initialized.reference,
         authorization_url=initialized.authorization_url,
     )
+
+
+@router.post(
+    "/claim-free",
+    response_model=PaymentResultResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def claim_free_promotion(
+    payload: PurchaseInitializeRequest,
+    customer: CustomerDependency,
+    session: SessionDependency,
+    settings: SettingsDependency,
+    router_client_factory: RouterClientFactoryDependency,
+) -> PaymentResultResponse:
+    result = FreePlanClaimService(session, settings, router_client_factory).claim(
+        customer,
+        payload.package_id,
+    )
+    return _payment_result_response(result)
+
+
+@router.post(
+    "/claim-free/{reference}/retry",
+    response_model=PaymentResultResponse,
+)
+def retry_free_promotion(
+    reference: str,
+    customer: CustomerDependency,
+    session: SessionDependency,
+    settings: SettingsDependency,
+    router_client_factory: RouterClientFactoryDependency,
+) -> PaymentResultResponse:
+    result = FreePlanClaimService(session, settings, router_client_factory).retry(
+        customer,
+        reference.strip(),
+    )
+    return _payment_result_response(result)
 
 
 @router.get("/paystack/callback", include_in_schema=False)

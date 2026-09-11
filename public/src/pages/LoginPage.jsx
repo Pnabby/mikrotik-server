@@ -31,8 +31,8 @@ export default function LoginPage() {
     document.title = 'Log in | FLINT WiFi'
     let active = true
     getAccount()
-      .then(() => {
-        if (active) window.location.replace('/account')
+      .then((account) => {
+        if (active) window.location.replace(account.phone_verified ? '/account' : '/verify-phone')
       })
       .catch(() => {
         if (active) setCheckingSession(false)

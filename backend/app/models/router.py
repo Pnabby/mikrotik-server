@@ -13,7 +13,7 @@ from app.models.mixins import TimestampMixin
 if TYPE_CHECKING:
     from app.models.activation import Activation
     from app.models.customer import Customer
-    from app.models.package import RouterPackageProfile
+    from app.models.package import PlanGroup, RouterPackageProfile
     from app.models.subscription import Subscription
     from app.models.transaction import Transaction
 
@@ -53,6 +53,9 @@ class Router(TimestampMixin, Base):
 
     customers: Mapped[list[Customer]] = relationship(back_populates="router")
     package_profiles: Mapped[list[RouterPackageProfile]] = relationship(
+        back_populates="router", cascade="all, delete-orphan"
+    )
+    plan_groups: Mapped[list[PlanGroup]] = relationship(
         back_populates="router", cascade="all, delete-orphan"
     )
     transactions: Mapped[list[Transaction]] = relationship(back_populates="router")

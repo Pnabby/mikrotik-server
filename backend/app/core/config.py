@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     brevo_api_url: str = "https://api.brevo.com/v3"
     brevo_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
 
+    mnotify_api_key: SecretStr | None = None
+    mnotify_sender_id: str | None = None
+    mnotify_api_url: str = "https://api.mnotify.com/api/sms/quick"
+    mnotify_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
+
     otp_hash_secret: SecretStr | None = None
     otp_code_ttl_seconds: int = Field(default=600, ge=60, le=3600)
     otp_resend_cooldown_seconds: int = Field(default=60, ge=1, le=3600)

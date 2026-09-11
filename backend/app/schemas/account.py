@@ -7,7 +7,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, SecretStr, field_validator, model_validator
 
 from app.models.enums import AccountStatus, ActivationStatus, PaymentStatus, SubscriptionStatus
-from app.schemas.registration import PIN_PATTERN, normalize_username
+from app.schemas.registration import PIN_PATTERN, normalize_phone_number, normalize_username
 
 
 class CustomerLoginRequest(BaseModel):
@@ -32,6 +32,39 @@ class CustomerLoginRequest(BaseModel):
 
 class AuthenticatedCustomerResponse(BaseModel):
     username: str
+    redirect_to: str = "/account"
+
+
+class PhoneVerificationStartRequest(BaseModel):
+    phone_number: str
+
+    @field_validator("phone_number")
+    @classmethod
+    def validate_phone(cls, value: str) -> str:
+        return normalize_phone_number(value)
+
+
+class PhoneVerificationStartResponse(BaseModel):
+    challenge_id: uuid.UUID
+    destination: str
+    expires_in_seconds: int
+    resend_after_seconds: int
+
+
+class PhoneVerificationCompleteRequest(PhoneVerificationStartRequest):
+    challenge_id: uuid.UUID
+    code: SecretStr
+
+    @field_validator("code")
+    @classmethod
+    def validate_code(cls, value: SecretStr) -> SecretStr:
+        if not PIN_PATTERN.fullmatch(value.get_secret_value()):
+            raise ValueError("Enter exactly six digits.")
+        return value
+
+
+class PhoneVerificationResponse(BaseModel):
+    verified: bool = True
     redirect_to: str = "/account"
 
 
@@ -219,6 +252,11 @@ class AvailablePlanResponse(BaseModel):
     is_promotional: bool
     promo_claimed: bool
     purchase_available: bool
+    group_id: uuid.UUID | None
+    group_name: str | None
+    group_description: str | None
+    group_display_order: int | None
+    group_sort_by_price: bool
 
 
 class PreviousPlanResponse(BaseModel):
@@ -245,6 +283,8 @@ class PurchaseHistoryResponse(BaseModel):
 class CustomerAccountResponse(BaseModel):
     username: str
     email: str
+    phone_number: str | None
+    phone_verified: bool
     hostel_name: str
     account_status: AccountStatus
     current_plan: CurrentPlanResponse | None

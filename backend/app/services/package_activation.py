@@ -9,6 +9,7 @@ from typing import Protocol
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings
 from app.models.activation import Activation
 from app.models.activation_attempt import ActivationAttempt
 from app.models.audit_log import AuditLog
@@ -23,6 +24,7 @@ from app.models.enums import (
 )
 from app.models.package import Package
 from app.models.subscription import Subscription
+from app.services.notifications import CustomerNotificationService
 
 
 class ActivationRouterClient(Protocol):
@@ -49,9 +51,15 @@ ACTIVATION_CLAIM_TTL = timedelta(seconds=30)
 class PackageActivationService:
     """Idempotently apply a verified purchase to RouterOS and start access."""
 
-    def __init__(self, session: Session, router_client_factory: RouterClientFactory) -> None:
+    def __init__(
+        self,
+        session: Session,
+        router_client_factory: RouterClientFactory,
+        settings: Settings,
+    ) -> None:
         self._session = session
         self._router_client_factory = router_client_factory
+        self._notifications = CustomerNotificationService(settings)
 
     def activate(
         self,
@@ -65,6 +73,8 @@ class PackageActivationService:
         if activation is None:
             return ActivationStatus.MANUAL_REVIEW
         if activation.status in {ActivationStatus.SUCCESS, ActivationStatus.SUPERSEDED}:
+            if activation.status == ActivationStatus.SUCCESS:
+                self._notify_activation(activation)
             return activation.status
 
         claim_time = datetime.now(UTC)
@@ -273,7 +283,35 @@ class PackageActivationService:
             ]
         )
         self._session.commit()
+        self._notify_activation(activation, customer=customer, package=package)
         return activation.status
+
+    def _notify_activation(
+        self,
+        activation: Activation,
+        *,
+        customer: Customer | None = None,
+        package: Package | None = None,
+    ) -> None:
+        if activation.sms_notified_at is not None and activation.email_notified_at is not None:
+            return
+        customer = customer or self._session.get(Customer, activation.customer_id)
+        package = package or self._session.get(Package, activation.package_id)
+        if customer is None or package is None:
+            return
+        result = self._notifications.send_bundle_activated(
+            customer,
+            package.name,
+            send_sms=activation.sms_notified_at is None,
+            send_email=activation.email_notified_at is None,
+        )
+        now = datetime.now(UTC)
+        if result.sms_sent:
+            activation.sms_notified_at = now
+        if result.email_sent:
+            activation.email_notified_at = now
+        if result.sms_sent or result.email_sent:
+            self._session.commit()
 
     def _finish_without_router(
         self,

@@ -17,8 +17,8 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.core.exceptions import ServiceError
 from app.core.security import PinHasher, PinHashingError
-from app.integrations.brevo.client import EmailDeliveryError, OtpEmailSender
 from app.integrations.mikrotik.registry import UnknownRouterError, get_router
+from app.integrations.mnotify import SmsDeliveryError, SmsSender
 from app.models.customer import Customer
 from app.models.email_otp_challenge import EmailOtpChallenge
 from app.models.enums import AccountStatus, OtpPurpose
@@ -32,9 +32,7 @@ from app.schemas.registration import (
 
 logger = logging.getLogger(__name__)
 REGISTRATION_COMMENT_PREFIX = "flint-registration="
-SIGNUP_UNAVAILABLE_DETAIL = (
-    "Signup is currently unavailable. Please contact help and support."
-)
+SIGNUP_UNAVAILABLE_DETAIL = "Signup is currently unavailable. Please contact help and support."
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,9 +108,9 @@ class RegistrationAvailabilityService:
                 select(Customer.username).where(Customer.username.in_(candidates))
             )
         )
-        suggestions = [
-            candidate for candidate in candidates if candidate not in taken_usernames
-        ][:3]
+        suggestions = [candidate for candidate in candidates if candidate not in taken_usernames][
+            :3
+        ]
         return UsernameAvailability(
             username=username,
             available=False,
@@ -162,7 +160,7 @@ class RegistrationOtpService:
     def __init__(
         self,
         session: Session,
-        sender: OtpEmailSender,
+        sender: SmsSender,
         settings: Settings,
     ) -> None:
         self._session = session
@@ -184,7 +182,11 @@ class RegistrationOtpService:
 
         existing_customer = self._session.scalar(
             select(Customer.id).where(
-                or_(Customer.email == request.email, Customer.username == request.username)
+                or_(
+                    Customer.email == request.email,
+                    Customer.username == request.username,
+                    Customer.phone_number == request.phone_number,
+                )
             )
         )
         if existing_customer is not None:
@@ -216,6 +218,7 @@ class RegistrationOtpService:
         challenge = EmailOtpChallenge(
             id=challenge_id,
             email=request.email,
+            phone_number=request.phone_number,
             purpose=OtpPurpose.REGISTRATION,
             code_hash=self._hash_code(secret, challenge_id, code),
             attempt_count=0,
@@ -227,24 +230,22 @@ class RegistrationOtpService:
         self._session.commit()
 
         try:
-            self._sender.send_registration_otp(
-                recipient=request.email,
+            self._sender.send_verification_otp(
+                recipient=request.phone_number,
                 code=code,
-                expires_in_minutes=max(
-                    1, (self._settings.otp_code_ttl_seconds + 59) // 60
-                ),
+                expires_in_minutes=max(1, (self._settings.otp_code_ttl_seconds + 59) // 60),
             )
-        except EmailDeliveryError as exc:
+        except SmsDeliveryError as exc:
             challenge.consumed_at = datetime.now(UTC)
             self._session.commit()
             raise ServiceError(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
-                "Verification email could not be sent.",
+                "Verification SMS could not be sent.",
             ) from exc
 
         return StartedRegistrationOtp(
             challenge_id=challenge_id,
-            destination=_mask_email(request.email),
+            destination=_mask_phone(request.phone_number),
             expires_in_seconds=self._settings.otp_code_ttl_seconds,
             resend_after_seconds=self._settings.otp_resend_cooldown_seconds,
         )
@@ -265,6 +266,7 @@ class RegistrationOtpService:
         if (
             challenge is None
             or challenge.email != request.email
+            or challenge.phone_number != request.phone_number
             or challenge.purpose != OtpPurpose.REGISTRATION
         ):
             raise ServiceError(status.HTTP_400_BAD_REQUEST, "Invalid verification code.")
@@ -301,9 +303,7 @@ class RegistrationOtpService:
                 status.HTTP_429_TOO_MANY_REQUESTS
                 if attempts_exhausted
                 else status.HTTP_400_BAD_REQUEST,
-                "Too many code attempts."
-                if attempts_exhausted
-                else "Invalid verification code.",
+                "Too many code attempts." if attempts_exhausted else "Invalid verification code.",
             )
 
         try:
@@ -313,7 +313,11 @@ class RegistrationOtpService:
 
         existing_customer = self._session.scalar(
             select(Customer).where(
-                or_(Customer.email == request.email, Customer.username == request.username)
+                or_(
+                    Customer.email == request.email,
+                    Customer.username == request.username,
+                    Customer.phone_number == request.phone_number,
+                )
             )
         )
         if existing_customer is not None:
@@ -405,10 +409,11 @@ class RegistrationOtpService:
             id=uuid.uuid4(),
             router=database_router,
             email=request.email,
+            phone_number=request.phone_number,
+            phone_verified_at=now,
             username=request.username,
             pin_hash=pin_hash,
             account_status=AccountStatus.INACTIVE,
-            email_verified_at=now,
             mikrotik_user_verified_at=now,
             last_activity_at=now,
             terms_accepted_at=now,
@@ -455,6 +460,7 @@ class RegistrationOtpService:
         if (
             customer is None
             or customer.email != request.email
+            or customer.phone_number != request.phone_number
             or customer.username != request.username
             or customer.router_id != request.router_id
         ):
@@ -582,6 +588,10 @@ def _mask_email(email: str) -> str:
     local, domain = email.split("@", 1)
     visible = local[0]
     return f"{visible}{'*' * max(2, len(local) - 1)}@{domain}"
+
+
+def _mask_phone(phone: str) -> str:
+    return f"{phone[:4]}*****{phone[-3:]}"
 
 
 def _router_user_matches(

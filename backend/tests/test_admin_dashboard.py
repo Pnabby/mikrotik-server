@@ -3,7 +3,13 @@ from app.services.admin_dashboard import active_identity_sets
 
 
 def test_dashboard_route_is_registered() -> None:
-    assert "/api/admin/dashboard" in app.openapi()["paths"]
+    paths = app.openapi()["paths"]
+
+    assert "/api/admin/dashboard" in paths
+    assert "/api/admin/dashboard/transactions" in paths
+    assert "/api/admin/dashboard/customers" in paths
+    assert "/api/payments/claim-free" in paths
+    assert "/api/payments/claim-free/{reference}/retry" in paths
 
 
 def test_active_identity_sets_deduplicates_users_and_devices() -> None:

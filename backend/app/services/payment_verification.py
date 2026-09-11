@@ -38,6 +38,139 @@ class PaymentVerificationError(RuntimeError):
     """Raised when a provider response cannot be matched to the local purchase."""
 
 
+class FreePlanClaimService:
+    """Create and activate a zero-cost promotion without contacting Paystack."""
+
+    def __init__(
+        self,
+        session: Session,
+        settings: Settings,
+        router_client_factory: RouterClientFactory,
+    ) -> None:
+        self._session = session
+        self._activation_service = PackageActivationService(
+            session,
+            router_client_factory,
+            settings,
+        )
+
+    def claim(self, customer: Customer, package_id: uuid.UUID) -> PaymentProcessingResult:
+        self._session.scalar(
+            select(Customer).where(Customer.id == customer.id).with_for_update()
+        )
+        mapping = self._session.scalar(
+            select(RouterPackageProfile)
+            .options(joinedload(RouterPackageProfile.package))
+            .join(RouterPackageProfile.package)
+            .where(
+                RouterPackageProfile.router_id == customer.router_id,
+                RouterPackageProfile.package_id == package_id,
+                RouterPackageProfile.is_active.is_(True),
+                Package.is_active.is_(True),
+            )
+        )
+        if mapping is None:
+            raise ServiceError(status.HTTP_404_NOT_FOUND, "Plan is not available.")
+        package = mapping.package
+        if package.amount != Decimal(0) or not package.is_promotional:
+            raise ServiceError(
+                status.HTTP_409_CONFLICT,
+                "Only free promotional plans can be claimed without payment.",
+            )
+
+        existing = self._session.scalar(
+            select(Transaction)
+            .options(selectinload(Transaction.activation), selectinload(Transaction.package))
+            .where(
+                Transaction.customer_id == customer.id,
+                Transaction.package_id == package.id,
+                Transaction.payment_status == PaymentStatus.SUCCESS,
+            )
+            .order_by(Transaction.created_at.desc())
+            .limit(1)
+        )
+        if existing is not None:
+            activation_status = existing.activation.status if existing.activation else None
+            if existing.activation is not None and activation_status not in {
+                ActivationStatus.SUCCESS,
+                ActivationStatus.SUPERSEDED,
+                ActivationStatus.MANUAL_REVIEW,
+            }:
+                activation_status = self._activation_service.activate(
+                    existing.activation,
+                    trigger=ActivationTrigger.CUSTOMER_RETRY,
+                )
+            return PaymentProcessingResult(
+                reference=existing.paystack_reference,
+                payment_status=existing.payment_status,
+                activation_status=activation_status,
+                plan_name=existing.package.name,
+            )
+
+        now = datetime.now(UTC)
+        reference = f"FREE-{uuid.uuid4().hex.upper()}"
+        transaction = Transaction(
+            customer_id=customer.id,
+            package_id=package.id,
+            router_id=customer.router_id,
+            paystack_reference=reference,
+            amount=Decimal(0),
+            currency=package.currency,
+            payment_status=PaymentStatus.SUCCESS,
+            provider_status="free_promotion",
+            paid_at=now,
+        )
+        activation = Activation(
+            transaction=transaction,
+            customer_id=customer.id,
+            package_id=package.id,
+            router_id=customer.router_id,
+            target_profile=mapping.mikrotik_profile,
+            target_disabled=False,
+        )
+        bind = self._session.get_bind()
+        if bind.dialect.name == "sqlite":
+            activation.sequence_number = (
+                self._session.scalar(select(func.max(Activation.sequence_number))) or 0
+            ) + 1
+        self._session.add_all([transaction, activation])
+        self._session.commit()
+        activation_status = self._activation_service.activate(
+            activation,
+            trigger=ActivationTrigger.CUSTOMER_RETRY,
+        )
+        return PaymentProcessingResult(
+            reference=reference,
+            payment_status=PaymentStatus.SUCCESS,
+            activation_status=activation_status,
+            plan_name=package.name,
+        )
+
+    def retry(self, customer: Customer, reference: str) -> PaymentProcessingResult:
+        transaction = self._session.scalar(
+            select(Transaction)
+            .options(selectinload(Transaction.activation), selectinload(Transaction.package))
+            .where(
+                Transaction.customer_id == customer.id,
+                Transaction.paystack_reference == reference,
+                Transaction.provider_status == "free_promotion",
+                Transaction.amount == 0,
+            )
+        )
+        if transaction is None or transaction.activation is None:
+            raise ServiceError(status.HTTP_404_NOT_FOUND, "Free plan claim was not found.")
+        activation_status = self._activation_service.activate(
+            transaction.activation,
+            trigger=ActivationTrigger.CUSTOMER_RETRY,
+        )
+        return PaymentProcessingResult(
+            reference=transaction.paystack_reference,
+            payment_status=transaction.payment_status,
+            activation_status=activation_status,
+            plan_name=transaction.package.name,
+        )
+
+
 class PaymentVerificationService:
     def __init__(
         self,
@@ -53,6 +186,7 @@ class PaymentVerificationService:
         self._activation_service = PackageActivationService(
             session,
             router_client_factory,
+            settings,
         )
 
     def initialize(
@@ -255,9 +389,7 @@ class PaymentVerificationService:
             "package_id": str(transaction.package_id),
             "router_id": transaction.router_id,
         }
-        provider_metadata = {
-            key: str(verified.metadata.get(key, "")) for key in expected_metadata
-        }
+        provider_metadata = {key: str(verified.metadata.get(key, "")) for key in expected_metadata}
         matches = (
             verified.reference == transaction.paystack_reference
             and verified.amount == _minor_units(transaction.amount)

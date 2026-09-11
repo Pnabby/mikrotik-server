@@ -416,6 +416,37 @@ input {
   stroke-width: 1.7;
 }
 
+.plan-heading-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.plan-heading-actions > svg {
+  width: 25px;
+  height: 25px;
+  color: var(--account-primary);
+}
+
+.plan-heading-actions button {
+  min-height: 42px;
+  padding: 0 1rem;
+  border: 0;
+  border-radius: 10px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--account-primary), #304ed1);
+  box-shadow: 0 8px 20px rgba(67, 97, 238, 0.2);
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.plan-heading-actions button:hover {
+  transform: translateY(-1px);
+}
+
 .current-plan-name {
   display: flex;
   align-items: center;
@@ -554,6 +585,51 @@ input {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
   margin-top: 1.4rem;
+}
+
+.plan-group-sections {
+  display: grid;
+  gap: 1.4rem;
+  margin-top: 1.4rem;
+}
+
+.customer-plan-group {
+  overflow: hidden;
+  padding: 1.15rem;
+  border: 1px solid #e2e7f1;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #fbfcff, #f6f8fd);
+}
+
+.customer-plan-group > header {
+  padding: 0.15rem 0.2rem 0.85rem;
+  border-bottom: 1px solid #e4e8f1;
+}
+
+.customer-plan-group > header span {
+  color: var(--account-primary);
+  font-size: 0.59rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.customer-plan-group > header h3 {
+  margin-top: 0.2rem;
+  font-family: 'Poppins', sans-serif;
+  font-size: 1.05rem;
+}
+
+.customer-plan-group > header p {
+  max-width: 680px;
+  margin-top: 0.25rem;
+  color: var(--account-muted);
+  font-size: 0.7rem;
+  line-height: 1.55;
+}
+
+.customer-plan-group .plans-grid {
+  margin-top: 1rem;
 }
 
 .plan-purchase-error {
@@ -941,6 +1017,19 @@ input {
   .account-panel,
   .account-section {
     padding: 1.25rem;
+  }
+
+  #plans .account-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .plan-heading-actions {
+    width: 100%;
+  }
+
+  .plan-heading-actions button {
+    flex: 1;
   }
 
   .current-plan-details {
@@ -1653,6 +1742,29 @@ input {
   overflow-wrap: anywhere;
   font-size: 0.76rem;
   font-weight: 700;
+}
+
+.profile-phone-value {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.55rem;
+}
+
+.profile-phone-verified {
+  padding: 0.18rem 0.42rem;
+  border-radius: 999px;
+  color: #087f5b;
+  background: #eafaf4;
+  font-size: 0.56rem;
+  font-weight: 700;
+}
+
+.profile-phone-value a {
+  color: #4361ee;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-decoration: none;
 }
 
 .profile-status {

@@ -17,9 +17,7 @@ class OtpEmailSender(Protocol):
         self, *, recipient: str, code: str, expires_in_minutes: int
     ) -> None: ...
 
-    def send_pin_reset_otp(
-        self, *, recipient: str, code: str, expires_in_minutes: int
-    ) -> None: ...
+    def send_pin_reset_otp(self, *, recipient: str, code: str, expires_in_minutes: int) -> None: ...
 
     def send_username_recovery_otp(
         self, *, recipient: str, code: str, expires_in_minutes: int
@@ -62,9 +60,7 @@ class BrevoEmailSender:
             timeout_seconds=settings.brevo_timeout_seconds,
         )
 
-    def send_registration_otp(
-        self, *, recipient: str, code: str, expires_in_minutes: int
-    ) -> None:
+    def send_registration_otp(self, *, recipient: str, code: str, expires_in_minutes: int) -> None:
         self._send_otp(
             recipient=recipient,
             code=code,
@@ -74,9 +70,7 @@ class BrevoEmailSender:
             instruction="Enter this code to continue creating your Flint WiFi account:",
         )
 
-    def send_pin_reset_otp(
-        self, *, recipient: str, code: str, expires_in_minutes: int
-    ) -> None:
+    def send_pin_reset_otp(self, *, recipient: str, code: str, expires_in_minutes: int) -> None:
         self._send_otp(
             recipient=recipient,
             code=code,
@@ -110,6 +104,22 @@ class BrevoEmailSender:
             instruction="Enter this code to unlock your Flint WiFi account:",
         )
 
+    def send_message(self, *, recipient: str, subject: str, message: str) -> None:
+        payload = {
+            "sender": {"name": self._sender_name, "email": self._sender_email},
+            "to": [{"email": recipient}],
+            "subject": subject,
+            "textContent": message,
+            "htmlContent": (
+                '<!doctype html><html><body style="font-family:Arial,sans-serif;'
+                'color:#212529"><div style="max-width:520px;margin:0 auto;padding:24px">'
+                f'<h1 style="color:#4361ee;font-size:24px">{escape(subject)}</h1>'
+                f'<p style="white-space:pre-line;line-height:1.6">{escape(message)}</p>'
+                "</div></body></html>"
+            ),
+        }
+        self._post(payload)
+
     def _send_otp(
         self,
         *,
@@ -121,9 +131,7 @@ class BrevoEmailSender:
         instruction: str,
     ) -> None:
         safe_code = escape(code)
-        expiry_copy = f"{expires_in_minutes} minute" + (
-            "" if expires_in_minutes == 1 else "s"
-        )
+        expiry_copy = f"{expires_in_minutes} minute" + ("" if expires_in_minutes == 1 else "s")
         payload = {
             "sender": {"name": self._sender_name, "email": self._sender_email},
             "to": [{"email": recipient}],
@@ -133,17 +141,20 @@ class BrevoEmailSender:
                 f"It expires in {expiry_copy}. If you did not request it, ignore this email."
             ),
             "htmlContent": (
-                "<!doctype html><html><body style=\"font-family:Arial,sans-serif;"
-                "color:#212529\"><div style=\"max-width:520px;margin:0 auto;padding:24px\">"
-                f"<h1 style=\"color:#4361ee;font-size:24px\">{escape(heading)}</h1>"
+                '<!doctype html><html><body style="font-family:Arial,sans-serif;'
+                'color:#212529"><div style="max-width:520px;margin:0 auto;padding:24px">'
+                f'<h1 style="color:#4361ee;font-size:24px">{escape(heading)}</h1>'
                 f"<p>{escape(instruction)}</p>"
-                f"<p style=\"font-size:32px;font-weight:700;letter-spacing:8px\">{safe_code}</p>"
+                f'<p style="font-size:32px;font-weight:700;letter-spacing:8px">{safe_code}</p>'
                 f"<p>This code expires in {expiry_copy}.</p>"
-                "<p style=\"color:#6c757d;font-size:13px\">If you did not request this "
+                '<p style="color:#6c757d;font-size:13px">If you did not request this '
                 "code, you can safely ignore this email.</p></div></body></html>"
             ),
         }
 
+        self._post(payload)
+
+    def _post(self, payload: dict[str, object]) -> None:
         try:
             with httpx.Client(
                 timeout=self._timeout_seconds,

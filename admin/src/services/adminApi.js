@@ -46,6 +46,22 @@ export function getDashboard(routerId = null) {
   return request(`/api/admin/dashboard${query}`)
 }
 
+export function getTransactions(filters = {}) {
+  const query = new URLSearchParams()
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== '' && value !== null && value !== undefined) query.set(key, value)
+  })
+  return request(`/api/admin/dashboard/transactions${query.size ? `?${query}` : ''}`)
+}
+
+export function getCustomersAndDevices(filters = {}) {
+  const query = new URLSearchParams()
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== '' && value !== null && value !== undefined) query.set(key, value)
+  })
+  return request(`/api/admin/dashboard/customers${query.size ? `?${query}` : ''}`)
+}
+
 export function createHostel(hostel) {
   return request('/api/admin/hostels', {
     method: 'POST',
@@ -69,6 +85,30 @@ export function forceHostelIpCloudUpdate(routerId) {
 
 export function listHostelProfiles(routerId) {
   return request(`/api/admin/hostels/${encodeURIComponent(routerId)}/profiles`)
+}
+
+export function listPlanGroups(routerId) {
+  return request(`/api/admin/hostels/${encodeURIComponent(routerId)}/plan-groups`)
+}
+
+export function createPlanGroup(routerId, group) {
+  return request(`/api/admin/hostels/${encodeURIComponent(routerId)}/plan-groups`, {
+    method: 'POST',
+    body: JSON.stringify(group),
+  })
+}
+
+export function updatePlanGroup(routerId, groupId, group) {
+  return request(`/api/admin/hostels/${encodeURIComponent(routerId)}/plan-groups/${encodeURIComponent(groupId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(group),
+  })
+}
+
+export function deletePlanGroup(routerId, groupId) {
+  return request(`/api/admin/hostels/${encodeURIComponent(routerId)}/plan-groups/${encodeURIComponent(groupId)}`, {
+    method: 'DELETE',
+  })
 }
 
 export function saveHostelProfile(routerId, mikrotikProfile, profile) {
@@ -96,5 +136,12 @@ export function saveSupportSettings(settings) {
   return request('/api/admin/support', {
     method: 'PUT',
     body: JSON.stringify(settings),
+  })
+}
+
+export function sendBroadcast(subject, message, routerId = null) {
+  return request('/api/admin/dashboard/broadcast', {
+    method: 'POST',
+    body: JSON.stringify({ subject, message, router_id: routerId || null }),
   })
 }
