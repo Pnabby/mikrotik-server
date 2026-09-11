@@ -1217,6 +1217,11 @@ input {
   background: #e4f8f0;
 }
 
+.network-exhausted > span {
+  color: #b54708;
+  background: #fff1e7;
+}
+
 .network-inactive > span {
   color: #8a94a6;
   background: #eef0f4;
@@ -1339,6 +1344,11 @@ input {
 .plan-breakdown-status svg {
   width: 10px;
   height: 10px;
+}
+
+.plan-breakdown-status.exhausted {
+  color: #b54708;
+  background: #fff1e7;
 }
 
 .plan-breakdown-list {

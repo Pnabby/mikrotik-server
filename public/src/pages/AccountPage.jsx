@@ -62,6 +62,15 @@ function formatDateTime(value, fallback = '--') {
   }).format(date)
 }
 
+function timestampHasPassed(value) {
+  if (!value) return false
+  const normalizedValue = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+    ? `${value.replace(' ', 'T')}Z`
+    : value
+  const timestamp = new Date(normalizedValue).getTime()
+  return Number.isFinite(timestamp) && timestamp <= Date.now()
+}
+
 function formatDuration(seconds) {
   if (seconds === null || seconds === undefined) return 'Non expiry'
   const hours = Math.round(Number(seconds || 0) / 3600)
@@ -407,7 +416,7 @@ export default function AccountPage() {
 
   function requestPlanPurchase(plan) {
     setPurchaseError('')
-    if (account?.current_plan) {
+    if (account?.current_plan && !isCurrentPlanExhausted) {
       setPurchaseTarget(plan)
       return
     }
@@ -458,13 +467,19 @@ export default function AccountPage() {
   }
 
   const currentPlan = account.current_plan
-  const hasActivePlan = Boolean(currentPlan)
+  const hasCurrentPlan = Boolean(currentPlan)
+  const dataAllowanceExhausted = hasCurrentPlan
+    && networkStatus?.total_data_left_bytes !== null
+    && networkStatus?.total_data_left_bytes !== undefined
+    && Number(networkStatus.total_data_left_bytes) <= 0
+  const planExpiryDate = networkStatus?.expiry_date || currentPlan?.expires_at || null
+  const isCurrentPlanExhausted = dataAllowanceExhausted || timestampHasPassed(planExpiryDate)
   const devices = networkStatus?.connected_devices || []
   const statusUnavailable = networkPhase === 'error'
   const planName = currentPlan?.name || ''
   // Login and expiry timing come from RouterOS, never from the payment timestamp.
   const loginDate = networkStatus?.logged_in_date || null
-  const expiryDate = networkStatus?.expiry_date || null
+  const expiryDate = planExpiryDate
   const loginDateLabel = formatDate(loginDate, 'Awaiting first login')
   const expiryDateLabel = expiryDate
     ? formatDate(expiryDate)
@@ -532,15 +547,15 @@ export default function AccountPage() {
             <h1>Good to see you, {account.username}</h1>
             <p>Track your WiFi access, devices, plans, and purchases.</p>
           </div>
-          {hasActivePlan && (
-            <div className="network-state network-active">
+          {hasCurrentPlan && (
+            <div className={`network-state ${isCurrentPlanExhausted ? 'network-exhausted' : 'network-active'}`}>
               <span><DotIcon /></span>
-              <div><small>WiFi access</small><strong>Active plan</strong></div>
+              <div><small>WiFi access</small><strong>{isCurrentPlanExhausted ? 'Exhausted' : 'Active plan'}</strong></div>
             </div>
           )}
         </section>
 
-        {hasActivePlan && (
+        {hasCurrentPlan && (
           <section className="usage-grid" aria-label="WiFi usage summary">
             <article>
               <span><DataUsedIcon /></span>
@@ -561,7 +576,7 @@ export default function AccountPage() {
           </section>
         )}
 
-        {hasActivePlan && (
+        {hasCurrentPlan && (
           <section className="account-section plan-breakdown-section" aria-labelledby="plan-breakdown-title">
             <div className="account-section-heading">
               <div>
@@ -569,7 +584,7 @@ export default function AccountPage() {
                 <h2 id="plan-breakdown-title">Plan breakdown</h2>
                 <p>Your current WiFi plan and access details.</p>
               </div>
-              <span className="plan-breakdown-status"><DotIcon />Active</span>
+              <span className={`plan-breakdown-status${isCurrentPlanExhausted ? ' exhausted' : ''}`}><DotIcon />{isCurrentPlanExhausted ? 'Exhausted' : 'Active'}</span>
             </div>
             <dl className="plan-breakdown-list">
               <div><dt>Plan</dt><dd>{planName}</dd></div>
@@ -586,7 +601,7 @@ export default function AccountPage() {
           </section>
         )}
 
-        {hasActivePlan && (
+        {hasCurrentPlan && (
           <section className="account-section">
             <div className="account-section-heading">
               <div><span className="account-eyebrow">Connections</span><h2>Connected devices</h2><p>Review and disconnect devices currently using your account.</p></div>
