@@ -6,8 +6,9 @@ from app.models.audit_log import AuditLog
 from app.models.customer import Customer
 from app.models.customer_session import CustomerSession
 from app.models.email_otp_challenge import EmailOtpChallenge
-from app.models.package import Package, RouterPackageProfile
+from app.models.package import Package, PlanGroup, RouterPackageProfile
 from app.models.payment_event import PaymentEvent
+from app.models.phone_otp_challenge import PhoneOtpChallenge
 from app.models.router import Router
 from app.models.subscription import Subscription
 from app.models.support_settings import SupportSettings
@@ -24,6 +25,8 @@ __all__ = [
     "EmailOtpChallenge",
     "Package",
     "PaymentEvent",
+    "PhoneOtpChallenge",
+    "PlanGroup",
     "Router",
     "RouterPackageProfile",
     "Subscription",

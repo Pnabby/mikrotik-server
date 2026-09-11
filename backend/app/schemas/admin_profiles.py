@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.enums import RouterStatus
 
@@ -73,6 +73,7 @@ class AdminRouterProfileResponse(BaseModel):
     display_name: str | None
     description: str | None
     package_id: uuid.UUID | None
+    group_id: uuid.UUID | None
     amount: Decimal | None
     currency: str
     duration_seconds: int | None
@@ -104,6 +105,7 @@ class AdminProfileUpdate(BaseModel):
     download_speed: str | None = Field(default=None, max_length=40)
     is_promotional: bool = False
     is_visible: bool = False
+    group_id: uuid.UUID | None = None
 
     @field_validator("display_name")
     @classmethod
@@ -132,3 +134,54 @@ class AdminProfileUpdate(BaseModel):
         if not normalized.isalpha():
             raise ValueError("Enter a valid three-letter currency code.")
         return normalized
+
+    @model_validator(mode="after")
+    def validate_free_public_plan(self) -> AdminProfileUpdate:
+        if self.is_visible and self.amount == 0 and not self.is_promotional:
+            raise ValueError("A published free plan must be promotional.")
+        return self
+
+
+class AdminPlanGroupCreate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    name: str = Field(min_length=2, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    display_order: int = Field(default=0, ge=0)
+    sort_by_price: bool = False
+    profile_names: list[str] = Field(default_factory=list, max_length=500)
+
+    @field_validator("name")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        return " ".join(value.split())
+
+    @field_validator("description")
+    @classmethod
+    def normalize_group_description(cls, value: str | None) -> str | None:
+        normalized = " ".join(value.split()) if value else ""
+        return normalized or None
+
+    @field_validator("profile_names")
+    @classmethod
+    def normalize_profile_names(cls, values: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for value in values:
+            name = value.strip()
+            if not name or len(name) > 120:
+                raise ValueError("Each selected plan must have a valid profile name.")
+            key = name.casefold()
+            if key not in seen:
+                normalized.append(name)
+                seen.add(key)
+        return normalized
+
+
+class AdminPlanGroupUpdate(AdminPlanGroupCreate):
+    pass
+
+
+class AdminPlanGroupResponse(AdminPlanGroupCreate):
+    id: uuid.UUID
+    plan_count: int

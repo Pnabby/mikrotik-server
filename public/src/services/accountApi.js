@@ -106,6 +106,20 @@ export function getAccount() {
   return request('/api/account')
 }
 
+export function startPhoneVerification(phoneNumber) {
+  return request('/api/account/phone-verification/start', {
+    method: 'POST',
+    body: JSON.stringify({ phone_number: phoneNumber }),
+  })
+}
+
+export function completePhoneVerification(challengeId, phoneNumber, code) {
+  return request('/api/account/phone-verification/complete', {
+    method: 'POST',
+    body: JSON.stringify({ challenge_id: challengeId, phone_number: phoneNumber, code }),
+  })
+}
+
 export function getAccountHotspotStatus() {
   return request('/api/account/hotspot-status')
 }
@@ -114,6 +128,19 @@ export function initializePlanPurchase(packageId) {
   return request('/api/payments/initialize', {
     method: 'POST',
     body: JSON.stringify({ package_id: packageId }),
+  })
+}
+
+export function claimFreePlan(packageId) {
+  return request('/api/payments/claim-free', {
+    method: 'POST',
+    body: JSON.stringify({ package_id: packageId }),
+  })
+}
+
+export function retryFreePlanClaim(reference) {
+  return request(`/api/payments/claim-free/${encodeURIComponent(reference)}/retry`, {
+    method: 'POST',
   })
 }
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { CheckIcon, GlobeIcon, ShieldIcon, WifiIcon } from '../components/Icons'
+import OtpInput from '../components/OtpInput'
 import { getRouters } from '../services/hotspotApi'
 import {
   completeRegistration,
@@ -15,6 +16,7 @@ const PIN_PATTERN = /^[0-9]{6}$/
 
 const INITIAL_FORM = {
   email: '',
+  phoneNumber: '',
   username: '',
   routerId: '',
   pin: '',
@@ -29,6 +31,10 @@ function validate(form, routers) {
 
   if (!email) errors.email = 'Enter your email address.'
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'Enter a valid email address.'
+
+  const phone = form.phoneNumber.replace(/[\s()-]/g, '')
+  if (!phone) errors.phoneNumber = 'Enter your phone number.'
+  else if (!/^(?:0\d{9}|233\d{9}|\+233\d{9})$/.test(phone)) errors.phoneNumber = 'Enter a valid Ghana phone number.'
 
   if (!username) errors.username = 'Choose a username.'
   else if (!USERNAME_PATTERN.test(username)) {
@@ -70,13 +76,13 @@ function SignupHeader() {
 }
 
 function startErrorMessage(error) {
-  if (!(error instanceof RegistrationApiError)) return 'Could not send the code. Check your connection and try again.'
+  if (!(error instanceof RegistrationApiError)) return 'Could not send the SMS code. Check your connection and try again.'
   if (error.status === 409) return 'That email address or username is already registered.'
   if (error.status === 429) return 'Too many codes were requested. Please wait before trying again.'
   if ([404, 502, 503].includes(error.status)) {
     return 'Signup is currently unavailable. Please contact help and support.'
   }
-  return 'Could not send the verification code. Please try again.'
+  return 'Could not send the SMS verification code. Please try again.'
 }
 
 function verifyErrorMessage(error) {
@@ -233,6 +239,7 @@ export default function SignupPage() {
     let normalizedValue = value
     if (name === 'username') normalizedValue = value.toLowerCase().replace(/[^a-z0-9]/g, '')
     if (name === 'pin' || name === 'confirmPin') normalizedValue = value.replace(/\D/g, '')
+    if (name === 'phoneNumber') normalizedValue = value.replace(/[^\d+\s()-]/g, '')
 
     setForm((current) => ({ ...current, [name]: normalizedValue }))
     setErrors((current) => ({ ...current, [name]: '' }))
@@ -245,6 +252,7 @@ export default function SignupPage() {
     try {
       const result = await startRegistration({
         email: form.email.trim().toLowerCase(),
+        phone_number: form.phoneNumber,
         username: form.username.trim().toLowerCase(),
         router_id: form.routerId,
         pin: form.pin,
@@ -284,7 +292,7 @@ export default function SignupPage() {
   async function verifyOtp(event) {
     event.preventDefault()
     if (!PIN_PATTERN.test(otpCode)) {
-      setOtpError('Enter the 6-digit code from your email.')
+      setOtpError('Enter the 6-digit code from the SMS.')
       return
     }
 
@@ -296,6 +304,7 @@ export default function SignupPage() {
         challenge.challenge_id,
         {
           email: form.email.trim().toLowerCase(),
+          phone_number: form.phoneNumber,
           username: form.username.trim().toLowerCase(),
           router_id: form.routerId,
           pin: form.pin,
@@ -335,30 +344,19 @@ export default function SignupPage() {
           <section className="signup-card otp-card" aria-labelledby="otp-title">
             <div className="signup-card-header">
               <span className="signup-step">Step 2 of 2</span>
-              <h2 id="otp-title">Check your email</h2>
+              <h2 id="otp-title">Check your phone</h2>
               <p>We sent a 6-digit verification code to <strong>{challenge.destination}</strong>.</p>
             </div>
 
             <form className="otp-form" noValidate onSubmit={verifyOtp}>
               <div className="signup-field">
                 <label htmlFor="signup-otp">Verification code</label>
-                <input
-                  autoComplete="one-time-code"
+                <OtpInput
                   autoFocus
-                  className={otpError ? 'signup-input otp-input invalid' : 'signup-input otp-input'}
                   id="signup-otp"
-                  inputMode="numeric"
-                  maxLength={6}
-                  name="otp"
-                  placeholder="000000"
-                  type="text"
+                  invalid={Boolean(otpError)}
                   value={otpCode}
-                  onChange={(event) => {
-                    setOtpCode(event.target.value.replace(/\D/g, ''))
-                    setOtpError('')
-                  }}
-                  aria-describedby="signup-otp-help signup-otp-error"
-                  aria-invalid={Boolean(otpError)}
+                  onChange={(value) => { setOtpCode(value); setOtpError('') }}
                 />
                 <span className="signup-field-help" id="signup-otp-help">
                   The code expires in {Math.ceil((challenge.expires_in_seconds || 600) / 60)} minutes.
@@ -369,7 +367,7 @@ export default function SignupPage() {
               {apiError && <div className="otp-api-error" role="alert">{apiError}</div>}
 
               <button className="signup-submit" disabled={busy} type="submit">
-                {busy ? 'Verifying...' : 'Verify email'}
+                {busy ? 'Verifying...' : 'Verify phone'}
               </button>
 
               <div className="otp-actions">
@@ -393,7 +391,7 @@ export default function SignupPage() {
 
           <section className="signup-card otp-card otp-complete" aria-labelledby="verified-title">
             <span className="otp-success-icon"><CheckIcon /></span>
-            <span className="signup-step">Email verified</span>
+            <span className="signup-step">Phone verified</span>
             <h2 id="verified-title">Account created</h2>
             <p>
               <strong>{completedAccount?.username}</strong> was created successfully. Log in to manage your account and activate a plan when you are ready to connect.
@@ -418,7 +416,7 @@ export default function SignupPage() {
           <div className="signup-card-header">
             <span className="signup-step">Step 1 of 2</span>
             <h2 id="signup-title">Account details</h2>
-            <p>We will verify your email before activating your account.</p>
+            <p>We will verify your phone number before creating your account.</p>
           </div>
 
           <form className="signup-form" noValidate onSubmit={submit}>
@@ -437,6 +435,26 @@ export default function SignupPage() {
                 aria-invalid={Boolean(errors.email)}
               />
               <FieldError id="signup-email-error" message={errors.email} />
+            </div>
+
+            <div className="signup-field">
+              <label htmlFor="signup-phone">Phone number</label>
+              <input
+                autoComplete="tel"
+                className={errors.phoneNumber ? 'signup-input invalid' : 'signup-input'}
+                id="signup-phone"
+                inputMode="tel"
+                maxLength={18}
+                name="phoneNumber"
+                placeholder="024 123 4567"
+                type="tel"
+                value={form.phoneNumber}
+                onChange={updateField}
+                aria-describedby="signup-phone-help signup-phone-error"
+                aria-invalid={Boolean(errors.phoneNumber)}
+              />
+              <span className="signup-field-help" id="signup-phone-help">We will send your account verification code to this number.</span>
+              <FieldError id="signup-phone-error" message={errors.phoneNumber} />
             </div>
 
             <div className="signup-field">
@@ -611,7 +629,7 @@ export default function SignupPage() {
               }
               type="submit"
             >
-              {busy ? 'Sending verification code...' : 'Continue to email verification'}
+              {busy ? 'Sending verification code...' : 'Continue to phone verification'}
             </button>
           </form>
 

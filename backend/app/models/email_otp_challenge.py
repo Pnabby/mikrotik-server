@@ -27,6 +27,7 @@ class EmailOtpChallenge(Base):
         ForeignKey("customers.id", ondelete="SET NULL"), index=True
     )
     email: Mapped[str] = mapped_column(String(320), index=True)
+    phone_number: Mapped[str | None] = mapped_column(String(16), index=True)
     purpose: Mapped[OtpPurpose] = mapped_column(enum_type(OtpPurpose, "otp_purpose"), index=True)
     # Store only a keyed/one-way digest of the OTP, never the code itself.
     code_hash: Mapped[str] = mapped_column(String(255))

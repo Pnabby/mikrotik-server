@@ -52,14 +52,10 @@ def get_password_email_sender(settings: SettingsDependency) -> OtpEmailSender:
 
 
 class _UnavailablePasswordEmailSender:
-    def send_registration_otp(
-        self, *, recipient: str, code: str, expires_in_minutes: int
-    ) -> None:
+    def send_registration_otp(self, *, recipient: str, code: str, expires_in_minutes: int) -> None:
         raise EmailDeliveryError("Transactional email is not configured.")
 
-    def send_pin_reset_otp(
-        self, *, recipient: str, code: str, expires_in_minutes: int
-    ) -> None:
+    def send_pin_reset_otp(self, *, recipient: str, code: str, expires_in_minutes: int) -> None:
         raise EmailDeliveryError("Transactional email is not configured.")
 
     def send_username_recovery_otp(
@@ -73,9 +69,7 @@ class _UnavailablePasswordEmailSender:
         raise EmailDeliveryError("Transactional email is not configured.")
 
 
-PasswordEmailSenderDependency = Annotated[
-    OtpEmailSender, Depends(get_password_email_sender)
-]
+PasswordEmailSenderDependency = Annotated[OtpEmailSender, Depends(get_password_email_sender)]
 
 
 def get_password_router_factory(
@@ -134,7 +128,12 @@ def login(
             expires=result.expires_at,
         )
     response.set_cookie(CUSTOMER_SESSION_COOKIE, result.token, **cookie_options)
-    return AuthenticatedCustomerResponse(username=result.customer.username)
+    return AuthenticatedCustomerResponse(
+        username=result.customer.username,
+        redirect_to=(
+            "/account" if result.customer.phone_verified_at is not None else "/verify-phone"
+        ),
+    )
 
 
 @router.post("/logout", response_model=LogoutResponse)

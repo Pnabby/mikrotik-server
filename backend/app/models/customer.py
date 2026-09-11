@@ -36,6 +36,8 @@ class Customer(TimestampMixin, Base):
         ForeignKey("routers.id", ondelete="RESTRICT"), index=True
     )
     email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    phone_number: Mapped[str | None] = mapped_column(String(16), unique=True, index=True)
+    phone_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     # Only a password-hasher output belongs here; plaintext PINs must never be persisted.
     pin_hash: Mapped[str] = mapped_column(String(255))
@@ -45,13 +47,11 @@ class Customer(TimestampMixin, Base):
         server_default=AccountStatus.INACTIVE.value,
         index=True,
     )
-    email_verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     mikrotik_user_verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_activity_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-    failed_login_attempts: Mapped[int] = mapped_column(
-        Integer, default=0, server_default="0"
-    )
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     terms_accepted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     terms_version: Mapped[str] = mapped_column(String(20))

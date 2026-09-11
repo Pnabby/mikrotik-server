@@ -27,6 +27,24 @@ if TYPE_CHECKING:
     from app.models.transaction import Transaction
 
 
+class PlanGroup(TimestampMixin, Base):
+    __tablename__ = "plan_groups"
+    __table_args__ = (
+        UniqueConstraint("router_id", "name", name="uq_plan_group_router_name"),
+        CheckConstraint("display_order >= 0", name="plan_group_display_order_non_negative"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    router_id: Mapped[str] = mapped_column(ForeignKey("routers.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    description: Mapped[str | None] = mapped_column(Text)
+    display_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    sort_by_price: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
+    router: Mapped[Router] = relationship(back_populates="plan_groups")
+    profiles: Mapped[list[RouterPackageProfile]] = relationship(back_populates="group")
+
+
 class Package(TimestampMixin, Base):
     __tablename__ = "packages"
     __table_args__ = (
@@ -89,6 +107,9 @@ class RouterPackageProfile(TimestampMixin, Base):
     package_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("packages.id", ondelete="CASCADE"), index=True
     )
+    group_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("plan_groups.id", ondelete="SET NULL"), index=True
+    )
     mikrotik_profile: Mapped[str] = mapped_column(String(120))
     # Presentation can vary by hostel even when the underlying commercial package is shared.
     display_name: Mapped[str | None] = mapped_column(String(120))
@@ -98,3 +119,4 @@ class RouterPackageProfile(TimestampMixin, Base):
 
     router: Mapped[Router] = relationship(back_populates="package_profiles")
     package: Mapped[Package] = relationship(back_populates="router_profiles")
+    group: Mapped[PlanGroup | None] = relationship(back_populates="profiles")

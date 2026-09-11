@@ -72,7 +72,10 @@ class CustomerAccountService:
 
         plan_mappings = self._session.scalars(
             select(RouterPackageProfile)
-            .options(joinedload(RouterPackageProfile.package))
+            .options(
+                joinedload(RouterPackageProfile.package),
+                joinedload(RouterPackageProfile.group),
+            )
             .join(RouterPackageProfile.package)
             .where(
                 RouterPackageProfile.router_id == customer.router_id,
@@ -112,13 +115,13 @@ class CustomerAccountService:
             if relevant_package_ids
             else []
         )
-        presentation_by_package = {
-            mapping.package_id: mapping for mapping in presentation_mappings
-        }
+        presentation_by_package = {mapping.package_id: mapping for mapping in presentation_mappings}
         router_name = customer.router.name if customer.router is not None else "Your hostel"
         return CustomerAccountResponse(
             username=customer.username,
             email=customer.email,
+            phone_number=customer.phone_number,
+            phone_verified=customer.phone_verified_at is not None,
             hostel_name=router_name,
             account_status=customer.account_status,
             current_plan=(
@@ -157,13 +160,23 @@ class CustomerAccountService:
                         and mapping.package.id in successfully_purchased_package_ids
                     ),
                     purchase_available=(
-                        self._payments_enabled
-                        and mapping.package.amount > 0
+                        (
+                            (
+                                mapping.package.is_promotional
+                                and mapping.package.amount == 0
+                            )
+                            or (self._payments_enabled and mapping.package.amount > 0)
+                        )
                         and not (
                             mapping.package.is_promotional
                             and mapping.package.id in successfully_purchased_package_ids
                         )
                     ),
+                    group_id=mapping.group_id,
+                    group_name=mapping.group.name if mapping.group else None,
+                    group_description=mapping.group.description if mapping.group else None,
+                    group_display_order=(mapping.group.display_order if mapping.group else None),
+                    group_sort_by_price=(mapping.group.sort_by_price if mapping.group else False),
                 )
                 for mapping in plan_mappings
             ],
@@ -176,8 +189,7 @@ class CustomerAccountService:
                     ),
                     status=subscription.status,
                     purchased_at=(
-                        subscription.transaction.paid_at
-                        or subscription.transaction.created_at
+                        subscription.transaction.paid_at or subscription.transaction.created_at
                         if subscription.transaction is not None
                         else subscription.created_at
                     ),

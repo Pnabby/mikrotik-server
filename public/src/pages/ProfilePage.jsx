@@ -166,6 +166,15 @@ export default function ProfilePage() {
             <dl className="profile-details">
               <div><dt>Username</dt><dd>{account.username}</dd></div>
               <div><dt>Email address</dt><dd>{account.email}</dd></div>
+              <div>
+                <dt>Phone number</dt>
+                <dd className="profile-phone-value">
+                  <span>{account.phone_number || 'Not added'}</span>
+                  {account.phone_verified
+                    ? <small className="profile-phone-verified">Verified</small>
+                    : <a href="/verify-phone">Add and verify</a>}
+                </dd>
+              </div>
               <div><dt>Hostel</dt><dd>{account.hostel_name}</dd></div>
               <div><dt>Account status</dt><dd><span className={`profile-status status-${account.account_status}`}>{friendlyStatus(account.account_status)}</span></dd></div>
             </dl>

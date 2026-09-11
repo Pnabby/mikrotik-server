@@ -641,6 +641,42 @@
   text-align: center;
 }
 
+.otp-boxes {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 52px));
+  gap: 0.6rem;
+}
+
+.otp-box {
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid var(--signup-border);
+  border-radius: 10px;
+  color: var(--signup-text);
+  background: #fff;
+  font-family: 'Manrope', sans-serif;
+  font-size: 1.25rem;
+  font-weight: 800;
+  text-align: center;
+  caret-color: var(--signup-primary);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.otp-box:focus {
+  border-color: var(--signup-primary);
+  box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.11);
+  outline: 0;
+}
+
+.otp-boxes.invalid .otp-box {
+  border-color: #dc3545;
+}
+
+@media (max-width: 420px) {
+  .otp-boxes { gap: 0.38rem; }
+  .otp-box { border-radius: 8px; font-size: 1.05rem; }
+}
+
 .otp-api-error {
   padding: 0.8rem 1rem;
   border: 1px solid #ffd0df;

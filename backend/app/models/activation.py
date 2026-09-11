@@ -75,6 +75,8 @@ class Activation(TimestampMixin, Base):
     last_error_code: Mapped[str | None] = mapped_column(String(80))
     last_error_message: Mapped[str | None] = mapped_column(Text)
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sms_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    email_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     superseded_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("activations.id", ondelete="SET NULL"), index=True
     )

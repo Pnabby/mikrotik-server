@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import re
+import uuid
 from datetime import UTC, datetime
 from typing import Protocol
 
@@ -16,12 +17,15 @@ from app.core.exceptions import ServiceError
 from app.models.admin_user import AdminUser
 from app.models.audit_log import AuditLog
 from app.models.enums import AuditActorType, RouterStatus
-from app.models.package import Package, RouterPackageProfile
+from app.models.package import Package, PlanGroup, RouterPackageProfile
 from app.models.router import Router
 from app.schemas.admin_profiles import (
     AdminHostelCreate,
     AdminHostelSummary,
     AdminHostelUpdate,
+    AdminPlanGroupCreate,
+    AdminPlanGroupResponse,
+    AdminPlanGroupUpdate,
     AdminProfileUpdate,
     AdminRouterProfileResponse,
 )
@@ -228,7 +232,10 @@ class AdminProfileService:
         }
         mappings = self._session.scalars(
             select(RouterPackageProfile)
-            .options(joinedload(RouterPackageProfile.package))
+            .options(
+                joinedload(RouterPackageProfile.package),
+                joinedload(RouterPackageProfile.group),
+            )
             .where(RouterPackageProfile.router_id == router.id)
         ).all()
         mappings_by_name = {mapping.mikrotik_profile.casefold(): mapping for mapping in mappings}
@@ -280,8 +287,7 @@ class AdminProfileService:
             raise ServiceError(status.HTTP_404_NOT_FOUND, "Router profile was not found.")
         canonical_name = _text(raw_profile.get("name"))
         if (
-            canonical_name.casefold()
-            == self._settings.mikrotik_registration_profile.casefold()
+            canonical_name.casefold() == self._settings.mikrotik_registration_profile.casefold()
             and update.is_visible
         ):
             raise ServiceError(
@@ -326,6 +332,22 @@ class AdminProfileService:
         mapping.description = update.description
         mapping.download_speed = update.download_speed
         mapping.is_active = update.is_visible
+        if "group_id" in update.model_fields_set:
+            if update.group_id is None:
+                mapping.group = None
+            else:
+                group = self._session.scalar(
+                    select(PlanGroup).where(
+                        PlanGroup.id == update.group_id,
+                        PlanGroup.router_id == router.id,
+                    )
+                )
+                if group is None:
+                    raise ServiceError(
+                        status.HTTP_400_BAD_REQUEST,
+                        "The selected plan group does not belong to this hostel.",
+                    )
+                mapping.group = group
         package.name = update.display_name
         package.description = update.description
         package.amount = update.amount
@@ -356,6 +378,7 @@ class AdminProfileService:
                         "duration_seconds": update.duration_seconds,
                         "download_speed": update.download_speed,
                         "is_promotional": update.is_promotional,
+                        "group_id": str(mapping.group_id) if mapping.group_id else None,
                     },
                     ip_address=(ip_address or "")[:64] or None,
                 )
@@ -396,8 +419,7 @@ class AdminProfileService:
             select(RouterPackageProfile)
             .where(
                 RouterPackageProfile.router_id == router.id,
-                func.lower(RouterPackageProfile.mikrotik_profile)
-                == normalized_profile.casefold(),
+                func.lower(RouterPackageProfile.mikrotik_profile) == normalized_profile.casefold(),
             )
             .limit(1)
         )
@@ -446,8 +468,11 @@ class AdminProfileService:
         return AdminRouterProfileResponse(
             mikrotik_profile=profile_name,
             display_name=(mapping.display_name or package.name) if mapping and package else None,
-            description=(mapping.description or package.description) if mapping and package else None,
+            description=(mapping.description or package.description)
+            if mapping and package
+            else None,
             package_id=package.id if package else None,
+            group_id=mapping.group_id if mapping else None,
             amount=package.amount if package else None,
             currency=package.currency if package else "GHS",
             duration_seconds=package.duration_seconds if package else None,
@@ -462,8 +487,7 @@ class AdminProfileService:
             is_configured=mapping is not None,
             is_visible=bool(mapping and mapping.is_active and package and package.is_active),
             is_registration_profile=(
-                profile_name.casefold()
-                == self._settings.mikrotik_registration_profile.casefold()
+                profile_name.casefold() == self._settings.mikrotik_registration_profile.casefold()
             ),
             available_on_router=raw_profile is not None,
             rate_limit=_profile_value(raw_profile, "rate-limit"),
@@ -471,6 +495,167 @@ class AdminProfileService:
             session_timeout=_profile_value(raw_profile, "session-timeout"),
             idle_timeout=_profile_value(raw_profile, "idle-timeout"),
             address_pool=_profile_value(raw_profile, "address-pool"),
+        )
+
+    def list_plan_groups(self, router: Router) -> list[AdminPlanGroupResponse]:
+        groups = self._session.scalars(
+            select(PlanGroup)
+            .where(PlanGroup.router_id == router.id)
+            .order_by(PlanGroup.display_order, PlanGroup.name)
+        ).all()
+        profile_names: dict[uuid.UUID, list[str]] = {}
+        for group_id, profile_name in self._session.execute(
+            select(RouterPackageProfile.group_id, RouterPackageProfile.mikrotik_profile).where(
+                RouterPackageProfile.router_id == router.id,
+                RouterPackageProfile.group_id.is_not(None),
+            )
+        ):
+            if group_id is not None:
+                profile_names.setdefault(group_id, []).append(profile_name)
+        return [
+            self._plan_group_response(group, profile_names.get(group.id, [])) for group in groups
+        ]
+
+    def create_plan_group(
+        self,
+        router: Router,
+        create: AdminPlanGroupCreate,
+        admin: AdminUser,
+        ip_address: str | None,
+    ) -> AdminPlanGroupResponse:
+        group = PlanGroup(router=router, **create.model_dump(exclude={"profile_names"}))
+        self._session.add(group)
+        self._save_plan_group(
+            group,
+            create.profile_names,
+            admin,
+            "plan_group.created",
+            ip_address,
+        )
+        return self._plan_group_response(group, create.profile_names)
+
+    def update_plan_group(
+        self,
+        group: PlanGroup,
+        update: AdminPlanGroupUpdate,
+        admin: AdminUser,
+        ip_address: str | None,
+    ) -> AdminPlanGroupResponse:
+        for field, value in update.model_dump(exclude={"profile_names"}).items():
+            setattr(group, field, value)
+        self._save_plan_group(
+            group,
+            update.profile_names,
+            admin,
+            "plan_group.updated",
+            ip_address,
+        )
+        return self._plan_group_response(group, update.profile_names)
+
+    def delete_plan_group(
+        self,
+        group: PlanGroup,
+        admin: AdminUser,
+        ip_address: str | None,
+    ) -> None:
+        group_id = group.id
+        self._session.delete(group)
+        self._session.add(
+            AuditLog(
+                actor_type=AuditActorType.ADMIN,
+                admin_user_id=admin.id,
+                action="plan_group.deleted",
+                entity_type="plan_group",
+                entity_id=str(group_id),
+                details={"router_id": group.router_id, "name": group.name},
+                ip_address=(ip_address or "")[:64] or None,
+            )
+        )
+        self._session.commit()
+
+    def _save_plan_group(
+        self,
+        group: PlanGroup,
+        profile_names: list[str],
+        admin: AdminUser,
+        action: str,
+        ip_address: str | None,
+    ) -> None:
+        try:
+            self._session.flush()
+            assigned_profile_names = self._assign_group_profiles(group, profile_names)
+            self._session.add(
+                AuditLog(
+                    actor_type=AuditActorType.ADMIN,
+                    admin_user_id=admin.id,
+                    action=action,
+                    entity_type="plan_group",
+                    entity_id=str(group.id),
+                    details={
+                        "router_id": group.router_id,
+                        "name": group.name,
+                        "display_order": group.display_order,
+                        "sort_by_price": group.sort_by_price,
+                        "profile_names": assigned_profile_names,
+                    },
+                    ip_address=(ip_address or "")[:64] or None,
+                )
+            )
+            self._session.commit()
+        except ServiceError:
+            self._session.rollback()
+            raise
+        except IntegrityError as exc:
+            self._session.rollback()
+            raise ServiceError(
+                status.HTTP_409_CONFLICT,
+                "A plan group with this name already exists for the hostel.",
+            ) from exc
+
+    def _assign_group_profiles(self, group: PlanGroup, profile_names: list[str]) -> list[str]:
+        mappings = self._session.scalars(
+            select(RouterPackageProfile)
+            .options(joinedload(RouterPackageProfile.package))
+            .where(RouterPackageProfile.router_id == group.router_id)
+        ).all()
+        published_by_name = {
+            mapping.mikrotik_profile.casefold(): mapping
+            for mapping in mappings
+            if mapping.is_active and mapping.package.is_active
+        }
+        selected_keys = {name.casefold() for name in profile_names}
+        unavailable = sorted(
+            name for name in profile_names if name.casefold() not in published_by_name
+        )
+        if unavailable:
+            raise ServiceError(
+                status.HTTP_400_BAD_REQUEST,
+                "Only published plans from this hostel can be added to a group.",
+            )
+        for mapping in mappings:
+            key = mapping.mikrotik_profile.casefold()
+            if mapping.group_id == group.id and key not in selected_keys:
+                mapping.group = None
+            elif key in selected_keys:
+                mapping.group = group
+        self._session.flush()
+        return sorted(
+            (published_by_name[key].mikrotik_profile for key in selected_keys),
+            key=str.casefold,
+        )
+
+    @staticmethod
+    def _plan_group_response(
+        group: PlanGroup, profile_names: list[str]
+    ) -> AdminPlanGroupResponse:
+        return AdminPlanGroupResponse(
+            id=group.id,
+            name=group.name,
+            description=group.description,
+            display_order=group.display_order,
+            sort_by_price=group.sort_by_price,
+            profile_names=sorted(profile_names, key=str.casefold),
+            plan_count=len(profile_names),
         )
 
     def _isolate_shared_package(self, mapping: RouterPackageProfile) -> Package:

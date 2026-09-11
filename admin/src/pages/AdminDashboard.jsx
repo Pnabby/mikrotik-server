@@ -3,16 +3,23 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   AdminApiError,
   createHostel,
+  createPlanGroup,
+  deletePlanGroup,
   deleteHostelProfileConfiguration,
   forceHostelIpCloudUpdate,
+  getCustomersAndDevices,
   getDashboard,
   getSupportSettings,
+  getTransactions,
   listHostelProfiles,
   listHostels,
+  listPlanGroups,
   logout,
   saveHostelProfile,
   saveSupportSettings,
+  sendBroadcast,
   updateHostel,
+  updatePlanGroup,
 } from '../services/adminApi'
 
 const DURATION_UNITS = {
@@ -196,7 +203,7 @@ function withoutProfileConfiguration(profile) {
   }
 }
 
-function ProfileEditor({ hostel, profile, onClose, onDelete, onSave }) {
+function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
   const mixedFields = new Set(profile.mixed_fields || [])
   const startingDuration = mixedFields.has('duration_seconds')
     ? { value: '', unit: 'days' }
@@ -216,6 +223,7 @@ function ProfileEditor({ hostel, profile, onClose, onDelete, onSave }) {
     downloadSpeed: mixedFields.has('download_speed') ? '' : profile.download_speed || '',
     isPromotional: mixedFields.has('is_promotional') ? false : profile.is_promotional || false,
     isVisible: profile.is_registration_profile || mixedFields.has('is_visible') ? false : profile.is_visible,
+    groupId: profile.group_id || '',
   })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -237,6 +245,10 @@ function ProfileEditor({ hostel, profile, onClose, onDelete, onSave }) {
     }
     if (form.amount === '' || Number(form.amount) < 0) {
       setError('Enter a valid price.')
+      return
+    }
+    if (Number(form.amount) === 0 && form.isVisible && !form.isPromotional) {
+      setError('A published free plan must be marked as a promotional package.')
       return
     }
     if (form.durationValue !== '' && (!Number(form.durationValue) || Number(form.durationValue) <= 0)) {
@@ -261,6 +273,7 @@ function ProfileEditor({ hostel, profile, onClose, onDelete, onSave }) {
         download_speed: form.downloadSpeed.trim() || null,
         is_promotional: profile.is_registration_profile ? false : form.isPromotional,
         is_visible: profile.is_registration_profile ? false : form.isVisible,
+        ...(!profile.bulk_mode ? { group_id: form.groupId || null } : {}),
       })
     } catch (saveError) {
       setError(saveError.message || 'The profile could not be saved.')
@@ -333,6 +346,14 @@ function ProfileEditor({ hostel, profile, onClose, onDelete, onSave }) {
               <span>Description <em>Optional</em></span>
               <textarea maxLength="500" name="description" placeholder="A short, helpful summary of this plan" rows="3" value={form.description} onChange={change} />
             </label>
+            {!profile.bulk_mode && <label className="editor-field">
+              <span>Plan group <em>Optional</em></span>
+              <select name="groupId" value={form.groupId} onChange={change}>
+                <option value="">Ungrouped</option>
+                {groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+              </select>
+              <small>Create and organize groups from the catalogue page.</small>
+            </label>}
           </section>
 
           <section>
@@ -343,6 +364,7 @@ function ProfileEditor({ hostel, profile, onClose, onDelete, onSave }) {
               <label className="editor-field">
                 <span>Price</span>
                 <div className="input-prefix"><b>{form.currency}</b><input min="0" name="amount" placeholder="0.00" step="0.01" type="number" value={form.amount} onChange={change} /></div>
+                <small>Set this to 0 and enable Promotional package to offer a free one-time claim.</small>
               </label>
               <label className="editor-field">
                 <span>Currency</span>
@@ -387,7 +409,7 @@ function ProfileEditor({ hostel, profile, onClose, onDelete, onSave }) {
 
           <section className="visibility-section">
             <label className={profile.is_registration_profile ? 'publish-toggle disabled' : 'publish-toggle'}>
-              <div><strong>Promotional package</strong><small>{profile.is_registration_profile ? 'The registration profile cannot be used as a promotion.' : 'Highlight this offer publicly and allow each customer to purchase it only once.'}</small></div>
+              <div><strong>Promotional package</strong><small>{profile.is_registration_profile ? 'The registration profile cannot be used as a promotion.' : 'Show this offer first and allow each customer to use it once. A price of 0 makes it free.'}</small></div>
               <input checked={profile.is_registration_profile ? false : form.isPromotional} disabled={profile.is_registration_profile} name="isPromotional" type="checkbox" onChange={change} />
               <span aria-hidden="true" />
             </label>
@@ -631,6 +653,169 @@ function SupportSettingsPanel({ canEdit, onSessionExpired }) {
   )
 }
 
+function PlanGroupManager({ canEdit, groups, onCreate, onDelete, onUpdate, profiles }) {
+  const empty = { name: '', description: '', displayOrder: 0, sortByPrice: false, profileNames: [] }
+  const [editingId, setEditingId] = useState('')
+  const [form, setForm] = useState(empty)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [planSearch, setPlanSearch] = useState('')
+  const publishedPlans = profiles
+    .filter((profile) => profile.is_visible && profile.is_configured && !profile.is_registration_profile)
+    .sort((left, right) => (
+      Number(right.is_promotional) - Number(left.is_promotional)
+      || (left.display_name || left.mikrotik_profile).localeCompare(right.display_name || right.mikrotik_profile)
+    ))
+  const visiblePublishedPlans = publishedPlans.filter((profile) => (
+    `${profile.display_name || ''} ${profile.mikrotik_profile}`.toLocaleLowerCase()
+      .includes(planSearch.trim().toLocaleLowerCase())
+  ))
+
+  function edit(group = null) {
+    setEditingId(group?.id || 'new')
+    setForm(group ? {
+      name: group.name,
+      description: group.description || '',
+      displayOrder: group.display_order,
+      sortByPrice: group.sort_by_price,
+      profileNames: group.profile_names || [],
+    } : empty)
+    setError('')
+    setPlanSearch('')
+  }
+
+  function togglePlan(profileName) {
+    setForm((current) => ({
+      ...current,
+      profileNames: current.profileNames.includes(profileName)
+        ? current.profileNames.filter((name) => name !== profileName)
+        : [...current.profileNames, profileName],
+    }))
+  }
+
+  async function submit(event) {
+    event.preventDefault()
+    if (form.name.trim().length < 2) {
+      setError('Enter a group name of at least 2 characters.')
+      return
+    }
+    setSaving(true)
+    setError('')
+    const payload = {
+      name: form.name.trim(),
+      description: form.description.trim() || null,
+      display_order: Number(form.displayOrder || 0),
+      sort_by_price: form.sortByPrice,
+      profile_names: form.profileNames,
+    }
+    try {
+      if (editingId === 'new') await onCreate(payload)
+      else await onUpdate(editingId, payload)
+      setEditingId('')
+      setForm(empty)
+    } catch (saveError) {
+      setError(saveError.message || 'The plan group could not be saved.')
+    } finally { setSaving(false) }
+  }
+
+  async function remove(group) {
+    if (!window.confirm(`Delete the "${group.name}" group? Its plans will become ungrouped.`)) return
+    try { await onDelete(group.id) } catch (deleteError) {
+      setError(deleteError.message || 'The plan group could not be deleted.')
+    }
+  }
+
+  return <section className="plan-groups-card">
+    <header>
+      <div><span className="dashboard-kicker">Customer organization</span><h3>Plan groups</h3><p>Organize related plans into polished sections on the customer page.</p></div>
+      {canEdit && !editingId && <button type="button" onClick={() => edit()}>+ Create group</button>}
+    </header>
+    {groups.length > 0 && <div className="plan-group-list">{groups.map((group) => <article key={group.id}>
+      <div><strong>{group.name}</strong><p>{group.description || 'No description'}</p><small>{group.plan_count} plan{group.plan_count === 1 ? '' : 's'} &middot; {group.sort_by_price ? 'Lowest price first' : 'Plan name order'} &middot; position {group.display_order}</small></div>
+      {canEdit && <div><button type="button" onClick={() => edit(group)}>Manage plans</button><button className="danger" type="button" onClick={() => remove(group)}>Delete</button></div>}
+    </article>)}</div>}
+    {!groups.length && !editingId && <p className="plan-groups-empty">No groups yet. Plans continue to appear in the standard grid.</p>}
+    {editingId && <form className="plan-group-form" onSubmit={submit}>
+      <label><span>Group name</span><input autoFocus maxLength="120" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="e.g. Daily bundles" /></label>
+      <label><span>Description <em>Optional</em></span><input maxLength="500" value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} placeholder="Short customer-facing description" /></label>
+      <div className="plan-group-form-row">
+        <label><span>Group position</span><input min="0" required step="1" type="number" value={form.displayOrder} onChange={(event) => setForm((current) => ({ ...current, displayOrder: event.target.value }))} /></label>
+        <label className="plan-group-price-sort"><input checked={form.sortByPrice} type="checkbox" onChange={(event) => setForm((current) => ({ ...current, sortByPrice: event.target.checked }))} /><span><strong>Order by increasing price</strong><small>Show the cheapest plan first inside this group.</small></span></label>
+      </div>
+      <section className="plan-group-plan-picker">
+        <header><div><h4>Add published plans</h4><p>Select the plans that should appear in this group. Selecting a plan already in another group will move it here.</p></div><strong>{form.profileNames.length} selected</strong></header>
+        {publishedPlans.length ? <>
+          <div className="plan-group-picker-tools"><div className="profile-search"><Icon name="search" /><input aria-label="Search published plans" placeholder="Search published plans" type="search" value={planSearch} onChange={(event) => setPlanSearch(event.target.value)} /></div><button type="button" onClick={() => setForm((current) => ({ ...current, profileNames: publishedPlans.map((profile) => profile.mikrotik_profile) }))}>Select all</button><button type="button" onClick={() => setForm((current) => ({ ...current, profileNames: [] }))}>Clear</button></div>
+          <div className="plan-group-plan-list">{visiblePublishedPlans.map((profile) => {
+            const currentGroup = groups.find((group) => group.id === profile.group_id)
+            return <label className="plan-group-plan-option" key={profile.mikrotik_profile}><input checked={form.profileNames.includes(profile.mikrotik_profile)} type="checkbox" onChange={() => togglePlan(profile.mikrotik_profile)} /><span><strong>{profile.display_name || titleFromProfile(profile.mikrotik_profile)}{profile.is_promotional && <em>Promo</em>}</strong><small>{profile.mikrotik_profile}{currentGroup && currentGroup.id !== editingId ? ` · currently in ${currentGroup.name}` : ''}</small></span><b>{formatMoney(profile.amount, profile.currency)}</b></label>
+          })}</div>
+          {!visiblePublishedPlans.length && <p className="plan-groups-empty">No published plans match your search.</p>}
+        </> : <p className="plan-groups-empty">Publish a plan first, then return here to add it to this group.</p>}
+      </section>
+      {error && <div className="editor-error" role="alert"><Icon name="alert" />{error}</div>}
+      <div className="plan-group-form-actions"><button type="button" onClick={() => { setEditingId(''); setError('') }}>Cancel</button><button disabled={saving} type="submit">{saving ? 'Saving...' : 'Save group'}</button></div>
+    </form>}
+  </section>
+}
+
+function MessagingPanel({ canEdit, hostels, onSessionExpired, embedded = false }) {
+  const [form, setForm] = useState({ subject: '', message: '', routerId: '' })
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
+  const [result, setResult] = useState(null)
+
+  function change(event) {
+    setForm((current) => ({ ...current, [event.target.name]: event.target.value }))
+    setError('')
+    setResult(null)
+  }
+
+  async function submit(event) {
+    event.preventDefault()
+    if (!form.subject.trim() || !form.message.trim()) {
+      setError('Enter a subject and message.')
+      return
+    }
+    const audience = form.routerId
+      ? hostels.find((hostel) => hostel.router_id === form.routerId)?.name || 'the selected hostel'
+      : 'all hostels'
+    if (!window.confirm(`Send this message by SMS and email to users in ${audience}?`)) return
+    setSending(true)
+    setError('')
+    try {
+      setResult(await sendBroadcast(
+        form.subject.trim(),
+        form.message.trim(),
+        form.routerId || null,
+      ))
+      setForm((current) => ({ ...current, subject: '', message: '' }))
+    } catch (requestError) {
+      if (requestError instanceof AdminApiError && requestError.status === 401) {
+        onSessionExpired()
+        return
+      }
+      setError('The message could not be sent. Check notification settings and try again.')
+    } finally { setSending(false) }
+  }
+
+  return <>
+    {!embedded && <header className="dashboard-page-heading"><div><p className="dashboard-kicker">Customer communications</p><h1>Send a service message</h1><p>Notify every customer, or only customers registered at one hostel. Use this for operational and account-related notices, not marketing without the required permission.</p></div></header>}
+    <section className="support-settings-card">
+      <header><span><Icon name="users" /></span><div><h2>New broadcast</h2><p>Messages are delivered by SMS to verified phones and by email.</p></div></header>
+      <form onSubmit={submit}>
+        <label><span>Recipients</span><select disabled={!canEdit || sending} name="routerId" value={form.routerId} onChange={change}><option value="">All users in all hostels</option>{hostels.map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>Only {hostel.name}</option>)}</select></label>
+        <label><span>Email subject</span><input disabled={!canEdit || sending} maxLength="120" name="subject" placeholder="Important Flint WiFi update" value={form.subject} onChange={change} /></label>
+        <label><span>Message</span><textarea disabled={!canEdit || sending} maxLength="1000" name="message" placeholder="Write your message here..." rows="7" value={form.message} onChange={change} /><small>{form.message.length}/1000 characters</small></label>
+        {!canEdit && <div className="hostel-readonly-note"><Icon name="alert" />Your viewer role cannot send messages.</div>}
+        {error && <div className="editor-error" role="alert"><Icon name="alert" />{error}</div>}
+        {result && <div className="support-settings-success" role="status"><Icon name="check" />Targeted {result.targeted_users} users: {result.sms_sent} SMS and {result.email_sent} emails sent.{result.sms_failed + result.email_failed > 0 ? ` ${result.sms_failed + result.email_failed} deliveries failed.` : ''}</div>}
+        {canEdit && <button className="support-settings-save" disabled={sending} type="submit">{sending ? 'Sending...' : 'Send message'}</button>}
+      </form>
+    </section>
+  </>
+}
+
 function ProfileTable({ bulkMode, profiles, query, filter, onEdit }) {
   const visibleProfiles = profiles.filter((profile) => {
     const matchesQuery = `${profile.display_name || ''} ${profile.mikrotik_profile}`
@@ -693,7 +878,12 @@ function formatDashboardTime(value) {
   }).format(new Date(value))
 }
 
-function DashboardOverview({ hostels, loadingHostels, selectedId, onSelect, onSessionExpired }) {
+function formatStatus(value, fallback = 'Not started') {
+  if (!value) return fallback
+  return String(value).replaceAll('_', ' ').replace(/^./, (letter) => letter.toUpperCase())
+}
+
+function DashboardOverview({ hostels, loadingHostels, selectedId, onOpenCustomers, onOpenTransactions, onSelect, onSessionExpired }) {
   const [summary, setSummary] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -736,31 +926,189 @@ function DashboardOverview({ hostels, loadingHostels, selectedId, onSelect, onSe
       {unavailable.length > 0 && <div className="router-warning" role="status"><Icon name="alert" /><div><strong>{unavailable.length === 1 ? `${unavailable[0].name} is unavailable` : `${unavailable.length} routers are unavailable`}</strong><p>Live user and device totals exclude unreachable routers. Database and revenue figures are still complete for the selected scope.</p></div></div>}
 
       <section className="dashboard-metric-grid" aria-label="Dashboard totals">
+        <article className="dashboard-metric-primary"><span className="stat-icon"><Icon name="money" /></span><div><small>Revenue today</small><strong>{formatRevenue(summary.revenue.today)}</strong><p>{summary.revenue.successful_payments_today.toLocaleString()} successful transaction{summary.revenue.successful_payments_today === 1 ? '' : 's'}</p></div></article>
         <article><span className="stat-icon purple"><Icon name="users" /></span><div><small>Total users</small><strong>{summary.total_users.toLocaleString()}</strong><p>{summary.active_account_users.toLocaleString()} active accounts</p></div></article>
-        <article><span className="stat-icon green"><Icon name="activity" /></span><div><small>Online users</small><strong>{summary.active_users.toLocaleString()}</strong><p>Unique users in HotSpot active</p></div></article>
-        <article><span className="stat-icon blue"><Icon name="device" /></span><div><small>Active devices</small><strong>{summary.active_devices.toLocaleString()}</strong><p>Live sessions for online users</p></div></article>
         <article><span className="stat-icon amber"><Icon name="clock" /></span><div><small>Active subscriptions</small><strong>{summary.active_subscriptions.toLocaleString()}</strong><p>Currently provisioned plans</p></div></article>
-      </section>
-
-      <section className="revenue-grid" aria-label="Revenue overview">
-        <article className="revenue-primary"><span><Icon name="money" /></span><small>Revenue this month</small><strong>{formatRevenue(summary.revenue.month)}</strong><p>{summary.revenue.successful_payments_month.toLocaleString()} successful payment{summary.revenue.successful_payments_month === 1 ? '' : 's'}</p></article>
-        <article><small>Today</small><strong>{formatRevenue(summary.revenue.today)}</strong><p>{summary.revenue.successful_payments_today.toLocaleString()} successful</p></article>
-        <article><small>All-time revenue</small><strong>{formatRevenue(summary.revenue.all_time)}</strong><p>Successful payments only</p></article>
-        <article><small>Pending payments</small><strong>{summary.revenue.pending_payments.toLocaleString()}</strong><p>Awaiting completion</p></article>
+        <article><span className="stat-icon blue"><Icon name="device" /></span><div><small>Active devices</small><strong>{summary.active_devices.toLocaleString()}</strong><p>Live sessions for online users</p></div></article>
       </section>
 
       <div className="dashboard-detail-grid">
         <section className="dashboard-panel">
-          <header><div><h2>Router health</h2><p>Live connection status by hostel</p></div><span>{summary.routers.filter((router) => router.reachable).length}/{summary.routers.length} online</span></header>
+          <header><div><h2>Hostel status</h2><p>Live connection status by hostel</p></div><button type="button" onClick={onOpenCustomers}>View devices</button><span>{summary.routers.filter((router) => router.reachable).length}/{summary.routers.length} online</span></header>
           <div className="router-health-list">{summary.routers.length ? summary.routers.map((router) => <div key={router.router_id}><span className={`router-health-icon ${router.reachable ? 'online' : 'offline'}`}><Icon name={router.reachable ? 'wifi' : 'alert'} /></span><div><strong>{router.name}</strong><small>{router.reachable ? `${router.active_users} users · ${router.active_devices} devices` : router.error}</small></div><em className={router.reachable ? 'online' : 'offline'}>{router.reachable ? 'Online' : 'Unavailable'}</em></div>) : <p className="dashboard-empty-copy">No hostels are configured.</p>}</div>
         </section>
 
         <section className="dashboard-panel transactions-panel">
-          <header><div><h2>Recent transactions</h2><p>Latest payments in this scope</p></div></header>
+          <header><div><h2>Recent transactions</h2><p>Latest payments in this scope</p></div><button type="button" onClick={onOpenTransactions}>View all</button></header>
           <div className="recent-transaction-list">{summary.recent_transactions.length ? summary.recent_transactions.map((transaction) => <div key={transaction.reference}><span className={`transaction-mark ${transaction.status}`}><Icon name="receipt" /></span><div><strong>{transaction.package}</strong><small>{transaction.customer} · {formatDashboardTime(transaction.occurred_at)}</small></div><div className="transaction-amount"><strong>{formatMoney(transaction.amount, transaction.currency)}</strong><small className={transaction.status}>{transaction.status}</small></div></div>) : <p className="dashboard-empty-copy">No transactions yet.</p>}</div>
         </section>
       </div>
       <p className="dashboard-updated">Live figures checked {formatDashboardTime(summary.generated_at)}</p>
+    </>}
+  </>
+}
+
+const TRANSACTION_FILTER_DEFAULTS = {
+  router_id: '',
+  payment_status: '',
+  date_from: '',
+  date_to: '',
+  search: '',
+}
+
+function RevenueTransactionsPanel({ hostels, onSessionExpired }) {
+  const [filters, setFilters] = useState(TRANSACTION_FILTER_DEFAULTS)
+  const [appliedFilters, setAppliedFilters] = useState(TRANSACTION_FILTER_DEFAULTS)
+  const [result, setResult] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+    setError('')
+    getTransactions({ ...appliedFilters, limit: 100 })
+      .then((data) => { if (active) setResult(data) })
+      .catch((requestError) => {
+        if (!active) return
+        if (requestError instanceof AdminApiError && requestError.status === 401) {
+          onSessionExpired()
+          return
+        }
+        setError('Revenue and transaction information could not be loaded.')
+      })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [appliedFilters, refreshKey])
+
+  function change(event) {
+    setFilters((current) => ({ ...current, [event.target.name]: event.target.value }))
+  }
+
+  function apply(event) {
+    event.preventDefault()
+    setAppliedFilters({ ...filters })
+  }
+
+  function clearFilters() {
+    setFilters(TRANSACTION_FILTER_DEFAULTS)
+    setAppliedFilters(TRANSACTION_FILTER_DEFAULTS)
+  }
+
+  return <>
+    <header className="dashboard-page-heading">
+      <div><p className="dashboard-kicker">Financial performance</p><h1>Revenue &amp; transactions</h1><p>Review successful revenue, payment outcomes, activation status, and individual transaction records.</p></div>
+      <button className="dashboard-refresh-button" disabled={loading} type="button" onClick={() => setRefreshKey((value) => value + 1)}><Icon name="refresh" />{loading ? 'Refreshing' : 'Refresh'}</button>
+    </header>
+
+    <form className="admin-data-filters" onSubmit={apply}>
+      <label><span>Hostel</span><select name="router_id" value={filters.router_id} onChange={change}><option value="">All hostels</option>{hostels.map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></label>
+      <label><span>Payment status</span><select name="payment_status" value={filters.payment_status} onChange={change}><option value="">All statuses</option><option value="success">Successful</option><option value="pending">Pending</option><option value="failed">Failed</option></select></label>
+      <label><span>From</span><input name="date_from" type="date" value={filters.date_from} onChange={change} /></label>
+      <label><span>To</span><input name="date_to" type="date" value={filters.date_to} onChange={change} /></label>
+      <label className="admin-filter-search"><span>Search</span><input name="search" placeholder="Reference, user, email or plan" type="search" value={filters.search} onChange={change} /></label>
+      <div><button type="button" onClick={clearFilters}>Clear</button><button className="primary" type="submit">Apply filters</button></div>
+    </form>
+
+    {error && <div className="dashboard-load-error" role="alert"><Icon name="alert" /><div><strong>Unable to load transactions</strong><p>{error}</p></div></div>}
+    {loading && !result ? <div className="dashboard-overview-loading"><span className="admin-page-spinner" /><p>Loading financial records...</p></div> : result && <>
+      <section className="dashboard-metric-grid admin-data-metrics">
+        <article><span className="stat-icon green"><Icon name="money" /></span><div><small>Filtered revenue</small><strong>{formatRevenue(result.revenue)}</strong><p>Successful transactions only</p></div></article>
+        <article><span className="stat-icon purple"><Icon name="check" /></span><div><small>Successful</small><strong>{result.successful.toLocaleString()}</strong><p>Completed payments and free claims</p></div></article>
+        <article><span className="stat-icon amber"><Icon name="clock" /></span><div><small>Pending</small><strong>{result.pending.toLocaleString()}</strong><p>Awaiting payment or verification</p></div></article>
+        <article><span className="stat-icon blue"><Icon name="alert" /></span><div><small>Failed</small><strong>{result.failed.toLocaleString()}</strong><p>Unsuccessful payment attempts</p></div></article>
+      </section>
+
+      <section className="admin-data-card">
+        <header><div><h2>Transactions</h2><p>{result.total.toLocaleString()} record{result.total === 1 ? '' : 's'} match the current filters. Showing up to 100 newest.</p></div></header>
+        <div className="admin-data-table-wrap"><table className="admin-data-table"><thead><tr><th>Customer</th><th>Plan / hostel</th><th>Amount</th><th>Payment</th><th>Activation</th><th>Date</th><th>Reference</th></tr></thead><tbody>
+          {result.transactions.map((transaction) => <tr key={transaction.reference}>
+            <td><strong>{transaction.customer_username}</strong><small>{transaction.customer_email}</small>{transaction.customer_phone && <small>{transaction.customer_phone}</small>}</td>
+            <td><strong>{transaction.package}</strong><small>{transaction.hostel_name}</small></td>
+            <td><strong>{Number(transaction.amount) === 0 ? 'Free' : formatMoney(transaction.amount, transaction.currency)}</strong></td>
+            <td><span className={`admin-status-pill ${transaction.status}`}>{formatStatus(transaction.status)}</span><small>{formatStatus(transaction.provider_status, 'No provider status')}</small></td>
+            <td><span className={`admin-status-pill ${transaction.activation_status || 'pending'}`}>{formatStatus(transaction.activation_status)}</span></td>
+            <td><strong>{formatDashboardTime(transaction.occurred_at)}</strong></td>
+            <td><code>{transaction.reference}</code></td>
+          </tr>)}
+        </tbody></table>{!result.transactions.length && <p className="dashboard-empty-copy">No transactions match these filters.</p>}</div>
+      </section>
+    </>}
+  </>
+}
+
+const CUSTOMER_FILTER_DEFAULTS = {
+  router_id: '',
+  account_status: '',
+  subscription: 'all',
+  search: '',
+}
+
+function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
+  const [mode, setMode] = useState('customers')
+  const [filters, setFilters] = useState(CUSTOMER_FILTER_DEFAULTS)
+  const [appliedFilters, setAppliedFilters] = useState(CUSTOMER_FILTER_DEFAULTS)
+  const [result, setResult] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  useEffect(() => {
+    if (mode === 'message') return undefined
+    let active = true
+    setLoading(true)
+    setError('')
+    getCustomersAndDevices({ ...appliedFilters, limit: 200 })
+      .then((data) => { if (active) setResult(data) })
+      .catch((requestError) => {
+        if (!active) return
+        if (requestError instanceof AdminApiError && requestError.status === 401) {
+          onSessionExpired()
+          return
+        }
+        setError('Customer and live device information could not be loaded.')
+      })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [appliedFilters, mode, refreshKey])
+
+  function change(event) {
+    setFilters((current) => ({ ...current, [event.target.name]: event.target.value }))
+  }
+
+  function apply(event) {
+    event.preventDefault()
+    setAppliedFilters({ ...filters })
+  }
+
+  return <>
+    <header className="dashboard-page-heading">
+      <div><p className="dashboard-kicker">Customer operations</p><h1>Customers &amp; devices</h1><p>Understand account status, subscriptions, live connections, and communicate with your users.</p></div>
+      {mode !== 'message' && <button className="dashboard-refresh-button" disabled={loading} type="button" onClick={() => setRefreshKey((value) => value + 1)}><Icon name="refresh" />{loading ? 'Refreshing' : 'Refresh live data'}</button>}
+    </header>
+
+    <div className="admin-section-tabs" role="tablist" aria-label="Customer information"><button className={mode === 'customers' ? 'active' : ''} role="tab" type="button" onClick={() => setMode('customers')}><Icon name="users" />Users</button><button className={mode === 'devices' ? 'active' : ''} role="tab" type="button" onClick={() => setMode('devices')}><Icon name="device" />Connected devices</button><button className={mode === 'message' ? 'active' : ''} role="tab" type="button" onClick={() => setMode('message')}><Icon name="activity" />Message users</button></div>
+
+    {mode === 'message' ? <MessagingPanel embedded canEdit={admin.role !== 'viewer'} hostels={hostels} onSessionExpired={onSessionExpired} /> : <>
+      <form className="admin-data-filters customer-filters" onSubmit={apply}>
+        <label><span>Hostel</span><select name="router_id" value={filters.router_id} onChange={change}><option value="">All hostels</option>{hostels.map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></label>
+        <label><span>Account status</span><select name="account_status" value={filters.account_status} onChange={change}><option value="">All accounts</option><option value="active">Active</option><option value="inactive">Inactive</option><option value="suspended">Suspended</option><option value="closed">Closed</option></select></label>
+        <label><span>Subscription</span><select name="subscription" value={filters.subscription} onChange={change}><option value="all">All users</option><option value="active">Active plan</option><option value="inactive">No active plan</option></select></label>
+        <label className="admin-filter-search"><span>Search</span><input name="search" placeholder="Username, email or phone" type="search" value={filters.search} onChange={change} /></label>
+        <div><button type="button" onClick={() => { setFilters(CUSTOMER_FILTER_DEFAULTS); setAppliedFilters(CUSTOMER_FILTER_DEFAULTS) }}>Clear</button><button className="primary" type="submit">Apply filters</button></div>
+      </form>
+
+      {result?.unavailable_routers.length > 0 && <div className="router-warning"><Icon name="alert" /><div><strong>Some live data is unavailable</strong><p>{result.unavailable_routers.join(', ')} could not be reached. Stored customer information is still shown.</p></div></div>}
+      {error && <div className="dashboard-load-error" role="alert"><Icon name="alert" /><div><strong>Unable to load customer information</strong><p>{error}</p></div></div>}
+      {loading && !result ? <div className="dashboard-overview-loading"><span className="admin-page-spinner" /><p>Loading customers and checking connected devices...</p></div> : result && <>
+        <section className="dashboard-metric-grid admin-data-metrics"><article><span className="stat-icon purple"><Icon name="users" /></span><div><small>Total users</small><strong>{result.total_users.toLocaleString()}</strong><p>{result.matched_users.toLocaleString()} match the filters</p></div></article><article><span className="stat-icon amber"><Icon name="clock" /></span><div><small>Active subscriptions</small><strong>{result.active_subscriptions.toLocaleString()}</strong><p>Across the selected hostel scope</p></div></article><article><span className="stat-icon green"><Icon name="wifi" /></span><div><small>Online users</small><strong>{result.online_users.toLocaleString()}</strong><p>Currently visible on RouterOS</p></div></article><article><span className="stat-icon blue"><Icon name="device" /></span><div><small>Active devices</small><strong>{result.active_devices.toLocaleString()}</strong><p>Live HotSpot sessions</p></div></article></section>
+
+        <section className="admin-data-card"><header><div><h2>{mode === 'customers' ? 'User directory' : 'Connected devices'}</h2><p>{mode === 'customers' ? `Showing up to 200 of ${result.matched_users.toLocaleString()} matching users.` : 'Live sessions reported by reachable hostel routers.'}</p></div></header><div className="admin-data-table-wrap">
+          {mode === 'customers' ? <table className="admin-data-table"><thead><tr><th>User</th><th>Contact</th><th>Hostel</th><th>Account</th><th>Current plan</th><th>Connection</th><th>Last activity</th></tr></thead><tbody>{result.customers.map((customer) => <tr key={customer.id}><td><strong>{customer.username}</strong><small>Joined {formatDashboardTime(customer.joined_at)}</small></td><td><strong>{customer.email}</strong><small>{customer.phone_number || 'No phone number'}{customer.phone_verified ? ' · verified' : ''}</small></td><td><strong>{customer.hostel_name}</strong></td><td><span className={`admin-status-pill ${customer.account_status}`}>{formatStatus(customer.account_status)}</span></td><td><strong>{customer.current_plan || 'No active plan'}</strong><small>{formatStatus(customer.subscription_status, 'No subscription')}</small></td><td><span className={`admin-status-pill ${customer.is_online ? 'success' : 'offline'}`}>{customer.is_online ? 'Online' : 'Offline'}</span><small>{customer.connected_devices} device{customer.connected_devices === 1 ? '' : 's'}</small></td><td><strong>{formatDashboardTime(customer.last_activity_at)}</strong><small>{customer.last_login_at ? `Last login ${formatDashboardTime(customer.last_login_at)}` : 'Never logged in'}</small></td></tr>)}</tbody></table> : <table className="admin-data-table"><thead><tr><th>User</th><th>Hostel</th><th>IP address</th><th>MAC address</th><th>Uptime</th><th>Login method</th></tr></thead><tbody>{result.devices.map((device) => <tr key={`${device.hostel_id}-${device.session_id}`}><td><strong>{device.username}</strong><small>{device.customer_email || 'Not linked to a customer record'}</small></td><td><strong>{device.hostel_name}</strong></td><td><code>{device.ip_address || '--'}</code></td><td><code>{device.mac_address || '--'}</code></td><td><strong>{device.uptime || '--'}</strong></td><td><strong>{formatStatus(device.login_method, '--')}</strong></td></tr>)}</tbody></table>}
+          {mode === 'customers' && !result.customers.length && <p className="dashboard-empty-copy">No users match these filters.</p>}{mode === 'devices' && !result.devices.length && <p className="dashboard-empty-copy">No connected devices match these filters.</p>}
+        </div></section>
+      </>}
     </>}
   </>
 }
@@ -770,6 +1118,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
   const [hostels, setHostels] = useState([])
   const [selectedId, setSelectedId] = useState('')
   const [profiles, setProfiles] = useState([])
+  const [planGroups, setPlanGroups] = useState([])
   const [loadingHostels, setLoadingHostels] = useState(true)
   const [loadingProfiles, setLoadingProfiles] = useState(false)
   const [pageError, setPageError] = useState('')
@@ -872,6 +1221,71 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
     return () => { active = false }
   }, [selectedId, view])
 
+  useEffect(() => {
+    if (!selectedId || selectedId === ALL_HOSTELS_ID || view !== 'profiles') {
+      setPlanGroups([])
+      return undefined
+    }
+    let active = true
+    listPlanGroups(selectedId)
+      .then((items) => { if (active) setPlanGroups(items) })
+      .catch((error) => handleError(error, 'Plan groups could not be loaded.'))
+    return () => { active = false }
+  }, [selectedId, view])
+
+  async function addPlanGroup(payload) {
+    try {
+      const created = await createPlanGroup(selectedId, payload)
+      setPlanGroups((current) => [...current, created]
+        .sort((left, right) => left.display_order - right.display_order || left.name.localeCompare(right.name)))
+      setProfiles((current) => current.map((profile) => (
+        payload.profile_names.includes(profile.mikrotik_profile)
+          ? { ...profile, group_id: created.id }
+          : profile
+      )))
+      try { setPlanGroups(await listPlanGroups(selectedId)) } catch (refreshError) {
+        if (refreshError instanceof AdminApiError && refreshError.status === 401) onSessionExpired()
+      }
+      setToast('Plan group created.')
+    } catch (error) {
+      if (error instanceof AdminApiError && error.status === 401) onSessionExpired()
+      throw new Error(error instanceof AdminApiError && error.status === 409 ? 'A group with that name already exists.' : 'The plan group could not be created.')
+    }
+  }
+
+  async function editPlanGroup(groupId, payload) {
+    try {
+      const updated = await updatePlanGroup(selectedId, groupId, payload)
+      setPlanGroups((current) => current.map((group) => group.id === groupId ? updated : group)
+        .sort((left, right) => left.display_order - right.display_order || left.name.localeCompare(right.name)))
+      setProfiles((current) => current.map((profile) => {
+        if (payload.profile_names.includes(profile.mikrotik_profile)) {
+          return { ...profile, group_id: groupId }
+        }
+        return profile.group_id === groupId ? { ...profile, group_id: null } : profile
+      }))
+      try { setPlanGroups(await listPlanGroups(selectedId)) } catch (refreshError) {
+        if (refreshError instanceof AdminApiError && refreshError.status === 401) onSessionExpired()
+      }
+      setToast('Plan group updated.')
+    } catch (error) {
+      if (error instanceof AdminApiError && error.status === 401) onSessionExpired()
+      throw new Error(error instanceof AdminApiError && error.status === 409 ? 'A group with that name already exists.' : 'The plan group could not be updated.')
+    }
+  }
+
+  async function removePlanGroup(groupId) {
+    try {
+      await deletePlanGroup(selectedId, groupId)
+      setPlanGroups((current) => current.filter((group) => group.id !== groupId))
+      setProfiles((current) => current.map((profile) => profile.group_id === groupId ? { ...profile, group_id: null } : profile))
+      setToast('Plan group deleted; its plans are now ungrouped.')
+    } catch (error) {
+      if (error instanceof AdminApiError && error.status === 401) onSessionExpired()
+      throw new Error('The plan group could not be deleted.')
+    }
+  }
+
   async function refreshProfiles() {
     if (!selectedId) return
     setLoadingProfiles(true)
@@ -941,6 +1355,9 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
     setProfiles((current) => current.map((profile) => (
       profile.mikrotik_profile === saved.mikrotik_profile ? saved : profile
     )))
+    try { setPlanGroups(await listPlanGroups(selectedId)) } catch (error) {
+      if (error instanceof AdminApiError && error.status === 401) onSessionExpired()
+    }
     setEditingProfile(null)
     setToast(saved.is_visible ? 'Plan saved and published to customers.' : 'Plan saved as a draft.')
     window.setTimeout(() => setToast(''), 3500)
@@ -978,6 +1395,11 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
         : profile
     )))
     setEditingProfile(null)
+    if (!allHostelsSelected) {
+      try { setPlanGroups(await listPlanGroups(selectedId)) } catch (error) {
+        if (error instanceof AdminApiError && error.status === 401) onSessionExpired()
+      }
+    }
     setToast(allHostelsSelected
       ? `Configuration deleted from all ${targetHostels.length} active hostels. Router profiles were not changed.`
       : 'Configuration deleted. The MikroTik profile was not changed.')
@@ -1072,8 +1494,8 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
           <button className={view === 'hostels' ? 'active' : ''} type="button" onClick={() => setView('hostels')}><Icon name="building" />Hostels</button>
           <button className={view === 'profiles' ? 'active' : ''} type="button" onClick={() => setView('profiles')}><Icon name="tag" />Profile catalogue</button>
           <p>Management</p>
-          <button className="coming-soon" disabled type="button"><Icon name="users" />Customers<small>Soon</small></button>
-          <button className="coming-soon" disabled type="button"><Icon name="receipt" />Transactions<small>Soon</small></button>
+          <button className={view === 'customers' ? 'active' : ''} type="button" onClick={() => setView('customers')}><Icon name="users" />Customers &amp; devices</button>
+          <button className={view === 'transactions' ? 'active' : ''} type="button" onClick={() => setView('transactions')}><Icon name="receipt" />Revenue &amp; transactions</button>
           <button className={view === 'support' ? 'active' : ''} type="button" onClick={() => setView('support')}><Icon name="settings" />Help &amp; support</button>
         </nav>
         <div className="sidebar-security"><span><Icon name="check" /></span><div><strong>Secure session</strong><small>Protected admin access</small></div></div>
@@ -1090,8 +1512,8 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
         </header>
 
         <div className="dashboard-content">
-          <div className="dashboard-mobile-tabs"><button className={view === 'dashboard' ? 'active' : ''} type="button" onClick={() => setView('dashboard')}>Overview</button><button className={view === 'hostels' ? 'active' : ''} type="button" onClick={() => setView('hostels')}>Hostels</button><button className={view === 'profiles' ? 'active' : ''} type="button" onClick={() => setView('profiles')}>Profiles</button><button className={view === 'support' ? 'active' : ''} type="button" onClick={() => setView('support')}>Support</button></div>
-          {view === 'dashboard' ? <DashboardOverview hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'support' ? <SupportSettingsPanel canEdit={admin.role !== 'viewer'} onSessionExpired={onSessionExpired} /> : view === 'hostels' ? <>
+          <div className="dashboard-mobile-tabs"><button className={view === 'dashboard' ? 'active' : ''} type="button" onClick={() => setView('dashboard')}>Overview</button><button className={view === 'hostels' ? 'active' : ''} type="button" onClick={() => setView('hostels')}>Hostels</button><button className={view === 'profiles' ? 'active' : ''} type="button" onClick={() => setView('profiles')}>Plans</button><button className={view === 'customers' ? 'active' : ''} type="button" onClick={() => setView('customers')}>Users</button><button className={view === 'transactions' ? 'active' : ''} type="button" onClick={() => setView('transactions')}>Revenue</button><button className={view === 'support' ? 'active' : ''} type="button" onClick={() => setView('support')}>Support</button></div>
+          {view === 'dashboard' ? <DashboardOverview hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onOpenCustomers={() => setView('customers')} onOpenTransactions={() => setView('transactions')} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'customers' ? <CustomersDevicesPanel admin={admin} hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'transactions' ? <RevenueTransactionsPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'support' ? <SupportSettingsPanel canEdit={admin.role !== 'viewer'} onSessionExpired={onSessionExpired} /> : view === 'hostels' ? <>
             <header className="dashboard-page-heading">
               <div><p className="dashboard-kicker">Network management</p><h1>Hostels</h1><p>Add and manage the hostel routers stored in the database.</p></div>
             </header>
@@ -1123,6 +1545,17 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
               </div>
             </header>
 
+            {!allHostelsSelected && selectedHostel && (
+              <PlanGroupManager
+                canEdit={admin.role !== 'viewer'}
+                groups={planGroups}
+                onCreate={addPlanGroup}
+                onDelete={removePlanGroup}
+                onUpdate={editPlanGroup}
+                profiles={profiles}
+              />
+            )}
+
             <div className="catalogue-toolbar">
               <div className="profile-search"><Icon name="search" /><input aria-label="Search profiles" placeholder="Search by plan or profile name" type="search" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
               <div className="profile-filters" aria-label="Filter profiles">{['all', 'published', 'drafts'].map((item) => <button className={filter === item ? 'active' : ''} key={item} type="button" onClick={() => setFilter(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</div>
@@ -1142,7 +1575,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
         </div>
       </main>
 
-      {editingProfile && selectedHostel && <ProfileEditor hostel={selectedHostel} profile={editingProfile} onClose={() => setEditingProfile(null)} onDelete={deleteProfileConfiguration} onSave={saveProfile} />}
+      {editingProfile && selectedHostel && <ProfileEditor groups={planGroups} hostel={selectedHostel} profile={editingProfile} onClose={() => setEditingProfile(null)} onDelete={deleteProfileConfiguration} onSave={saveProfile} />}
       {viewingHostel === 'details' && selectedHostel && <HostelEditor canEdit={admin.role !== 'viewer'} hostel={selectedHostel} onClose={() => setViewingHostel(false)} onSave={saveHostel} />}
       {viewingHostel === 'new' && <HostelEditor canEdit hostel={null} onClose={() => setViewingHostel(false)} onSave={addHostel} />}
       {toast && <div className="dashboard-toast" role="status"><Icon name="check" />{toast}</div>}

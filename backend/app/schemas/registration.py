@@ -9,8 +9,20 @@ from app.models.enums import AccountStatus
 
 USERNAME_PATTERN = re.compile(r"^[a-z0-9]{3,64}$")
 PIN_PATTERN = re.compile(r"^[0-9]{6}$")
-TERMS_VERSION = "2026-09-07"
-PRIVACY_NOTICE_VERSION = "2026-09-05"
+TERMS_VERSION = "2026-09-11"
+PRIVACY_NOTICE_VERSION = "2026-09-11"
+PHONE_PATTERN = re.compile(r"^\+[1-9][0-9]{7,14}$")
+
+
+def normalize_phone_number(value: str) -> str:
+    compact = re.sub(r"[\s()-]", "", value)
+    if compact.startswith("0") and len(compact) == 10:
+        compact = "+233" + compact[1:]
+    elif compact.startswith("233"):
+        compact = "+" + compact
+    if not PHONE_PATTERN.fullmatch(compact):
+        raise ValueError("Enter a valid phone number, for example 024 123 4567.")
+    return compact
 
 
 def normalize_username(value: str) -> str:
@@ -26,6 +38,7 @@ class RegistrationStartRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     email: str
+    phone_number: str
     username: str
     router_id: str
     pin: SecretStr
@@ -46,6 +59,11 @@ class RegistrationStartRequest(BaseModel):
         ):
             raise ValueError("Enter a valid email address.")
         return normalized
+
+    @field_validator("phone_number")
+    @classmethod
+    def normalize_phone(cls, value: str) -> str:
+        return normalize_phone_number(value)
 
     @field_validator("username")
     @classmethod

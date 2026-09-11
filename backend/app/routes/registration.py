@@ -11,9 +11,9 @@ from app.core.config import Settings, get_settings
 from app.core.exceptions import ServiceError
 from app.core.security import Argon2PinHasher, PinHasher
 from app.db.session import get_db_session
-from app.integrations.brevo.client import BrevoEmailSender, EmailDeliveryError, OtpEmailSender
 from app.integrations.mikrotik.client import MikroTikClient, MikroTikConfig
 from app.integrations.mikrotik.registry import UnknownRouterError, get_router
+from app.integrations.mnotify import MNotifySmsSender, SmsDeliveryError, SmsSender
 from app.schemas.registration import (
     RegistrationCompleteRequest,
     RegistrationCompleteResponse,
@@ -34,37 +34,23 @@ SettingsDependency = Annotated[Settings, Depends(get_settings)]
 SessionDependency = Annotated[Session, Depends(get_db_session)]
 
 
-def get_otp_email_sender(settings: SettingsDependency) -> OtpEmailSender:
+def get_registration_sms_sender(settings: SettingsDependency) -> SmsSender:
     try:
-        return BrevoEmailSender.from_settings(settings)
-    except EmailDeliveryError:
+        return MNotifySmsSender.from_settings(settings)
+    except SmsDeliveryError:
         # Let the service return the same safe unavailable response as provider failures.
-        return _UnavailableEmailSender()
+        return _UnavailableSmsSender()
 
 
-class _UnavailableEmailSender:
-    def send_registration_otp(
-        self, *, recipient: str, code: str, expires_in_minutes: int
-    ) -> None:
-        raise EmailDeliveryError("Brevo transactional email is not configured.")
+class _UnavailableSmsSender:
+    def send_verification_otp(self, *, recipient: str, code: str, expires_in_minutes: int) -> None:
+        raise SmsDeliveryError("mNotify is not configured.")
 
-    def send_pin_reset_otp(
-        self, *, recipient: str, code: str, expires_in_minutes: int
-    ) -> None:
-        raise EmailDeliveryError("Brevo transactional email is not configured.")
-
-    def send_username_recovery_otp(
-        self, *, recipient: str, code: str, expires_in_minutes: int
-    ) -> None:
-        raise EmailDeliveryError("Brevo transactional email is not configured.")
-
-    def send_account_unlock_otp(
-        self, *, recipient: str, code: str, expires_in_minutes: int
-    ) -> None:
-        raise EmailDeliveryError("Brevo transactional email is not configured.")
+    def send(self, *, recipient: str, message: str) -> None:
+        raise SmsDeliveryError("mNotify is not configured.")
 
 
-EmailSenderDependency = Annotated[OtpEmailSender, Depends(get_otp_email_sender)]
+SmsSenderDependency = Annotated[SmsSender, Depends(get_registration_sms_sender)]
 
 
 def get_pin_hasher(settings: SettingsDependency) -> PinHasher:
@@ -170,7 +156,7 @@ def start_registration(
     payload: RegistrationStartRequest,
     request: Request,
     session: SessionDependency,
-    sender: EmailSenderDependency,
+    sender: SmsSenderDependency,
     settings: SettingsDependency,
     router_client_factory: RouterClientFactoryDependency,
 ) -> RegistrationStartResponse:
@@ -206,7 +192,7 @@ def start_registration(
 def complete_registration(
     payload: RegistrationCompleteRequest,
     session: SessionDependency,
-    sender: EmailSenderDependency,
+    sender: SmsSenderDependency,
     settings: SettingsDependency,
     pin_hasher: PinHasherDependency,
     router_client_factory: RouterClientFactoryDependency,

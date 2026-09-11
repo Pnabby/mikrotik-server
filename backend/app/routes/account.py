@@ -19,18 +19,57 @@ from app.schemas.account import (
     CustomerAccountResponse,
     DeleteAccountRequest,
     DeleteAccountResponse,
+    PhoneVerificationCompleteRequest,
+    PhoneVerificationResponse,
+    PhoneVerificationStartRequest,
+    PhoneVerificationStartResponse,
 )
 from app.schemas.hotspot import DeviceLogoutResponse, HotspotStatusResponse
 from app.services.account_deletion import AccountDeletionService
 from app.services.customer_account import CustomerAccountService
 from app.services.customer_auth import CUSTOMER_SESSION_COOKIE
 from app.services.hotspot import HotspotService
+from app.services.phone_verification import PhoneVerificationService
 from app.services.pin_management import PinManagementService
 
 router = APIRouter(prefix="/api/account", tags=["account"])
 SessionDependency = Annotated[Session, Depends(get_db_session)]
 CustomerDependency = Annotated[Customer, Depends(get_authenticated_customer)]
 SettingsDependency = Annotated[Settings, Depends(get_settings)]
+
+
+@router.post("/phone-verification/start", response_model=PhoneVerificationStartResponse)
+def start_phone_verification(
+    payload: PhoneVerificationStartRequest,
+    request: Request,
+    customer: CustomerDependency,
+    session: SessionDependency,
+    settings: SettingsDependency,
+) -> PhoneVerificationStartResponse:
+    result = PhoneVerificationService(session, settings).start(
+        customer,
+        payload.phone_number,
+        requested_ip=request.client.host if request.client else None,
+    )
+    return PhoneVerificationStartResponse(
+        challenge_id=result.challenge_id,
+        destination=result.destination,
+        expires_in_seconds=result.expires_in_seconds,
+        resend_after_seconds=result.resend_after_seconds,
+    )
+
+
+@router.post("/phone-verification/complete", response_model=PhoneVerificationResponse)
+def complete_phone_verification(
+    payload: PhoneVerificationCompleteRequest,
+    customer: CustomerDependency,
+    session: SessionDependency,
+    settings: SettingsDependency,
+) -> PhoneVerificationResponse:
+    PhoneVerificationService(session, settings).complete(
+        customer, payload.challenge_id, payload.phone_number, payload.code.get_secret_value()
+    )
+    return PhoneVerificationResponse()
 
 
 def get_customer_hotspot_service(
@@ -48,9 +87,7 @@ def get_customer_hotspot_service(
         yield HotspotService(router_definition, client)
 
 
-CustomerHotspotServiceDependency = Annotated[
-    HotspotService, Depends(get_customer_hotspot_service)
-]
+CustomerHotspotServiceDependency = Annotated[HotspotService, Depends(get_customer_hotspot_service)]
 
 
 @router.get("", response_model=CustomerAccountResponse)

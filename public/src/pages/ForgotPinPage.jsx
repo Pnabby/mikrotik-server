@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { WifiIcon } from '../components/Icons'
+import OtpInput from '../components/OtpInput'
 import {
   AccountApiError,
   completeAccountUnlock,
@@ -178,7 +179,7 @@ export default function ForgotPinPage() {
           {step === 'code' && <>
             <div className="signup-card-header"><h2>Enter your code</h2><p>A verification code was sent to <strong>{challenge.destination}</strong>.</p></div>
             <form className="login-form" noValidate onSubmit={completeRecovery}>
-              <div className="signup-field"><label htmlFor="reset-code">Verification code</label><input autoComplete="one-time-code" className="signup-input otp-input" id="reset-code" inputMode="numeric" maxLength="6" name="code" placeholder="000000" type="text" value={form.code} onChange={updatePinField} /></div>
+              <div className="signup-field"><label htmlFor="reset-code">Verification code</label><OtpInput autoFocus id="reset-code" invalid={Boolean(error)} value={form.code} onChange={(value) => { setForm((current) => ({ ...current, code: value })); setError('') }} /></div>
               {mode === 'pin' && <><div className="signup-field"><label htmlFor="reset-new-pin">New PIN</label><input autoComplete="new-password" className="signup-input pin-masked" id="reset-new-pin" inputMode="numeric" maxLength="6" name="newPin" placeholder="6-digit PIN" type="text" value={form.newPin} onChange={updatePinField} /></div><div className="signup-field"><label htmlFor="reset-confirm-pin">Confirm new PIN</label><input autoComplete="new-password" className="signup-input pin-masked" id="reset-confirm-pin" inputMode="numeric" maxLength="6" name="confirmation" placeholder="Repeat new PIN" type="text" value={form.confirmation} onChange={updatePinField} /></div></>}
               {error && <div className="otp-api-error" role="alert">{error}</div>}
               <button className="signup-submit" disabled={busy} type="submit">{busy ? 'Checking router...' : mode === 'username' ? 'Recover username' : mode === 'unlock' ? 'Unlock account' : 'Reset PIN'}</button>
