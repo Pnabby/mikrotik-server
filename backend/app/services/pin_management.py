@@ -115,7 +115,6 @@ class PinManagementService:
         self._enforce_request_limits(
             customer.email,
             purpose=OtpPurpose.ACCOUNT_UNLOCK,
-            requested_ip=requested_ip,
             now=now,
         )
         self._check_router(customer, router_client_factory)
@@ -183,7 +182,6 @@ class PinManagementService:
         self._enforce_request_limits(
             request.email,
             purpose=purpose,
-            requested_ip=requested_ip,
             now=now,
         )
         customer = self._session.scalar(
@@ -588,7 +586,6 @@ class PinManagementService:
         email: str,
         *,
         purpose: OtpPurpose,
-        requested_ip: str | None,
         now: datetime,
     ) -> None:
         latest = self._session.scalar(
@@ -617,17 +614,9 @@ class PinManagementService:
                 EmailOtpChallenge.created_at >= since,
             )
         )
-        ip_count = 0
-        if requested_ip:
-            ip_count = self._session.scalar(
-                select(func.count())
-                .select_from(EmailOtpChallenge)
-                .where(
-                    EmailOtpChallenge.requested_ip == requested_ip,
-                    EmailOtpChallenge.created_at >= since,
-                )
-            )
-        if max(email_count or 0, ip_count or 0) >= self._settings.otp_max_requests_per_hour:
+        # Captive-portal clients commonly share one NAT or reverse-proxy address.
+        # Limit the destination instead so one guest cannot block other accounts.
+        if (email_count or 0) >= self._settings.otp_max_requests_per_hour:
             raise ServiceError(
                 status.HTTP_429_TOO_MANY_REQUESTS,
                 "Too many verification codes requested.",

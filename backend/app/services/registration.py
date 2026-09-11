@@ -194,7 +194,7 @@ class RegistrationOtpService:
             )
 
         now = datetime.now(UTC)
-        self._enforce_request_limits(request.email, requested_ip=requested_ip, now=now)
+        self._enforce_request_limits(request.email, now=now)
         RegistrationRouterReadinessService(self._settings).check(
             router_client,
             request.username,
@@ -512,9 +512,7 @@ class RegistrationOtpService:
                 marker,
             )
 
-    def _enforce_request_limits(
-        self, email: str, *, requested_ip: str | None, now: datetime
-    ) -> None:
+    def _enforce_request_limits(self, email: str, *, now: datetime) -> None:
         latest_created_at = self._session.scalar(
             select(EmailOtpChallenge.created_at)
             .where(
@@ -542,17 +540,9 @@ class RegistrationOtpService:
                 EmailOtpChallenge.created_at >= since,
             )
         )
-        ip_count = 0
-        if requested_ip:
-            ip_count = self._session.scalar(
-                select(func.count())
-                .select_from(EmailOtpChallenge)
-                .where(
-                    EmailOtpChallenge.requested_ip == requested_ip,
-                    EmailOtpChallenge.created_at >= since,
-                )
-            )
-        if max(email_count or 0, ip_count or 0) >= self._settings.otp_max_requests_per_hour:
+        # Captive-portal clients commonly share one NAT or reverse-proxy address.
+        # Limiting by that address lets one guest exhaust signup for everyone else.
+        if (email_count or 0) >= self._settings.otp_max_requests_per_hour:
             raise ServiceError(
                 status.HTTP_429_TOO_MANY_REQUESTS,
                 "Too many verification codes requested.",
