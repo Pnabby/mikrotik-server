@@ -65,12 +65,12 @@ function FieldError({ id, message }) {
 function SignupHeader() {
   return (
     <header className="signup-header">
-      <a className="signup-brand" href="/" aria-label="Flint WiFi home">
+      <a className="signup-brand" href="/" aria-label="Vlad WiFi home">
         <span className="signup-logo-mark"><WifiIcon /></span>
-        <span>Flint WiFi</span>
+        <span>Vlad WiFi</span>
       </a>
       <h1>Create your WiFi account</h1>
-      <p>Select your hostel and create the login you will use whenever you connect to Flint WiFi.</p>
+      <p>Select your hostel and create the login you will use whenever you connect to Vlad WiFi.</p>
     </header>
   )
 }
@@ -124,7 +124,7 @@ export default function SignupPage() {
   const [resendSeconds, setResendSeconds] = useState(0)
 
   useEffect(() => {
-    document.title = 'Create account | FLINT WiFi'
+    document.title = 'Create account | Vlad WiFi'
     let active = true
 
     getRouters()

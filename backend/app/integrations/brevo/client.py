@@ -55,7 +55,7 @@ class BrevoEmailSender:
         return cls(
             api_key=settings.brevo_api_key.get_secret_value(),
             sender_email=settings.brevo_sender_email.strip(),
-            sender_name=settings.brevo_sender_name.strip() or "Flint WiFi",
+            sender_name=settings.brevo_sender_name.strip() or "Vlad WiFi",
             api_url=settings.brevo_api_url,
             timeout_seconds=settings.brevo_timeout_seconds,
         )
@@ -65,9 +65,9 @@ class BrevoEmailSender:
             recipient=recipient,
             code=code,
             expires_in_minutes=expires_in_minutes,
-            subject="Your Flint WiFi verification code",
+            subject="Your Vlad WiFi verification code",
             heading="Verify your email",
-            instruction="Enter this code to continue creating your Flint WiFi account:",
+            instruction="Enter this code to continue creating your Vlad WiFi account:",
         )
 
     def send_pin_reset_otp(self, *, recipient: str, code: str, expires_in_minutes: int) -> None:
@@ -75,9 +75,9 @@ class BrevoEmailSender:
             recipient=recipient,
             code=code,
             expires_in_minutes=expires_in_minutes,
-            subject="Reset your Flint WiFi PIN",
+            subject="Reset your Vlad WiFi PIN",
             heading="Reset your PIN",
-            instruction="Enter this code to choose a new Flint WiFi PIN:",
+            instruction="Enter this code to choose a new Vlad WiFi PIN:",
         )
 
     def send_username_recovery_otp(
@@ -87,9 +87,9 @@ class BrevoEmailSender:
             recipient=recipient,
             code=code,
             expires_in_minutes=expires_in_minutes,
-            subject="Recover your Flint WiFi username",
+            subject="Recover your Vlad WiFi username",
             heading="Recover your username",
-            instruction="Enter this code to view your Flint WiFi username:",
+            instruction="Enter this code to view your Vlad WiFi username:",
         )
 
     def send_account_unlock_otp(
@@ -99,9 +99,9 @@ class BrevoEmailSender:
             recipient=recipient,
             code=code,
             expires_in_minutes=expires_in_minutes,
-            subject="Unlock your Flint WiFi account",
+            subject="Unlock your Vlad WiFi account",
             heading="Unlock your account",
-            instruction="Enter this code to unlock your Flint WiFi account:",
+            instruction="Enter this code to unlock your Vlad WiFi account:",
         )
 
     def send_message(self, *, recipient: str, subject: str, message: str) -> None:
@@ -137,7 +137,7 @@ class BrevoEmailSender:
             "to": [{"email": recipient}],
             "subject": subject,
             "textContent": (
-                f"Your Flint WiFi code is {code}. "
+                f"Your Vlad WiFi code is {code}. "
                 f"It expires in {expiry_copy}. If you did not request it, ignore this email."
             ),
             "htmlContent": (

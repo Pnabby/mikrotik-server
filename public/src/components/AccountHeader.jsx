@@ -10,9 +10,9 @@ export default function AccountHeader({ activePage = 'account', activeSection = 
 
   return (
     <header className="account-topbar">
-      <a className="account-brand" href="/account#overview" aria-label="Flint WiFi dashboard">
+      <a className="account-brand" href="/account#overview" aria-label="Vlad WiFi dashboard">
         <span><WifiIcon /></span>
-        <strong>Flint WiFi</strong>
+        <strong>Vlad WiFi</strong>
       </a>
 
       <nav className="account-nav" aria-label="Account navigation">

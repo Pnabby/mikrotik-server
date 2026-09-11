@@ -28,7 +28,7 @@ export default function ProfilePage() {
   const [pinSuccess, setPinSuccess] = useState('')
 
   useEffect(() => {
-    document.title = 'Profile | FLINT WiFi'
+    document.title = 'Profile | Vlad WiFi'
     let active = true
     getAccount()
       .then((result) => {
@@ -110,7 +110,7 @@ export default function ProfilePage() {
     try {
       await changePin(pinForm.oldPin, pinForm.newPin, pinForm.confirmation)
       setPinForm({ oldPin: '', newPin: '', confirmation: '' })
-      setPinSuccess('Your PIN was changed successfully on Flint and your hostel router.')
+      setPinSuccess('Your PIN was changed successfully on Vlad WiFi and your hostel router.')
     } catch (error) {
       if (error instanceof AccountApiError && error.status === 401) {
         setPinError('Your current PIN is incorrect.')
@@ -151,7 +151,7 @@ export default function ProfilePage() {
         <section className="profile-heading">
           <span className="account-eyebrow">Profile</span>
           <h1>Account details</h1>
-          <p>Review the information connected to your Flint WiFi account.</p>
+          <p>Review the information connected to your Vlad WiFi account.</p>
         </section>
 
         <div className="profile-layout">
@@ -218,7 +218,7 @@ export default function ProfilePage() {
         <section className="profile-delete-card">
           <div>
             <h2>Delete account permanently</h2>
-            <p>This removes your Flint account, plan history, sessions, hotspot user, and remembered hotspot cookies. This cannot be undone.</p>
+            <p>This removes your Vlad WiFi account, plan history, sessions, hotspot user, and remembered hotspot cookies. This cannot be undone.</p>
           </div>
           {!showDelete ? (
             <button className="delete-account-open" type="button" onClick={() => setShowDelete(true)}>Delete account</button>

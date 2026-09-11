@@ -126,7 +126,7 @@ export default function App() {
   const [checkingSession, setCheckingSession] = useState(true)
 
   useEffect(() => {
-    document.title = 'Admin login | Flint WiFi'
+    document.title = 'Admin login | Vlad WiFi'
     getAdminSession()
       .then(setAdmin)
       .catch(() => setAdmin(null))
@@ -146,9 +146,9 @@ export default function App() {
   return (
     <main className="admin-auth-page">
       <section className="admin-brand-panel">
-        <a className="admin-brand" href="/" aria-label="Flint WiFi admin home">
+        <a className="admin-brand" href="/" aria-label="Vlad WiFi admin home">
           <span><WifiMark /></span>
-          <strong>Flint WiFi</strong>
+          <strong>Vlad WiFi</strong>
         </a>
 
         <div className="admin-brand-copy">
@@ -160,7 +160,7 @@ export default function App() {
           </span>
           <p className="admin-panel-kicker">Secure administration</p>
           <h2>Your network,<br />under control.</h2>
-          <p>Sign in to manage Flint WiFi services from one secure place.</p>
+          <p>Sign in to manage Vlad WiFi services from one secure place.</p>
         </div>
 
         <p className="admin-panel-footer">Protected access · Authorized personnel only</p>
@@ -168,7 +168,7 @@ export default function App() {
 
       <section className="admin-form-panel">
         <div className="admin-login-card">
-          <div className="admin-mobile-brand"><span><WifiMark /></span> Flint WiFi</div>
+          <div className="admin-mobile-brand"><span><WifiMark /></span> Vlad WiFi</div>
           <p className="admin-eyebrow">Administrator portal</p>
           <h1>Welcome back</h1>
           <p className="admin-login-intro">Enter your administrator credentials to continue.</p>

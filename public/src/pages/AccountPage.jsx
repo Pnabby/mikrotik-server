@@ -207,7 +207,7 @@ export default function AccountPage() {
   const visiblePaymentNotice = paymentNotice || (recoverablePurchase ? 'activation_pending' : '')
 
   useEffect(() => {
-    document.title = 'Overview | FLINT WiFi'
+    document.title = 'Overview | Vlad WiFi'
     let active = true
 
     async function load() {

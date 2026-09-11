@@ -1,4 +1,4 @@
-"""FLINT WiFi backend package."""
+"""Vlad WiFi backend package."""
 
 from app.integrations.mikrotik import MikroTikClient, MikroTikConfig
 

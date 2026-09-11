@@ -39,7 +39,7 @@ class Settings(BaseSettings):
 
     brevo_api_key: SecretStr | None = None
     brevo_sender_email: str | None = None
-    brevo_sender_name: str = "Flint WiFi"
+    brevo_sender_name: str = "Vlad WiFi"
     brevo_api_url: str = "https://api.brevo.com/v3"
     brevo_timeout_seconds: float = Field(default=10.0, gt=0, le=60)
 

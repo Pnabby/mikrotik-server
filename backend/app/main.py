@@ -85,7 +85,7 @@ async def _lifespan(_application: FastAPI):
 def create_app() -> FastAPI:
     settings = get_settings()
     application = FastAPI(
-        title="MikroTik Hotspot API", version="0.3.0", lifespan=_lifespan
+        title="Vlad WiFi API", version="0.3.0", lifespan=_lifespan
     )
     origins = settings.cors_origins
     application.add_middleware(

@@ -41,7 +41,7 @@ class MNotifySmsSender:
         self.send(
             recipient=recipient,
             message=(
-                f"Your Flint WiFi verification code is {code}. "
+                f"Your Vlad WiFi verification code is {code}. "
                 f"It expires in {expires_in_minutes} minutes."
             ),
         )

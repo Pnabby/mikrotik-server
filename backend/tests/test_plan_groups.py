@@ -8,6 +8,8 @@ from app.schemas.admin_profiles import AdminPlanGroupCreate, AdminProfileUpdate
 def test_plan_group_routes_are_registered() -> None:
     paths = app.openapi()["paths"]
 
+    assert "/api/admin/plan-groups" in paths
+    assert "/api/admin/plan-groups/{group_key}" in paths
     assert "/api/admin/hostels/{router_id}/plan-groups" in paths
     assert "/api/admin/hostels/{router_id}/plan-groups/{group_id}" in paths
 
