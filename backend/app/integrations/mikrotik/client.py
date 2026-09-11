@@ -340,6 +340,11 @@ class MikroTikClient:
 
         return enriched_devices
 
+    def get_hotspot_active_sessions(self) -> list[dict[str, str]]:
+        """Return all live HotSpot sessions for administrative monitoring."""
+        api = self.connect()
+        return [dict(session) for session in api.get_resource("/ip/hotspot/active").get()]
+
     def get_hotspot_active_device_count(self, username: str) -> int:
         return len(self.get_hotspot_active_devices(username))
 

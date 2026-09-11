@@ -5,6 +5,7 @@ import {
   createHostel,
   deleteHostelProfileConfiguration,
   forceHostelIpCloudUpdate,
+  getDashboard,
   getSupportSettings,
   listHostelProfiles,
   listHostels,
@@ -51,6 +52,10 @@ function Icon({ name }) {
     check: <path d="m5 12 4.2 4.2L19 6.5" />,
     alert: <><path d="M10.3 3.8 2.5 17.2A2 2 0 0 0 4.2 20h15.6a2 2 0 0 0 1.7-2.8L13.7 3.8a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></>,
     logout: <><path d="M10 17l5-5-5-5M15 12H3M15 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" /></>,
+    device: <><rect x="5" y="2" width="14" height="20" rx="2" /><path d="M9 18h6" /></>,
+    money: <><circle cx="12" cy="12" r="9" /><path d="M15 8.5c-.7-.7-1.7-1-3-1-1.7 0-3 .8-3 2s1.1 1.8 3 2.3 3 1 3 2.3-1.3 2.2-3 2.2c-1.2 0-2.4-.4-3.2-1.2M12 5.5v13" /></>,
+    activity: <path d="M3 12h4l2.2-6 4.1 12 2.2-6H21" />,
+    clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
   }
   return <svg aria-hidden="true" viewBox="0 0 24 24">{paths[name]}</svg>
 }
@@ -674,8 +679,94 @@ function ProfileTable({ bulkMode, profiles, query, filter, onEdit }) {
   )
 }
 
+function formatRevenue(amounts) {
+  const entries = Object.entries(amounts || {})
+  if (!entries.length) return formatMoney(0, 'GHS')
+  return entries.map(([currency, amount]) => formatMoney(amount, currency)).join(' + ')
+}
+
+function formatDashboardTime(value) {
+  if (!value) return ''
+  return new Intl.DateTimeFormat('en-GH', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value))
+}
+
+function DashboardOverview({ hostels, loadingHostels, selectedId, onSelect, onSessionExpired }) {
+  const [summary, setSummary] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  useEffect(() => {
+    if (loadingHostels) return undefined
+    let active = true
+    setLoading(true)
+    setError('')
+    getDashboard(selectedId && selectedId !== ALL_HOSTELS_ID ? selectedId : null)
+      .then((result) => { if (active) setSummary(result) })
+      .catch((requestError) => {
+        if (!active) return
+        if (requestError instanceof AdminApiError && requestError.status === 401) {
+          onSessionExpired()
+          return
+        }
+        setError('Dashboard information could not be loaded. Please try again.')
+      })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [loadingHostels, selectedId, refreshKey])
+
+  const unavailable = summary?.routers.filter((router) => !router.reachable) || []
+
+  return <>
+    <header className="dashboard-page-heading">
+      <div><p className="dashboard-kicker">Live business overview</p><h1>Dashboard</h1><p>Customers, connected devices, revenue, and router health in one place.</p></div>
+      <div className="dashboard-heading-actions">
+        <div className="hostel-selector">
+          <label htmlFor="dashboard-hostel-select">Hostel</label>
+          <div><Icon name="building" /><select disabled={loadingHostels || !hostels.length} id="dashboard-hostel-select" value={selectedId || ALL_HOSTELS_ID} onChange={(event) => onSelect(event.target.value)}><option value={ALL_HOSTELS_ID}>All hostels</option>{hostels.map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></div>
+        </div>
+        <button aria-label="Refresh dashboard" className="dashboard-refresh-button" disabled={loading} type="button" onClick={() => setRefreshKey((value) => value + 1)}><Icon name="refresh" />{loading ? 'Refreshing' : 'Refresh'}</button>
+      </div>
+    </header>
+
+    {error ? <div className="dashboard-load-error" role="alert"><Icon name="alert" /><div><strong>Unable to load dashboard</strong><p>{error}</p></div><button type="button" onClick={() => setRefreshKey((value) => value + 1)}>Try again</button></div> : loading && !summary ? <div className="dashboard-overview-loading"><span className="admin-page-spinner" /><p>Checking database totals and live routers...</p></div> : summary && <>
+      {unavailable.length > 0 && <div className="router-warning" role="status"><Icon name="alert" /><div><strong>{unavailable.length === 1 ? `${unavailable[0].name} is unavailable` : `${unavailable.length} routers are unavailable`}</strong><p>Live user and device totals exclude unreachable routers. Database and revenue figures are still complete for the selected scope.</p></div></div>}
+
+      <section className="dashboard-metric-grid" aria-label="Dashboard totals">
+        <article><span className="stat-icon purple"><Icon name="users" /></span><div><small>Total users</small><strong>{summary.total_users.toLocaleString()}</strong><p>{summary.active_account_users.toLocaleString()} active accounts</p></div></article>
+        <article><span className="stat-icon green"><Icon name="activity" /></span><div><small>Online users</small><strong>{summary.active_users.toLocaleString()}</strong><p>Unique users in HotSpot active</p></div></article>
+        <article><span className="stat-icon blue"><Icon name="device" /></span><div><small>Active devices</small><strong>{summary.active_devices.toLocaleString()}</strong><p>Live sessions for online users</p></div></article>
+        <article><span className="stat-icon amber"><Icon name="clock" /></span><div><small>Active subscriptions</small><strong>{summary.active_subscriptions.toLocaleString()}</strong><p>Currently provisioned plans</p></div></article>
+      </section>
+
+      <section className="revenue-grid" aria-label="Revenue overview">
+        <article className="revenue-primary"><span><Icon name="money" /></span><small>Revenue this month</small><strong>{formatRevenue(summary.revenue.month)}</strong><p>{summary.revenue.successful_payments_month.toLocaleString()} successful payment{summary.revenue.successful_payments_month === 1 ? '' : 's'}</p></article>
+        <article><small>Today</small><strong>{formatRevenue(summary.revenue.today)}</strong><p>{summary.revenue.successful_payments_today.toLocaleString()} successful</p></article>
+        <article><small>All-time revenue</small><strong>{formatRevenue(summary.revenue.all_time)}</strong><p>Successful payments only</p></article>
+        <article><small>Pending payments</small><strong>{summary.revenue.pending_payments.toLocaleString()}</strong><p>Awaiting completion</p></article>
+      </section>
+
+      <div className="dashboard-detail-grid">
+        <section className="dashboard-panel">
+          <header><div><h2>Router health</h2><p>Live connection status by hostel</p></div><span>{summary.routers.filter((router) => router.reachable).length}/{summary.routers.length} online</span></header>
+          <div className="router-health-list">{summary.routers.length ? summary.routers.map((router) => <div key={router.router_id}><span className={`router-health-icon ${router.reachable ? 'online' : 'offline'}`}><Icon name={router.reachable ? 'wifi' : 'alert'} /></span><div><strong>{router.name}</strong><small>{router.reachable ? `${router.active_users} users · ${router.active_devices} devices` : router.error}</small></div><em className={router.reachable ? 'online' : 'offline'}>{router.reachable ? 'Online' : 'Unavailable'}</em></div>) : <p className="dashboard-empty-copy">No hostels are configured.</p>}</div>
+        </section>
+
+        <section className="dashboard-panel transactions-panel">
+          <header><div><h2>Recent transactions</h2><p>Latest payments in this scope</p></div></header>
+          <div className="recent-transaction-list">{summary.recent_transactions.length ? summary.recent_transactions.map((transaction) => <div key={transaction.reference}><span className={`transaction-mark ${transaction.status}`}><Icon name="receipt" /></span><div><strong>{transaction.package}</strong><small>{transaction.customer} · {formatDashboardTime(transaction.occurred_at)}</small></div><div className="transaction-amount"><strong>{formatMoney(transaction.amount, transaction.currency)}</strong><small className={transaction.status}>{transaction.status}</small></div></div>) : <p className="dashboard-empty-copy">No transactions yet.</p>}</div>
+        </section>
+      </div>
+      <p className="dashboard-updated">Live figures checked {formatDashboardTime(summary.generated_at)}</p>
+    </>}
+  </>
+}
+
 export default function AdminDashboard({ admin, onSessionExpired }) {
-  const [view, setView] = useState('profiles')
+  const [view, setView] = useState('dashboard')
   const [hostels, setHostels] = useState([])
   const [selectedId, setSelectedId] = useState('')
   const [profiles, setProfiles] = useState([])
@@ -742,7 +833,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
       .then((items) => {
         if (!active) return
         setHostels(items)
-        setSelectedId((current) => current || items.find((item) => item.is_active)?.router_id || items[0]?.router_id || '')
+        setSelectedId((current) => current || ALL_HOSTELS_ID)
       })
       .catch((error) => handleError(error, 'The hostel catalogue could not be loaded.'))
       .finally(() => { if (active) setLoadingHostels(false) })
@@ -977,6 +1068,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
         <Brand />
         <nav aria-label="Admin navigation">
           <p>Workspace</p>
+          <button className={view === 'dashboard' ? 'active' : ''} type="button" onClick={() => setView('dashboard')}><Icon name="grid" />Dashboard</button>
           <button className={view === 'hostels' ? 'active' : ''} type="button" onClick={() => setView('hostels')}><Icon name="building" />Hostels</button>
           <button className={view === 'profiles' ? 'active' : ''} type="button" onClick={() => setView('profiles')}><Icon name="tag" />Profile catalogue</button>
           <p>Management</p>
@@ -998,8 +1090,8 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
         </header>
 
         <div className="dashboard-content">
-          <div className="dashboard-mobile-tabs"><button className={view === 'hostels' ? 'active' : ''} type="button" onClick={() => setView('hostels')}>Hostels</button><button className={view === 'profiles' ? 'active' : ''} type="button" onClick={() => setView('profiles')}>Profiles</button><button className={view === 'support' ? 'active' : ''} type="button" onClick={() => setView('support')}>Support</button></div>
-          {view === 'support' ? <SupportSettingsPanel canEdit={admin.role !== 'viewer'} onSessionExpired={onSessionExpired} /> : view === 'hostels' ? <>
+          <div className="dashboard-mobile-tabs"><button className={view === 'dashboard' ? 'active' : ''} type="button" onClick={() => setView('dashboard')}>Overview</button><button className={view === 'hostels' ? 'active' : ''} type="button" onClick={() => setView('hostels')}>Hostels</button><button className={view === 'profiles' ? 'active' : ''} type="button" onClick={() => setView('profiles')}>Profiles</button><button className={view === 'support' ? 'active' : ''} type="button" onClick={() => setView('support')}>Support</button></div>
+          {view === 'dashboard' ? <DashboardOverview hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'support' ? <SupportSettingsPanel canEdit={admin.role !== 'viewer'} onSessionExpired={onSessionExpired} /> : view === 'hostels' ? <>
             <header className="dashboard-page-heading">
               <div><p className="dashboard-kicker">Network management</p><h1>Hostels</h1><p>Add and manage the hostel routers stored in the database.</p></div>
             </header>
