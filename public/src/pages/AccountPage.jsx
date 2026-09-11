@@ -617,12 +617,13 @@ export default function AccountPage() {
 
         <section className="account-section" id="plans">
           <div className="account-section-heading">
-            <div><span className="account-eyebrow">Get connected</span><h2>Available plans</h2><p>Choose the plan that fits your needs. Actual internet speeds may vary depending on network congestion and your distance from the WiFi access point.</p></div>
+            <div><span className="account-eyebrow">Get connected</span><h2>Available plans</h2><p>Choose the plan that fits your needs.</p></div>
             <div className="plan-heading-actions">
               {!hasPlanGroups && availablePlans.length > 3 && <button type="button" aria-expanded={showAllPlans} onClick={() => setShowAllPlans((current) => !current)}>{showAllPlans ? 'Show featured plans' : `View all ${availablePlans.length} plans`}</button>}
               <VoucherIcon />
             </div>
           </div>
+          <div className="plan-speed-notice" role="note"><DataUsedIcon /><p><strong>Understanding your plan speed</strong><span>The speed shown is the maximum a plan can reach. Actual speed cannot be guaranteed, especially during peak hours, and your distance from the WiFi router or access point can also affect it.</span></p></div>
           {availablePlans.length ? (
             <>
               {purchaseError && <div className="plan-purchase-error" role="alert">{purchaseError}</div>}

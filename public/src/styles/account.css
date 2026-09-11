@@ -447,6 +447,41 @@ input {
   transform: translateY(-1px);
 }
 
+.plan-speed-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  margin-top: 1rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid #dce4fa;
+  border-radius: 11px;
+  color: #45506c;
+  background: #f5f8ff;
+}
+
+.plan-speed-notice > svg {
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+  color: var(--account-primary);
+}
+
+.plan-speed-notice p {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0;
+}
+
+.plan-speed-notice strong {
+  color: #263557;
+  font-size: 0.67rem;
+}
+
+.plan-speed-notice span {
+  font-size: 0.64rem;
+  line-height: 1.5;
+}
+
 .current-plan-name {
   display: flex;
   align-items: center;
