@@ -235,7 +235,7 @@ class PaymentVerificationService:
             profile=mapping.mikrotik_profile,
         )
 
-        reference = f"FLINT-{uuid.uuid4().hex.upper()}"
+        reference = f"VLAD-{uuid.uuid4().hex.upper()}"
         transaction = Transaction(
             customer_id=customer.id,
             package_id=mapping.package.id,

@@ -28,7 +28,7 @@ export default function LoginPage() {
   const [checkingSession, setCheckingSession] = useState(true)
 
   useEffect(() => {
-    document.title = 'Log in | FLINT WiFi'
+    document.title = 'Log in | Vlad WiFi'
     let active = true
     getAccount()
       .then((account) => {
@@ -94,12 +94,12 @@ export default function LoginPage() {
     <main className="signup-page">
       <div className="signup-container login-container">
         <header className="signup-header">
-          <a className="signup-brand" href="/" aria-label="Flint WiFi home">
+          <a className="signup-brand" href="/" aria-label="Vlad WiFi home">
             <span className="signup-logo-mark"><WifiIcon /></span>
-            <span>Flint WiFi</span>
+            <span>Vlad WiFi</span>
           </a>
           <h1>Welcome back</h1>
-          <p>Log in with your permanent Flint WiFi username and PIN.</p>
+          <p>Log in with your permanent Vlad WiFi username and PIN.</p>
         </header>
 
         <section className="signup-card login-card" aria-labelledby="login-title">

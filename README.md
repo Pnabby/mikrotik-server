@@ -1,4 +1,4 @@
-# FLINT WiFi hotspot monorepo
+# Vlad WiFi hotspot monorepo
 
 The project is split into a public React application, a separate React admin application,
 and a modular FastAPI backend.

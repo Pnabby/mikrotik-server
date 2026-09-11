@@ -1,7 +1,20 @@
 import pytest
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from app.main import app
+from app.routes import pages
 from app.schemas.registration import normalize_phone_number
+
+
+def test_phone_verification_page_is_served_by_spa_fallback() -> None:
+    page_paths = {route.path for route in pages.router.routes}
+
+    assert "/verify-phone" in page_paths
+    assert "/forgot-password" in page_paths
+
+    response = TestClient(app).get("/verify-phone", follow_redirects=False)
+    assert response.status_code in {200, 307}
 
 
 @pytest.mark.parametrize(

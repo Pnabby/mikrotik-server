@@ -91,6 +91,30 @@ export function listPlanGroups(routerId) {
   return request(`/api/admin/hostels/${encodeURIComponent(routerId)}/plan-groups`)
 }
 
+export function listAllHostelPlanGroups() {
+  return request('/api/admin/plan-groups')
+}
+
+export function createAllHostelPlanGroup(group) {
+  return request('/api/admin/plan-groups', {
+    method: 'POST',
+    body: JSON.stringify(group),
+  })
+}
+
+export function updateAllHostelPlanGroup(groupKey, group) {
+  return request(`/api/admin/plan-groups/${encodeURIComponent(groupKey)}`, {
+    method: 'PUT',
+    body: JSON.stringify(group),
+  })
+}
+
+export function deleteAllHostelPlanGroup(groupKey) {
+  return request(`/api/admin/plan-groups/${encodeURIComponent(groupKey)}`, {
+    method: 'DELETE',
+  })
+}
+
 export function createPlanGroup(routerId, group) {
   return request(`/api/admin/hostels/${encodeURIComponent(routerId)}/plan-groups`, {
     method: 'POST',

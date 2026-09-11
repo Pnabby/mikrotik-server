@@ -2,15 +2,18 @@ import { useEffect, useMemo, useState } from 'react'
 
 import {
   AdminApiError,
+  createAllHostelPlanGroup,
   createHostel,
   createPlanGroup,
-  deletePlanGroup,
+  deleteAllHostelPlanGroup,
   deleteHostelProfileConfiguration,
+  deletePlanGroup,
   forceHostelIpCloudUpdate,
   getCustomersAndDevices,
   getDashboard,
   getSupportSettings,
   getTransactions,
+  listAllHostelPlanGroups,
   listHostelProfiles,
   listHostels,
   listPlanGroups,
@@ -18,6 +21,7 @@ import {
   saveHostelProfile,
   saveSupportSettings,
   sendBroadcast,
+  updateAllHostelPlanGroup,
   updateHostel,
   updatePlanGroup,
 } from '../services/adminApi'
@@ -71,7 +75,7 @@ function Brand() {
   return (
     <div className="dashboard-brand">
       <span><Icon name="wifi" /></span>
-      <div><strong>Flint WiFi</strong><small>Admin console</small></div>
+      <div><strong>Vlad WiFi</strong><small>Admin console</small></div>
     </div>
   )
 }
@@ -653,7 +657,7 @@ function SupportSettingsPanel({ canEdit, onSessionExpired }) {
   )
 }
 
-function PlanGroupManager({ canEdit, groups, onCreate, onDelete, onUpdate, profiles }) {
+function PlanGroupManager({ bulkMode = false, canEdit, groups, onCreate, onDelete, onUpdate, profiles }) {
   const empty = { name: '', description: '', displayOrder: 0, sortByPrice: false, profileNames: [] }
   const [editingId, setEditingId] = useState('')
   const [form, setForm] = useState(empty)
@@ -719,7 +723,8 @@ function PlanGroupManager({ canEdit, groups, onCreate, onDelete, onUpdate, profi
   }
 
   async function remove(group) {
-    if (!window.confirm(`Delete the "${group.name}" group? Its plans will become ungrouped.`)) return
+    const scope = bulkMode ? ' from every active hostel' : ''
+    if (!window.confirm(`Delete the "${group.name}" group${scope}? Its plans will become ungrouped.`)) return
     try { await onDelete(group.id) } catch (deleteError) {
       setError(deleteError.message || 'The plan group could not be deleted.')
     }
@@ -727,11 +732,11 @@ function PlanGroupManager({ canEdit, groups, onCreate, onDelete, onUpdate, profi
 
   return <section className="plan-groups-card">
     <header>
-      <div><span className="dashboard-kicker">Customer organization</span><h3>Plan groups</h3><p>Organize related plans into polished sections on the customer page.</p></div>
+      <div><span className="dashboard-kicker">Customer organization</span><h3>{bulkMode ? 'All-hostel plan groups' : 'Plan groups'}</h3><p>{bulkMode ? 'Create and synchronize the same groups across every active hostel.' : 'Organize related plans into polished sections on the customer page.'}</p></div>
       {canEdit && !editingId && <button type="button" onClick={() => edit()}>+ Create group</button>}
     </header>
     {groups.length > 0 && <div className="plan-group-list">{groups.map((group) => <article key={group.id}>
-      <div><strong>{group.name}</strong><p>{group.description || 'No description'}</p><small>{group.plan_count} plan{group.plan_count === 1 ? '' : 's'} &middot; {group.sort_by_price ? 'Lowest price first' : 'Plan name order'} &middot; position {group.display_order}</small></div>
+      <div><strong>{group.name}</strong><p>{group.description || 'No description'}</p><small>{group.plan_count} plan{group.plan_count === 1 ? '' : 's'} &middot; {group.sort_by_price ? 'Lowest price first' : 'Plan name order'} &middot; position {group.display_order}{bulkMode ? ` · ${group.configured_hostels}/${group.hostel_count} hostels${group.settings_consistent ? '' : ' · needs synchronization'}` : ''}</small></div>
       {canEdit && <div><button type="button" onClick={() => edit(group)}>Manage plans</button><button className="danger" type="button" onClick={() => remove(group)}>Delete</button></div>}
     </article>)}</div>}
     {!groups.length && !editingId && <p className="plan-groups-empty">No groups yet. Plans continue to appear in the standard grid.</p>}
@@ -743,11 +748,14 @@ function PlanGroupManager({ canEdit, groups, onCreate, onDelete, onUpdate, profi
         <label className="plan-group-price-sort"><input checked={form.sortByPrice} type="checkbox" onChange={(event) => setForm((current) => ({ ...current, sortByPrice: event.target.checked }))} /><span><strong>Order by increasing price</strong><small>Show the cheapest plan first inside this group.</small></span></label>
       </div>
       <section className="plan-group-plan-picker">
-        <header><div><h4>Add published plans</h4><p>Select the plans that should appear in this group. Selecting a plan already in another group will move it here.</p></div><strong>{form.profileNames.length} selected</strong></header>
+        <header><div><h4>Add published plans</h4><p>{bulkMode ? 'Only plans published across every active hostel are shown. Your selection will be synchronized everywhere.' : 'Select the plans that should appear in this group. Selecting a plan already in another group will move it here.'}</p></div><strong>{form.profileNames.length} selected</strong></header>
         {publishedPlans.length ? <>
           <div className="plan-group-picker-tools"><div className="profile-search"><Icon name="search" /><input aria-label="Search published plans" placeholder="Search published plans" type="search" value={planSearch} onChange={(event) => setPlanSearch(event.target.value)} /></div><button type="button" onClick={() => setForm((current) => ({ ...current, profileNames: publishedPlans.map((profile) => profile.mikrotik_profile) }))}>Select all</button><button type="button" onClick={() => setForm((current) => ({ ...current, profileNames: [] }))}>Clear</button></div>
           <div className="plan-group-plan-list">{visiblePublishedPlans.map((profile) => {
-            const currentGroup = groups.find((group) => group.id === profile.group_id)
+            const profileKey = profile.mikrotik_profile.toLocaleLowerCase()
+            const currentGroup = bulkMode
+              ? groups.find((group) => group.profile_names.some((name) => name.toLocaleLowerCase() === profileKey))
+              : groups.find((group) => group.id === profile.group_id)
             return <label className="plan-group-plan-option" key={profile.mikrotik_profile}><input checked={form.profileNames.includes(profile.mikrotik_profile)} type="checkbox" onChange={() => togglePlan(profile.mikrotik_profile)} /><span><strong>{profile.display_name || titleFromProfile(profile.mikrotik_profile)}{profile.is_promotional && <em>Promo</em>}</strong><small>{profile.mikrotik_profile}{currentGroup && currentGroup.id !== editingId ? ` · currently in ${currentGroup.name}` : ''}</small></span><b>{formatMoney(profile.amount, profile.currency)}</b></label>
           })}</div>
           {!visiblePublishedPlans.length && <p className="plan-groups-empty">No published plans match your search.</p>}
@@ -805,7 +813,7 @@ function MessagingPanel({ canEdit, hostels, onSessionExpired, embedded = false }
       <header><span><Icon name="users" /></span><div><h2>New broadcast</h2><p>Messages are delivered by SMS to verified phones and by email.</p></div></header>
       <form onSubmit={submit}>
         <label><span>Recipients</span><select disabled={!canEdit || sending} name="routerId" value={form.routerId} onChange={change}><option value="">All users in all hostels</option>{hostels.map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>Only {hostel.name}</option>)}</select></label>
-        <label><span>Email subject</span><input disabled={!canEdit || sending} maxLength="120" name="subject" placeholder="Important Flint WiFi update" value={form.subject} onChange={change} /></label>
+        <label><span>Email subject</span><input disabled={!canEdit || sending} maxLength="120" name="subject" placeholder="Important Vlad WiFi update" value={form.subject} onChange={change} /></label>
         <label><span>Message</span><textarea disabled={!canEdit || sending} maxLength="1000" name="message" placeholder="Write your message here..." rows="7" value={form.message} onChange={change} /><small>{form.message.length}/1000 characters</small></label>
         {!canEdit && <div className="hostel-readonly-note"><Icon name="alert" />Your viewer role cannot send messages.</div>}
         {error && <div className="editor-error" role="alert"><Icon name="alert" />{error}</div>}
@@ -1222,12 +1230,15 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
   }, [selectedId, view])
 
   useEffect(() => {
-    if (!selectedId || selectedId === ALL_HOSTELS_ID || view !== 'profiles') {
+    if (!selectedId || view !== 'profiles') {
       setPlanGroups([])
       return undefined
     }
     let active = true
-    listPlanGroups(selectedId)
+    const request = selectedId === ALL_HOSTELS_ID
+      ? listAllHostelPlanGroups()
+      : listPlanGroups(selectedId)
+    request
       .then((items) => { if (active) setPlanGroups(items) })
       .catch((error) => handleError(error, 'Plan groups could not be loaded.'))
     return () => { active = false }
@@ -1235,18 +1246,26 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
 
   async function addPlanGroup(payload) {
     try {
-      const created = await createPlanGroup(selectedId, payload)
+      const created = allHostelsSelected
+        ? await createAllHostelPlanGroup(payload)
+        : await createPlanGroup(selectedId, payload)
       setPlanGroups((current) => [...current, created]
         .sort((left, right) => left.display_order - right.display_order || left.name.localeCompare(right.name)))
-      setProfiles((current) => current.map((profile) => (
-        payload.profile_names.includes(profile.mikrotik_profile)
-          ? { ...profile, group_id: created.id }
-          : profile
-      )))
-      try { setPlanGroups(await listPlanGroups(selectedId)) } catch (refreshError) {
+      if (!allHostelsSelected) {
+        setProfiles((current) => current.map((profile) => (
+          payload.profile_names.includes(profile.mikrotik_profile)
+            ? { ...profile, group_id: created.id }
+            : profile
+        )))
+      }
+      try {
+        setPlanGroups(allHostelsSelected
+          ? await listAllHostelPlanGroups()
+          : await listPlanGroups(selectedId))
+      } catch (refreshError) {
         if (refreshError instanceof AdminApiError && refreshError.status === 401) onSessionExpired()
       }
-      setToast('Plan group created.')
+      setToast(allHostelsSelected ? 'Plan group created across all active hostels.' : 'Plan group created.')
     } catch (error) {
       if (error instanceof AdminApiError && error.status === 401) onSessionExpired()
       throw new Error(error instanceof AdminApiError && error.status === 409 ? 'A group with that name already exists.' : 'The plan group could not be created.')
@@ -1255,19 +1274,27 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
 
   async function editPlanGroup(groupId, payload) {
     try {
-      const updated = await updatePlanGroup(selectedId, groupId, payload)
+      const updated = allHostelsSelected
+        ? await updateAllHostelPlanGroup(groupId, payload)
+        : await updatePlanGroup(selectedId, groupId, payload)
       setPlanGroups((current) => current.map((group) => group.id === groupId ? updated : group)
         .sort((left, right) => left.display_order - right.display_order || left.name.localeCompare(right.name)))
-      setProfiles((current) => current.map((profile) => {
-        if (payload.profile_names.includes(profile.mikrotik_profile)) {
-          return { ...profile, group_id: groupId }
-        }
-        return profile.group_id === groupId ? { ...profile, group_id: null } : profile
-      }))
-      try { setPlanGroups(await listPlanGroups(selectedId)) } catch (refreshError) {
+      if (!allHostelsSelected) {
+        setProfiles((current) => current.map((profile) => {
+          if (payload.profile_names.includes(profile.mikrotik_profile)) {
+            return { ...profile, group_id: groupId }
+          }
+          return profile.group_id === groupId ? { ...profile, group_id: null } : profile
+        }))
+      }
+      try {
+        setPlanGroups(allHostelsSelected
+          ? await listAllHostelPlanGroups()
+          : await listPlanGroups(selectedId))
+      } catch (refreshError) {
         if (refreshError instanceof AdminApiError && refreshError.status === 401) onSessionExpired()
       }
-      setToast('Plan group updated.')
+      setToast(allHostelsSelected ? 'Plan group synchronized across all active hostels.' : 'Plan group updated.')
     } catch (error) {
       if (error instanceof AdminApiError && error.status === 401) onSessionExpired()
       throw new Error(error instanceof AdminApiError && error.status === 409 ? 'A group with that name already exists.' : 'The plan group could not be updated.')
@@ -1276,10 +1303,13 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
 
   async function removePlanGroup(groupId) {
     try {
-      await deletePlanGroup(selectedId, groupId)
+      if (allHostelsSelected) await deleteAllHostelPlanGroup(groupId)
+      else await deletePlanGroup(selectedId, groupId)
       setPlanGroups((current) => current.filter((group) => group.id !== groupId))
-      setProfiles((current) => current.map((profile) => profile.group_id === groupId ? { ...profile, group_id: null } : profile))
-      setToast('Plan group deleted; its plans are now ungrouped.')
+      if (!allHostelsSelected) {
+        setProfiles((current) => current.map((profile) => profile.group_id === groupId ? { ...profile, group_id: null } : profile))
+      }
+      setToast(allHostelsSelected ? 'Plan group deleted from all active hostels.' : 'Plan group deleted; its plans are now ungrouped.')
     } catch (error) {
       if (error instanceof AdminApiError && error.status === 401) onSessionExpired()
       throw new Error('The plan group could not be deleted.')
@@ -1545,8 +1575,9 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
               </div>
             </header>
 
-            {!allHostelsSelected && selectedHostel && (
+            {selectedHostel && (
               <PlanGroupManager
+                bulkMode={allHostelsSelected}
                 canEdit={admin.role !== 'viewer'}
                 groups={planGroups}
                 onCreate={addPlanGroup}

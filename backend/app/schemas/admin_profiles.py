@@ -185,3 +185,12 @@ class AdminPlanGroupUpdate(AdminPlanGroupCreate):
 class AdminPlanGroupResponse(AdminPlanGroupCreate):
     id: uuid.UUID
     plan_count: int
+
+
+class AdminBulkPlanGroupResponse(AdminPlanGroupCreate):
+    id: str
+    group_key: str
+    plan_count: int
+    hostel_count: int
+    configured_hostels: int
+    settings_consistent: bool

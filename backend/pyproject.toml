@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "flintwifi-backend"
 version = "0.3.0"
-description = "FastAPI backend for the FLINT WiFi hotspot platform."
+description = "FastAPI backend for the Vlad WiFi hotspot platform."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

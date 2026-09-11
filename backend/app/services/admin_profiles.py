@@ -20,6 +20,7 @@ from app.models.enums import AuditActorType, RouterStatus
 from app.models.package import Package, PlanGroup, RouterPackageProfile
 from app.models.router import Router
 from app.schemas.admin_profiles import (
+    AdminBulkPlanGroupResponse,
     AdminHostelCreate,
     AdminHostelSummary,
     AdminHostelUpdate,
@@ -572,6 +573,244 @@ class AdminProfileService:
             )
         )
         self._session.commit()
+
+    def list_bulk_plan_groups(self, routers: list[Router]) -> list[AdminBulkPlanGroupResponse]:
+        if not routers:
+            return []
+        router_ids = {router.id for router in routers}
+        groups = self._session.scalars(
+            select(PlanGroup)
+            .where(PlanGroup.router_id.in_(router_ids))
+            .order_by(PlanGroup.display_order, PlanGroup.name)
+        ).all()
+        names_by_group: dict[uuid.UUID, list[str]] = {}
+        for group_id, profile_name in self._session.execute(
+            select(RouterPackageProfile.group_id, RouterPackageProfile.mikrotik_profile).where(
+                RouterPackageProfile.router_id.in_(router_ids),
+                RouterPackageProfile.group_id.is_not(None),
+            )
+        ):
+            if group_id is not None:
+                names_by_group.setdefault(group_id, []).append(profile_name)
+
+        groups_by_key: dict[str, list[PlanGroup]] = {}
+        for group in groups:
+            groups_by_key.setdefault(group.name.casefold(), []).append(group)
+
+        responses: list[AdminBulkPlanGroupResponse] = []
+        for key, matching_groups in groups_by_key.items():
+            representative = matching_groups[0]
+            group_key = self._bulk_group_key(key)
+            settings = {
+                (
+                    group.name,
+                    group.description,
+                    group.display_order,
+                    group.sort_by_price,
+                )
+                for group in matching_groups
+            }
+            assignments = [
+                {name.casefold(): name for name in names_by_group.get(group.id, [])}
+                for group in matching_groups
+            ]
+            common_keys = set(assignments[0]) if assignments else set()
+            for assigned in assignments[1:]:
+                common_keys.intersection_update(assigned)
+            if len(matching_groups) != len(routers):
+                common_keys.clear()
+            common_names = sorted(
+                (assignments[0][name] for name in common_keys), key=str.casefold
+            )
+            responses.append(
+                AdminBulkPlanGroupResponse(
+                    id=group_key,
+                    group_key=group_key,
+                    name=representative.name,
+                    description=representative.description,
+                    display_order=representative.display_order,
+                    sort_by_price=representative.sort_by_price,
+                    profile_names=common_names,
+                    plan_count=len(common_names),
+                    hostel_count=len(routers),
+                    configured_hostels=len({group.router_id for group in matching_groups}),
+                    settings_consistent=(
+                        len(matching_groups) == len(routers)
+                        and len(settings) == 1
+                        and all(set(assigned) == set(assignments[0]) for assigned in assignments)
+                    ),
+                )
+            )
+        return sorted(responses, key=lambda item: (item.display_order, item.name.casefold()))
+
+    def create_bulk_plan_group(
+        self,
+        routers: list[Router],
+        create: AdminPlanGroupCreate,
+        admin: AdminUser,
+        ip_address: str | None,
+    ) -> AdminBulkPlanGroupResponse:
+        if not routers:
+            raise ServiceError(status.HTTP_400_BAD_REQUEST, "No active hostels are available.")
+        existing_names = {
+            group.name.casefold()
+            for group in self._session.scalars(
+                select(PlanGroup).where(PlanGroup.router_id.in_([router.id for router in routers]))
+            )
+        }
+        if create.name.casefold() in existing_names:
+            raise ServiceError(
+                status.HTTP_409_CONFLICT,
+                "A plan group with this name already exists in at least one hostel.",
+            )
+        self._save_bulk_plan_groups(
+            routers=routers,
+            existing_by_router={},
+            update=create,
+            admin=admin,
+            action="plan_group.bulk_created",
+            ip_address=ip_address,
+        )
+        return self._find_bulk_group(routers, create.name)
+
+    def update_bulk_plan_group(
+        self,
+        routers: list[Router],
+        group_key: str,
+        update: AdminPlanGroupUpdate,
+        admin: AdminUser,
+        ip_address: str | None,
+    ) -> AdminBulkPlanGroupResponse:
+        if not routers:
+            raise ServiceError(status.HTTP_400_BAD_REQUEST, "No active hostels are available.")
+        normalized_key = group_key.strip().casefold()
+        matching = [
+            group
+            for group in self._session.scalars(
+                select(PlanGroup).where(PlanGroup.router_id.in_([router.id for router in routers]))
+            )
+            if self._bulk_group_key(group.name) == normalized_key
+        ]
+        if not matching:
+            raise ServiceError(status.HTTP_404_NOT_FOUND, "Plan group was not found.")
+        existing_by_router = {group.router_id: group for group in matching}
+        self._save_bulk_plan_groups(
+            routers=routers,
+            existing_by_router=existing_by_router,
+            update=update,
+            admin=admin,
+            action="plan_group.bulk_updated",
+            ip_address=ip_address,
+        )
+        return self._find_bulk_group(routers, update.name)
+
+    def delete_bulk_plan_group(
+        self,
+        routers: list[Router],
+        group_key: str,
+        admin: AdminUser,
+        ip_address: str | None,
+    ) -> None:
+        normalized_key = group_key.strip().casefold()
+        groups = [
+            group
+            for group in self._session.scalars(
+                select(PlanGroup).where(PlanGroup.router_id.in_([router.id for router in routers]))
+            )
+            if self._bulk_group_key(group.name) == normalized_key
+        ]
+        if not groups:
+            raise ServiceError(status.HTTP_404_NOT_FOUND, "Plan group was not found.")
+        try:
+            for group in groups:
+                self._session.delete(group)
+                self._session.add(
+                    AuditLog(
+                        actor_type=AuditActorType.ADMIN,
+                        admin_user_id=admin.id,
+                        action="plan_group.bulk_deleted",
+                        entity_type="plan_group",
+                        entity_id=str(group.id),
+                        details={"router_id": group.router_id, "name": group.name},
+                        ip_address=(ip_address or "")[:64] or None,
+                    )
+                )
+            self._session.commit()
+        except SQLAlchemyError as exc:
+            self._session.rollback()
+            raise ServiceError(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "Plan groups could not be deleted.",
+            ) from exc
+
+    def _save_bulk_plan_groups(
+        self,
+        *,
+        routers: list[Router],
+        existing_by_router: dict[str, PlanGroup],
+        update: AdminPlanGroupCreate,
+        admin: AdminUser,
+        action: str,
+        ip_address: str | None,
+    ) -> None:
+        try:
+            for router in routers:
+                group = existing_by_router.get(router.id)
+                if group is None:
+                    group = PlanGroup(router=router)
+                    self._session.add(group)
+                group.name = update.name
+                group.description = update.description
+                group.display_order = update.display_order
+                group.sort_by_price = update.sort_by_price
+                self._session.flush()
+                assigned = self._assign_group_profiles(group, update.profile_names)
+                self._session.add(
+                    AuditLog(
+                        actor_type=AuditActorType.ADMIN,
+                        admin_user_id=admin.id,
+                        action=action,
+                        entity_type="plan_group",
+                        entity_id=str(group.id),
+                        details={
+                            "router_id": router.id,
+                            "name": group.name,
+                            "profile_names": assigned,
+                        },
+                        ip_address=(ip_address or "")[:64] or None,
+                    )
+                )
+            self._session.commit()
+        except ServiceError:
+            self._session.rollback()
+            raise
+        except IntegrityError as exc:
+            self._session.rollback()
+            raise ServiceError(
+                status.HTTP_409_CONFLICT,
+                "A group with this name conflicts with an existing hostel group.",
+            ) from exc
+        except SQLAlchemyError as exc:
+            self._session.rollback()
+            raise ServiceError(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "Plan groups could not be saved.",
+            ) from exc
+
+    def _find_bulk_group(
+        self, routers: list[Router], name: str
+    ) -> AdminBulkPlanGroupResponse:
+        group_key = self._bulk_group_key(name)
+        return next(
+            item
+            for item in self.list_bulk_plan_groups(routers)
+            if item.group_key == group_key
+        )
+
+    @staticmethod
+    def _bulk_group_key(name: str) -> str:
+        normalized_name = name.strip().casefold()
+        return uuid.uuid5(uuid.NAMESPACE_URL, f"vlad-wifi:plan-group:{normalized_name}").hex
 
     def _save_plan_group(
         self,

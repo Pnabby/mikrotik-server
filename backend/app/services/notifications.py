@@ -62,10 +62,10 @@ class CustomerNotificationService:
     ) -> DeliveryResult:
         return self.send(
             customer,
-            subject="Your Flint WiFi bundle is active",
+            subject="Your Vlad WiFi bundle is active",
             message=(
                 f"Hello {customer.username}, your {package_name} bundle has been activated "
-                "successfully. You can now connect to Flint WiFi."
+                "successfully. You can now connect to Vlad WiFi."
             ),
             send_sms=send_sms,
             send_email=send_email,

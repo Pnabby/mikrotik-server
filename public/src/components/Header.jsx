@@ -21,7 +21,7 @@ export default function Header({ phase, username }) {
   return (
     <div className="header">
       <div className="logo-icon"><WifiIcon /></div>
-      <span className="logo-text">FLINT <span>WiFi</span></span>
+      <span className="logo-text">VLAD <span>WiFi</span></span>
       <span className={chipClass} id="hero-badge" title={label}>
         <span className={`status-dot ${dotClass}`} />
         {label}

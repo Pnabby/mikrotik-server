@@ -4,6 +4,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
@@ -15,6 +16,7 @@ from app.models.package import PlanGroup
 from app.models.router import Router
 from app.routes.admin_auth import get_authenticated_admin
 from app.schemas.admin_profiles import (
+    AdminBulkPlanGroupResponse,
     AdminHostelCreate,
     AdminHostelSummary,
     AdminHostelUpdate,
@@ -32,6 +34,16 @@ SettingsDependency = Annotated[Settings, Depends(get_settings)]
 AdminDependency = Annotated[AdminUser, Depends(get_authenticated_admin)]
 
 
+def _active_routers(session: Session) -> list[Router]:
+    return list(
+        session.scalars(
+            select(Router)
+            .where(Router.is_active.is_(True))
+            .order_by(Router.display_order, Router.name, Router.id)
+        ).all()
+    )
+
+
 @router.get("/hostels", response_model=list[AdminHostelSummary])
 def list_hostels(
     _admin: AdminDependency,
@@ -39,6 +51,78 @@ def list_hostels(
     settings: SettingsDependency,
 ) -> list[AdminHostelSummary]:
     return AdminProfileService(session, settings).list_hostels()
+
+
+@router.get("/plan-groups", response_model=list[AdminBulkPlanGroupResponse])
+def list_all_hostel_plan_groups(
+    _admin: AdminDependency,
+    session: SessionDependency,
+    settings: SettingsDependency,
+) -> list[AdminBulkPlanGroupResponse]:
+    return AdminProfileService(session, settings).list_bulk_plan_groups(
+        _active_routers(session)
+    )
+
+
+@router.post(
+    "/plan-groups",
+    response_model=AdminBulkPlanGroupResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_all_hostel_plan_group(
+    payload: AdminPlanGroupCreate,
+    request: Request,
+    admin: AdminDependency,
+    session: SessionDependency,
+    settings: SettingsDependency,
+) -> AdminBulkPlanGroupResponse:
+    if admin.role not in {AdminRole.OPERATOR, AdminRole.ADMINISTRATOR}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    return AdminProfileService(session, settings).create_bulk_plan_group(
+        _active_routers(session),
+        payload,
+        admin,
+        request.client.host if request.client else None,
+    )
+
+
+@router.put("/plan-groups/{group_key}", response_model=AdminBulkPlanGroupResponse)
+def update_all_hostel_plan_group(
+    group_key: str,
+    payload: AdminPlanGroupUpdate,
+    request: Request,
+    admin: AdminDependency,
+    session: SessionDependency,
+    settings: SettingsDependency,
+) -> AdminBulkPlanGroupResponse:
+    if admin.role not in {AdminRole.OPERATOR, AdminRole.ADMINISTRATOR}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    return AdminProfileService(session, settings).update_bulk_plan_group(
+        _active_routers(session),
+        group_key,
+        payload,
+        admin,
+        request.client.host if request.client else None,
+    )
+
+
+@router.delete("/plan-groups/{group_key}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_all_hostel_plan_group(
+    group_key: str,
+    request: Request,
+    admin: AdminDependency,
+    session: SessionDependency,
+    settings: SettingsDependency,
+) -> Response:
+    if admin.role not in {AdminRole.OPERATOR, AdminRole.ADMINISTRATOR}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    AdminProfileService(session, settings).delete_bulk_plan_group(
+        _active_routers(session),
+        group_key,
+        admin,
+        request.client.host if request.client else None,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(

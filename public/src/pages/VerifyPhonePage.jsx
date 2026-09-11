@@ -19,7 +19,7 @@ export default function VerifyPhonePage() {
   const [busy, setBusy] = useState(true)
 
   useEffect(() => {
-    document.title = 'Verify phone | FLINT WiFi'
+    document.title = 'Verify phone | Vlad WiFi'
     getAccount().then((account) => {
       if (account.phone_verified) window.location.replace('/account')
       else {
@@ -67,7 +67,7 @@ export default function VerifyPhonePage() {
     <main className="signup-page">
       <div className="signup-container login-container">
         <header className="signup-header">
-          <a className="signup-brand" href="/" aria-label="Flint WiFi home"><span className="signup-logo-mark"><WifiIcon /></span><span>Flint WiFi</span></a>
+          <a className="signup-brand" href="/" aria-label="Vlad WiFi home"><span className="signup-logo-mark"><WifiIcon /></span><span>Vlad WiFi</span></a>
           <h1>Verify your phone</h1>
           <p>Add and verify your mobile number to finish securing your account.</p>
         </header>

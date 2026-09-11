@@ -1,6 +1,6 @@
-# FLINT WiFi backend
+# Vlad WiFi backend
 
-FastAPI application package for the FLINT WiFi monorepo. See the repository-level
+FastAPI application package for the Vlad WiFi monorepo. See the repository-level
 `README.md` for configuration, local run commands, endpoint compatibility, PostgreSQL
 setup, and migration safety notes.
 

@@ -36,7 +36,7 @@ export default function ForgotPinPage() {
   const [recoveredUsername, setRecoveredUsername] = useState('')
 
   useEffect(() => {
-    document.title = 'Account recovery | FLINT WiFi'
+    document.title = 'Account recovery | Vlad WiFi'
   }, [])
 
   useEffect(() => {
@@ -158,7 +158,7 @@ export default function ForgotPinPage() {
     <main className="signup-page">
       <div className="signup-container login-container">
         <header className="signup-header">
-          <a className="signup-brand" href="/" aria-label="Flint WiFi home"><span className="signup-logo-mark"><WifiIcon /></span><span>Flint WiFi</span></a>
+          <a className="signup-brand" href="/" aria-label="Vlad WiFi home"><span className="signup-logo-mark"><WifiIcon /></span><span>Vlad WiFi</span></a>
           <h1>Recover your account</h1>
           <p>Recover your username, choose a new PIN, or unlock your account.</p>
         </header>
@@ -187,7 +187,7 @@ export default function ForgotPinPage() {
             </form>
           </>}
 
-          {step === 'done' && <div className="reset-pin-success"><span aria-hidden="true">&#10003;</span><h2>{mode === 'username' ? 'Username recovered' : mode === 'unlock' ? 'Account unlocked' : 'PIN changed'}</h2>{mode === 'username' ? <><p>Your Flint WiFi username is:</p><strong className="recovered-username">{recoveredUsername}</strong></> : mode === 'unlock' ? <p>Your account is unlocked and the failed-login counter has been cleared. You can now log in.</p> : <p>Your new PIN is active in Flint and on your hostel router. You can now log in.</p>}<a className="signup-submit" href="/">Return to login</a></div>}
+          {step === 'done' && <div className="reset-pin-success"><span aria-hidden="true">&#10003;</span><h2>{mode === 'username' ? 'Username recovered' : mode === 'unlock' ? 'Account unlocked' : 'PIN changed'}</h2>{mode === 'username' ? <><p>Your Vlad WiFi username is:</p><strong className="recovered-username">{recoveredUsername}</strong></> : mode === 'unlock' ? <p>Your account is unlocked and the failed-login counter has been cleared. You can now log in.</p> : <p>Your new PIN is active in Vlad WiFi and on your hostel router. You can now log in.</p>}<a className="signup-submit" href="/">Return to login</a></div>}
           {step !== 'done' && <p className="reset-back-link"><a href="/">Back to login</a></p>}
         </section>
       </div>
