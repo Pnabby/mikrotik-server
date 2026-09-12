@@ -3,6 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
+from ipaddress import ip_network
 
 from fastapi import HTTPException
 from sqlalchemy import func, or_, select
@@ -17,6 +18,8 @@ from app.models.router import Router
 from app.models.subscription import Subscription
 from app.models.transaction import Transaction
 from app.schemas.admin_dashboard import (
+    AdminAccessPointListResponse,
+    AdminAccessPointStatus,
     AdminConnectedDevice,
     AdminCustomerDetail,
     AdminCustomerDirectoryResponse,
@@ -60,6 +63,88 @@ class AdminDashboardService:
 
     def __init__(self, session: Session):
         self.session = session
+
+    def access_points(self, router: Router) -> AdminAccessPointListResponse:
+        """Report the fixed AP address range (.2-.35) for one hostel."""
+        network_text = router.hotspot_network or ""
+        try:
+            network = ip_network(network_text, strict=False)
+            if network.version != 4:
+                raise ValueError
+        except ValueError:
+            return self._access_point_response(
+                router, network_text, [], False,
+                "The hostel does not have a valid IPv4 network configured.",
+            )
+
+        # AP numbering is anchored to the first /24 represented by the configured
+        # network (for example 192.168.88.2 through .35 for 192.168.88.0/23).
+        addresses = [str(network.network_address + suffix) for suffix in range(2, 36)]
+        try:
+            with mikrotik_client_context(self._definition(router)) as client:
+                leases = client.get_dhcp_leases()
+                bridge_hosts = client.get_bridge_hosts()
+        except (HTTPException, ValueError):
+            return self._access_point_response(
+                router, str(network), [], False, "Router could not be reached."
+            )
+
+        leases_by_address: dict[str, dict[str, str]] = {}
+        for lease in leases:
+            for key in ("active-address", "address"):
+                address = _optional_text(lease.get(key))
+                if address in addresses:
+                    current = leases_by_address.get(address)
+                    if current is None or (
+                        not _optional_text(current.get("active-mac-address"))
+                        and _optional_text(lease.get("active-mac-address"))
+                    ):
+                        leases_by_address[address] = lease
+
+        ports_by_mac = {
+            str(host.get("mac-address", "")).strip().casefold(): _optional_text(
+                host.get("on-interface") or host.get("interface")
+            )
+            for host in bridge_hosts
+            if _optional_text(host.get("mac-address"))
+        }
+
+        points = []
+        for address in addresses:
+            lease = leases_by_address.get(address)
+            if lease is None:
+                continue
+            active_mac = _optional_text(lease.get("active-mac-address"))
+            configured_mac = _optional_text(lease.get("mac-address"))
+            points.append(AdminAccessPointStatus(
+                ip_address=address,
+                online=active_mac is not None,
+                configured_mac=configured_mac,
+                active_mac=active_mac,
+                host_name=_optional_text(lease.get("host-name")),
+                comment=_optional_text(lease.get("comment")),
+                connected_port=ports_by_mac.get(
+                    (active_mac or configured_mac or "").casefold()
+                ),
+                lease_status=_optional_text(lease.get("status")),
+                last_seen=_optional_text(lease.get("last-seen")),
+                expires_after=_optional_text(lease.get("expires-after")),
+            ))
+        online_count = sum(point.online for point in points)
+        return AdminAccessPointListResponse(
+            generated_at=datetime.now(UTC), router_id=router.id, hostel_name=router.name,
+            network=str(network), router_reachable=True, online_count=online_count,
+            offline_count=len(points) - online_count, access_points=points,
+        )
+
+    @staticmethod
+    def _access_point_response(router, network, addresses, reachable, error):
+        points = [AdminAccessPointStatus(ip_address=address, online=False) for address in addresses]
+        return AdminAccessPointListResponse(
+            generated_at=datetime.now(UTC), router_id=router.id, hostel_name=router.name,
+            network=network, router_reachable=reachable, error=error, online_count=0,
+            offline_count=len(points), access_points=points,
+        )
 
     def summary(self, router_id: str | None = None) -> AdminDashboardResponse:
         now = datetime.now(UTC)

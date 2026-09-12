@@ -26,6 +26,31 @@ class DashboardRouterStatus(BaseModel):
     error: str | None = None
 
 
+class AdminAccessPointStatus(BaseModel):
+    ip_address: str
+    online: bool
+    configured_mac: str | None = None
+    active_mac: str | None = None
+    host_name: str | None = None
+    comment: str | None = None
+    connected_port: str | None = None
+    lease_status: str | None = None
+    last_seen: str | None = None
+    expires_after: str | None = None
+
+
+class AdminAccessPointListResponse(BaseModel):
+    generated_at: datetime
+    router_id: str
+    hostel_name: str
+    network: str
+    router_reachable: bool
+    error: str | None = None
+    online_count: int
+    offline_count: int
+    access_points: list[AdminAccessPointStatus]
+
+
 class DashboardTransaction(BaseModel):
     reference: str
     customer: str
