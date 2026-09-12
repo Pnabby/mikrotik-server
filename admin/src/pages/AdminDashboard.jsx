@@ -9,6 +9,7 @@ import {
   deleteHostelProfileConfiguration,
   deletePlanGroup,
   forceHostelIpCloudUpdate,
+  getAccessPoints,
   getCustomersAndDevices,
   getDashboard,
   getSupportSettings,
@@ -66,6 +67,7 @@ function Icon({ name }) {
     device: <><rect x="5" y="2" width="14" height="20" rx="2" /><path d="M9 18h6" /></>,
     money: <><circle cx="12" cy="12" r="9" /><path d="M15 8.5c-.7-.7-1.7-1-3-1-1.7 0-3 .8-3 2s1.1 1.8 3 2.3 3 1 3 2.3-1.3 2.2-3 2.2c-1.2 0-2.4-.4-3.2-1.2M12 5.5v13" /></>,
     activity: <path d="M3 12h4l2.2-6 4.1 12 2.2-6H21" />,
+    network: <><rect x="9" y="2.5" width="6" height="5" rx="1" /><rect x="2.5" y="16.5" width="6" height="5" rx="1" /><rect x="15.5" y="16.5" width="6" height="5" rx="1" /><path d="M12 7.5v4M5.5 16.5v-2h13v2" /></>,
     clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
   }
   return <svg aria-hidden="true" viewBox="0 0 24 24">{paths[name]}</svg>
@@ -964,6 +966,86 @@ const TRANSACTION_FILTER_DEFAULTS = {
   search: '',
 }
 
+function AccessPointCard({ ap, routerReachable }) {
+  const status = !routerReachable ? 'Unknown' : ap.online ? 'Online' : 'Offline'
+  return <article className={`ap-card ${status.toLowerCase()}`}>
+    <header className="ap-card-heading"><span className="ap-device-icon"><Icon name="wifi" /></span><div><strong>{ap.host_name || `AP ${ap.ip_address.split('.').at(-1)}`}</strong><small>{ap.ip_address}</small></div><em><i />{status}</em></header>
+    <div className="ap-card-details"><div><span><Icon name="network" /></span><p><small>Connected port</small><strong>{ap.connected_port || 'Port unknown'}</strong></p></div><div><span><Icon name="device" /></span><p><small>Active MAC</small><strong>{ap.active_mac || 'Not active'}</strong></p></div></div>
+    {ap.configured_mac && ap.configured_mac !== ap.active_mac && <div className="ap-static-mac"><span>Static MAC</span><strong>{ap.configured_mac}</strong></div>}
+    {ap.comment && <p className="ap-card-comment">{ap.comment}</p>}
+    <footer><span>DHCP lease</span><strong>{ap.last_seen ? `Last seen ${ap.last_seen}` : ap.lease_status || 'Static'}</strong></footer>
+  </article>
+}
+
+function AccessPointsPanel({ hostels, loadingHostels, selectedId, onSelect, onSessionExpired }) {
+  const availableHostels = hostels.filter((hostel) => hostel.is_active)
+  const hostelId = availableHostels.some((hostel) => hostel.router_id === selectedId) ? selectedId : availableHostels[0]?.router_id || ''
+  const [result, setResult] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [groupByPort, setGroupByPort] = useState(false)
+  const knownPortCount = new Set(result?.access_points.map((ap) => ap.connected_port).filter(Boolean) || []).size
+  const healthPercent = result?.access_points.length ? Math.round((result.online_count / result.access_points.length) * 100) : 0
+  const portGroups = useMemo(() => {
+    if (!result) return []
+    const grouped = new Map()
+    result.access_points.forEach((ap) => {
+      const port = ap.connected_port || 'Port unknown'
+      grouped.set(port, [...(grouped.get(port) || []), ap])
+    })
+    return [...grouped.entries()].sort(([left], [right]) => {
+      if (left === 'Port unknown') return 1
+      if (right === 'Port unknown') return -1
+      return left.localeCompare(right, undefined, { numeric: true })
+    })
+  }, [result])
+
+  useEffect(() => {
+    if (!hostelId || loadingHostels) return undefined
+    let active = true
+    setLoading(true)
+    setError('')
+    getAccessPoints(hostelId)
+      .then((data) => { if (active) setResult(data) })
+      .catch((requestError) => {
+        if (!active) return
+        if (requestError instanceof AdminApiError && requestError.status === 401) return onSessionExpired()
+        setError('Access point status could not be loaded. Please try again.')
+      })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [hostelId, loadingHostels, refreshKey])
+
+  function chooseHostel(event) {
+    setResult(null)
+    onSelect(event.target.value)
+  }
+
+  return <>
+    <header className="dashboard-page-heading">
+      <div><p className="dashboard-kicker">Hostel network</p><h1>Access points</h1><p>Live status for configured DHCP leases within the AP range, addresses .2 through .35.</p></div>
+      <div className="dashboard-heading-actions">
+        <div className="hostel-selector"><label htmlFor="ap-hostel-select">Selected hostel</label><div><Icon name="building" /><select disabled={loadingHostels || !availableHostels.length} id="ap-hostel-select" value={hostelId} onChange={chooseHostel}>{availableHostels.map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></div></div>
+        <button className="dashboard-refresh-button" disabled={loading || !hostelId} type="button" onClick={() => setRefreshKey((value) => value + 1)}><Icon name="refresh" />{loading ? 'Checking' : 'Refresh'}</button>
+      </div>
+    </header>
+    {!availableHostels.length && !loadingHostels ? <div className="profiles-empty"><Icon name="building" /><h3>No active hostels</h3><p>Add and activate a hostel before checking its access points.</p></div> : error ? <div className="dashboard-load-error" role="alert"><Icon name="alert" /><div><strong>Unable to load access points</strong><p>{error}</p></div><button type="button" onClick={() => setRefreshKey((value) => value + 1)}>Try again</button></div> : loading && !result ? <div className="dashboard-overview-loading"><span className="admin-page-spinner" /><p>Reading DHCP leases from the hostel router...</p></div> : result && <>
+      {!result.router_reachable && <div className="router-warning" role="alert"><Icon name="alert" /><div><strong>Status unavailable</strong><p>{result.error} APs are not marked offline because the router itself could not be checked.</p></div></div>}
+      <section className="ap-overview" aria-label="Access point overview">
+        <article className="ap-health-card"><div className="ap-health-ring" style={{ '--health': `${result.router_reachable ? healthPercent : 0}%` }}><span>{result.router_reachable ? `${healthPercent}%` : '—'}</span></div><div><small>Network health</small><strong>{result.router_reachable ? (result.offline_count ? 'Attention needed' : 'All systems operational') : 'Router unavailable'}</strong><p>Based on active DHCP leases</p></div></article>
+        <article className="ap-metric-card online"><span><Icon name="wifi" /></span><div><small>Online access points</small><strong>{result.online_count}</strong><p>Active MAC detected</p></div></article>
+        <article className="ap-metric-card offline"><span><Icon name="alert" /></span><div><small>Offline access points</small><strong>{result.router_reachable ? result.offline_count : '—'}</strong><p>Configured, not active</p></div></article>
+        <article className="ap-network-card"><span><Icon name="network" /></span><div><small>Network scope</small><strong>{result.network}</strong><p>{knownPortCount} active port{knownPortCount === 1 ? '' : 's'} detected</p></div><time dateTime={result.generated_at}>Updated {formatDashboardTime(result.generated_at)}</time></article>
+      </section>
+      <section className="ap-status-card">
+        <header className="ap-list-header"><div><span className="ap-section-icon"><Icon name="network" /></span><div><h2>Access point inventory</h2><p>{result.hostel_name} · An AP is online when an active MAC is present.</p></div></div><div className="ap-view-controls"><div aria-label="Access point layout"><button aria-pressed={!groupByPort} className={!groupByPort ? 'active' : ''} type="button" onClick={() => setGroupByPort(false)}>All APs</button><button aria-pressed={groupByPort} className={groupByPort ? 'active' : ''} type="button" onClick={() => setGroupByPort(true)}>By port</button></div><span>{result.access_points.length} configured</span></div></header>
+        {result.router_reachable && !result.access_points.length ? <div className="profiles-empty"><Icon name="network" /><h3>No access points configured</h3><p>No DHCP leases were found within addresses .2 through .35.</p></div> : groupByPort ? <div className="ap-port-groups">{portGroups.map(([port, accessPoints]) => <section key={port}><header><Icon name="network" /><h3>{port}</h3><span>{accessPoints.length} AP{accessPoints.length === 1 ? '' : 's'}</span></header><div className="ap-grid">{accessPoints.map((ap) => <AccessPointCard ap={ap} key={ap.ip_address} routerReachable={result.router_reachable} />)}</div></section>)}</div> : <div className="ap-grid">{result.access_points.map((ap) => <AccessPointCard ap={ap} key={ap.ip_address} routerReachable={result.router_reachable} />)}</div>}
+      </section>
+    </>}
+  </>
+}
+
 function RevenueTransactionsPanel({ hostels, onSessionExpired }) {
   const [filters, setFilters] = useState(TRANSACTION_FILTER_DEFAULTS)
   const [appliedFilters, setAppliedFilters] = useState(TRANSACTION_FILTER_DEFAULTS)
@@ -1525,6 +1607,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
           <button className={view === 'profiles' ? 'active' : ''} type="button" onClick={() => setView('profiles')}><Icon name="tag" />Profile catalogue</button>
           <p>Management</p>
           <button className={view === 'customers' ? 'active' : ''} type="button" onClick={() => setView('customers')}><Icon name="users" />Customers &amp; devices</button>
+          <button className={view === 'network' ? 'active' : ''} type="button" onClick={() => setView('network')}><Icon name="network" />Access points</button>
           <button className={view === 'transactions' ? 'active' : ''} type="button" onClick={() => setView('transactions')}><Icon name="receipt" />Revenue &amp; transactions</button>
           <button className={view === 'support' ? 'active' : ''} type="button" onClick={() => setView('support')}><Icon name="settings" />Help &amp; support</button>
         </nav>
@@ -1542,8 +1625,8 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
         </header>
 
         <div className="dashboard-content">
-          <div className="dashboard-mobile-tabs"><button className={view === 'dashboard' ? 'active' : ''} type="button" onClick={() => setView('dashboard')}>Overview</button><button className={view === 'hostels' ? 'active' : ''} type="button" onClick={() => setView('hostels')}>Hostels</button><button className={view === 'profiles' ? 'active' : ''} type="button" onClick={() => setView('profiles')}>Plans</button><button className={view === 'customers' ? 'active' : ''} type="button" onClick={() => setView('customers')}>Users</button><button className={view === 'transactions' ? 'active' : ''} type="button" onClick={() => setView('transactions')}>Revenue</button><button className={view === 'support' ? 'active' : ''} type="button" onClick={() => setView('support')}>Support</button></div>
-          {view === 'dashboard' ? <DashboardOverview hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onOpenCustomers={() => setView('customers')} onOpenTransactions={() => setView('transactions')} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'customers' ? <CustomersDevicesPanel admin={admin} hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'transactions' ? <RevenueTransactionsPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'support' ? <SupportSettingsPanel canEdit={admin.role !== 'viewer'} onSessionExpired={onSessionExpired} /> : view === 'hostels' ? <>
+          <div className="dashboard-mobile-tabs"><button className={view === 'dashboard' ? 'active' : ''} type="button" onClick={() => setView('dashboard')}>Overview</button><button className={view === 'hostels' ? 'active' : ''} type="button" onClick={() => setView('hostels')}>Hostels</button><button className={view === 'profiles' ? 'active' : ''} type="button" onClick={() => setView('profiles')}>Plans</button><button className={view === 'customers' ? 'active' : ''} type="button" onClick={() => setView('customers')}>Users</button><button className={view === 'network' ? 'active' : ''} type="button" onClick={() => setView('network')}>APs</button><button className={view === 'transactions' ? 'active' : ''} type="button" onClick={() => setView('transactions')}>Revenue</button><button className={view === 'support' ? 'active' : ''} type="button" onClick={() => setView('support')}>Support</button></div>
+          {view === 'dashboard' ? <DashboardOverview hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onOpenCustomers={() => setView('customers')} onOpenTransactions={() => setView('transactions')} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'customers' ? <CustomersDevicesPanel admin={admin} hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'network' ? <AccessPointsPanel hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'transactions' ? <RevenueTransactionsPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'support' ? <SupportSettingsPanel canEdit={admin.role !== 'viewer'} onSessionExpired={onSessionExpired} /> : view === 'hostels' ? <>
             <header className="dashboard-page-heading">
               <div><p className="dashboard-kicker">Network management</p><h1>Hostels</h1><p>Add and manage the hostel routers stored in the database.</p></div>
             </header>

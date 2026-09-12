@@ -12,6 +12,7 @@ from app.models.enums import AccountStatus, AdminRole, PaymentStatus
 from app.models.router import Router
 from app.routes.admin_auth import get_authenticated_admin
 from app.schemas.admin_dashboard import (
+    AdminAccessPointListResponse,
     AdminBroadcastRequest,
     AdminBroadcastResponse,
     AdminCustomerDirectoryResponse,
@@ -36,6 +37,18 @@ def get_dashboard(
     if router_id is not None and session.get(Router, router_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     return AdminDashboardService(session).summary(router_id)
+
+
+@router.get("/access-points", response_model=AdminAccessPointListResponse)
+def list_access_points(
+    _admin: AdminDependency,
+    session: SessionDependency,
+    router_id: str = Query(max_length=64),
+) -> AdminAccessPointListResponse:
+    hostel = session.get(Router, router_id)
+    if hostel is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    return AdminDashboardService(session).access_points(hostel)
 
 
 @router.get("/transactions", response_model=AdminTransactionListResponse)

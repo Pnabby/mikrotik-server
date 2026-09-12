@@ -123,6 +123,21 @@ class MikroTikClient:
         api = self.connect()
         return api.get_resource("/interface").get()
 
+    def get_dhcp_leases(self) -> list[dict[str, str]]:
+        """Return DHCP leases, including RouterOS active address/MAC fields."""
+        api = self.connect()
+        return api.get_resource("/ip/dhcp-server/lease").get()
+
+    def get_bridge_hosts(self) -> list[dict[str, str]]:
+        """Return the bridge forwarding table used to identify physical ports."""
+        api = self.connect()
+        try:
+            return api.get_resource("/interface/bridge/host").get()
+        except RouterOsApiError:
+            # Lease health remains useful when this optional table is unavailable
+            # or the RouterOS API account lacks bridge-host read permission.
+            return []
+
     def force_ip_cloud_update(self) -> None:
         """Ask RouterOS IP Cloud to refresh its DDNS/BTH address immediately."""
         api = self.connect()
