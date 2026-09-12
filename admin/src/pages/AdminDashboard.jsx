@@ -63,6 +63,8 @@ function Icon({ name }) {
     search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
     chevron: <path d="m9 18 6-6-6-6" />,
     close: <path d="M6 6l12 12M18 6 6 18" />,
+    menu: <><path d="M4 6h16M4 12h16M4 18h16" /></>,
+    back: <><path d="m14 6-6 6 6 6" /><path d="M8 12h12" /></>,
     wifi: <><path d="M4.9 9.5a10.4 10.4 0 0 1 14.2 0M7.6 12.7a6.4 6.4 0 0 1 8.8 0M10.4 16a2.4 2.4 0 0 1 3.2 0" /><circle cx="12" cy="19" r="1" /></>,
     check: <path d="m5 12 4.2 4.2L19 6.5" />,
     alert: <><path d="M10.3 3.8 2.5 17.2A2 2 0 0 0 4.2 20h15.6a2 2 0 0 0 1.7-2.8L13.7 3.8a2 2 0 0 0-3.4 0Z" /><path d="M12 9v4M12 17h.01" /></>,
@@ -1387,6 +1389,10 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
   const [hostelActionError, setHostelActionError] = useState('')
   const [forcingRouterId, setForcingRouterId] = useState('')
   const [signingOut, setSigningOut] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
   const bulkHostels = hostels.filter((hostel) => hostel.is_active)
   const allHostelsSelected = selectedId === ALL_HOSTELS_ID
@@ -1404,6 +1410,45 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
     online: hostels.filter((hostel) => hostel.status === 'online').length,
     published: hostels.reduce((sum, hostel) => sum + hostel.published_profiles, 0),
   }), [hostels])
+
+  useEffect(() => {
+    if (!mobileSidebarOpen && !showProfileMenu && !showLogoutConfirm) return undefined
+
+    const previousOverflow = document.body.style.overflow
+    if (mobileSidebarOpen || showLogoutConfirm) document.body.style.overflow = 'hidden'
+    function closeOnEscape(event) {
+      if (event.key !== 'Escape' || signingOut) return
+      if (showLogoutConfirm) setShowLogoutConfirm(false)
+      else if (showProfileMenu) setShowProfileMenu(false)
+      else setMobileSidebarOpen(false)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [mobileSidebarOpen, showProfileMenu, showLogoutConfirm, signingOut])
+
+  function toggleSidebar() {
+    if (window.matchMedia('(max-width: 760px)').matches) {
+      setMobileSidebarOpen((current) => !current)
+      return
+    }
+    setSidebarCollapsed((current) => !current)
+  }
+
+  function closeOrCollapseSidebar() {
+    if (window.matchMedia('(max-width: 760px)').matches) {
+      setMobileSidebarOpen(false)
+      return
+    }
+    setSidebarCollapsed((current) => !current)
+  }
+
+  function selectView(nextView) {
+    setView(nextView)
+    setMobileSidebarOpen(false)
+  }
 
   function handleError(error, fallback) {
     if (error instanceof AdminApiError && error.status === 401) {
@@ -1764,35 +1809,51 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
   }
 
   return (
-    <div className="admin-dashboard">
-      <aside className="dashboard-sidebar">
-        <Brand />
+    <div className={`admin-dashboard${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
+      {mobileSidebarOpen && <button className="dashboard-sidebar-backdrop" type="button" aria-label="Close navigation" onClick={() => setMobileSidebarOpen(false)} />}
+      <aside className={`dashboard-sidebar${mobileSidebarOpen ? ' mobile-open' : ''}`}>
+        <div className="dashboard-sidebar-header">
+          <Brand />
+          <button className="dashboard-sidebar-toggle" type="button" aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'} onClick={closeOrCollapseSidebar}><span className="desktop-sidebar-back"><Icon name="back" /></span><span className="desktop-sidebar-menu"><Icon name="menu" /></span><span className="mobile-sidebar-close"><Icon name="close" /></span></button>
+        </div>
         <nav aria-label="Admin navigation">
           <p>Workspace</p>
-          <button className={view === 'dashboard' ? 'active' : ''} type="button" onClick={() => setView('dashboard')}><Icon name="grid" />Dashboard</button>
-          <button className={view === 'hostels' ? 'active' : ''} type="button" onClick={() => setView('hostels')}><Icon name="building" />Hostels</button>
-          <button className={view === 'profiles' ? 'active' : ''} type="button" onClick={() => setView('profiles')}><Icon name="tag" />Profile catalogue</button>
+          <button aria-label="Dashboard" className={view === 'dashboard' ? 'active' : ''} title="Dashboard" type="button" onClick={() => selectView('dashboard')}><Icon name="grid" /><span className="sidebar-nav-label">Dashboard</span></button>
+          <button aria-label="Hostels" className={view === 'hostels' ? 'active' : ''} title="Hostels" type="button" onClick={() => selectView('hostels')}><Icon name="building" /><span className="sidebar-nav-label">Hostels</span></button>
+          <button aria-label="Profile catalogue" className={view === 'profiles' ? 'active' : ''} title="Profile catalogue" type="button" onClick={() => selectView('profiles')}><Icon name="tag" /><span className="sidebar-nav-label">Profile catalogue</span></button>
           <p>Management</p>
-          <button className={view === 'customers' ? 'active' : ''} type="button" onClick={() => setView('customers')}><Icon name="users" />Customers &amp; devices</button>
-          <button className={view === 'network' ? 'active' : ''} type="button" onClick={() => setView('network')}><Icon name="network" />Access points</button>
-          <button className={view === 'transactions' ? 'active' : ''} type="button" onClick={() => setView('transactions')}><Icon name="receipt" />Revenue &amp; transactions</button>
-          <button className={view === 'support' ? 'active' : ''} type="button" onClick={() => setView('support')}><Icon name="settings" />Help &amp; support</button>
+          <button aria-label="Customers and devices" className={view === 'customers' ? 'active' : ''} title="Customers & devices" type="button" onClick={() => selectView('customers')}><Icon name="users" /><span className="sidebar-nav-label">Customers &amp; devices</span></button>
+          <button aria-label="Access points" className={view === 'network' ? 'active' : ''} title="Access points" type="button" onClick={() => selectView('network')}><Icon name="network" /><span className="sidebar-nav-label">Access points</span></button>
+          <button aria-label="Revenue and transactions" className={view === 'transactions' ? 'active' : ''} title="Revenue & transactions" type="button" onClick={() => selectView('transactions')}><Icon name="receipt" /><span className="sidebar-nav-label">Revenue &amp; transactions</span></button>
+          <button aria-label="Help and support" className={view === 'support' ? 'active' : ''} title="Help & support" type="button" onClick={() => selectView('support')}><Icon name="settings" /><span className="sidebar-nav-label">Help &amp; support</span></button>
         </nav>
         <div className="sidebar-security"><span><Icon name="check" /></span><div><strong>Secure session</strong><small>Protected admin access</small></div></div>
       </aside>
 
       <main className="dashboard-main">
         <header className="dashboard-topbar">
-          <div className="mobile-dashboard-brand"><Brand /></div>
+          <div className="dashboard-topbar-start">
+            <button className="dashboard-menu-button" type="button" aria-label={mobileSidebarOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={mobileSidebarOpen} onClick={toggleSidebar}><Icon name="menu" /></button>
+            <div className="mobile-dashboard-brand"><Brand /></div>
+          </div>
           <div className="dashboard-admin-menu">
-            <span className="admin-avatar">{admin.username.slice(0, 1).toUpperCase()}</span>
-            <div><strong>{admin.username}</strong><small>{admin.role}</small></div>
-            <button aria-label="Sign out" disabled={signingOut} type="button" onClick={signOut}><Icon name="logout" /></button>
+            <button className="admin-profile-trigger" type="button" aria-haspopup="menu" aria-expanded={showProfileMenu} onClick={() => setShowProfileMenu((current) => !current)}>
+              <span className="admin-avatar">{admin.username.slice(0, 1).toUpperCase()}</span>
+              <span className="admin-profile-copy"><strong>{admin.username}</strong><small>{admin.role}</small></span>
+              <Icon name="chevron" />
+            </button>
+            {showProfileMenu && <>
+              <button className="admin-profile-menu-backdrop" type="button" aria-label="Close account menu" onClick={() => setShowProfileMenu(false)} />
+              <div className="admin-profile-dropdown" role="menu">
+                <div className="admin-profile-dropdown-heading"><span className="admin-avatar">{admin.username.slice(0, 1).toUpperCase()}</span><div><strong>{admin.username}</strong><small>{admin.role}</small></div></div>
+                <div className="admin-profile-session"><Icon name="check" /><span><strong>Secure session</strong><small>Protected admin access</small></span></div>
+                <button role="menuitem" disabled={signingOut} type="button" onClick={() => { setShowProfileMenu(false); setShowLogoutConfirm(true) }}><Icon name="logout" /><span>Log out</span></button>
+              </div>
+            </>}
           </div>
         </header>
 
         <div className="dashboard-content">
-          <div className="dashboard-mobile-tabs"><button className={view === 'dashboard' ? 'active' : ''} type="button" onClick={() => setView('dashboard')}>Overview</button><button className={view === 'hostels' ? 'active' : ''} type="button" onClick={() => setView('hostels')}>Hostels</button><button className={view === 'profiles' ? 'active' : ''} type="button" onClick={() => setView('profiles')}>Plans</button><button className={view === 'customers' ? 'active' : ''} type="button" onClick={() => setView('customers')}>Users</button><button className={view === 'network' ? 'active' : ''} type="button" onClick={() => setView('network')}>APs</button><button className={view === 'transactions' ? 'active' : ''} type="button" onClick={() => setView('transactions')}>Revenue</button><button className={view === 'support' ? 'active' : ''} type="button" onClick={() => setView('support')}>Support</button></div>
           {view === 'dashboard' ? <DashboardOverview hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onOpenCustomers={() => setView('customers')} onOpenTransactions={() => setView('transactions')} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'customers' ? <CustomersDevicesPanel admin={admin} hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'network' ? <AccessPointsPanel hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'transactions' ? <RevenueTransactionsPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'support' ? <SupportSettingsPanel canEdit={admin.role !== 'viewer'} onSessionExpired={onSessionExpired} /> : view === 'hostels' ? <>
             <header className="dashboard-page-heading">
               <div><p className="dashboard-kicker">Network management</p><h1>Hostels</h1><p>Add and manage the hostel routers stored in the database.</p></div>
@@ -1859,6 +1920,14 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
       {editingProfile && selectedHostel && <ProfileEditor groups={planGroups} hostel={selectedHostel} profile={editingProfile} onClose={() => setEditingProfile(null)} onDelete={deleteProfileConfiguration} onSave={saveProfile} />}
       {viewingHostel === 'details' && selectedHostel && <HostelEditor canEdit={admin.role !== 'viewer'} hostel={selectedHostel} onClose={() => setViewingHostel(false)} onSave={saveHostel} />}
       {viewingHostel === 'new' && <HostelEditor canEdit hostel={null} onClose={() => setViewingHostel(false)} onSave={addHostel} />}
+      {showLogoutConfirm && <div className="admin-modal-backdrop" role="presentation" onMouseDown={() => !signingOut && setShowLogoutConfirm(false)}>
+        <section className="admin-logout-modal" role="dialog" aria-modal="true" aria-labelledby="admin-logout-title" onMouseDown={(event) => event.stopPropagation()}>
+          <span className="admin-logout-modal-icon"><Icon name="logout" /></span>
+          <h2 id="admin-logout-title">Log out of the admin console?</h2>
+          <p>Your secure admin session will end and you will need to enter your credentials again.</p>
+          <div><button disabled={signingOut} type="button" onClick={() => setShowLogoutConfirm(false)}>Stay signed in</button><button className="confirm-logout" disabled={signingOut} type="button" onClick={signOut}>{signingOut ? 'Logging out...' : 'Yes, log out'}</button></div>
+        </section>
+      </div>}
       {toast && <div className="dashboard-toast" role="status"><Icon name="check" />{toast}</div>}
     </div>
   )
