@@ -1,10 +1,56 @@
 import { useEffect, useState } from 'react'
 
-import { WifiIcon } from '../components/Icons'
 import { AccountApiError, getAccount, login } from '../services/accountApi'
 
 const USERNAME_PATTERN = /^[a-z0-9]{3,64}$/
 const PIN_PATTERN = /^[0-9]{6}$/
+
+function LoginWifiIcon() {
+  return (
+    <svg viewBox="0 0 96 72" aria-hidden="true">
+      <path d="M10 22.5a57 57 0 0 1 76 0" />
+      <path d="M23 36.5a38.5 38.5 0 0 1 50 0" />
+      <path d="M36 50.5a20 20 0 0 1 24 0" />
+      <circle cx="48" cy="63" r="6" />
+    </svg>
+  )
+}
+
+function UserIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="8" r="3.5" />
+      <path d="M5 19c.7-3.4 3.2-5.2 7-5.2s6.3 1.8 7 5.2c-1.8 1.2-4.1 1.8-7 1.8S6.8 20.2 5 19Z" />
+    </svg>
+  )
+}
+
+function LockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="5" y="10" width="14" height="11" rx="2" />
+      <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+    </svg>
+  )
+}
+
+function EyeIcon({ hidden }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M2.5 12s3.4-5.5 9.5-5.5 9.5 5.5 9.5 5.5-3.4 5.5-9.5 5.5S2.5 12 2.5 12Z" />
+      <circle cx="12" cy="12" r="2.5" />
+      {hidden && <path d="m4 4 16 16" />}
+    </svg>
+  )
+}
+
+function ArrowIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 12h14M14 7l5 5-5 5" />
+    </svg>
+  )
+}
 
 function validate(form) {
   const errors = {}
@@ -91,50 +137,35 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="signup-page">
+    <main className="signup-page login-page">
       <div className="signup-container login-container">
-        <header className="signup-header">
-          <a className="signup-brand" href="/" aria-label="Vlad WiFi home">
-            <span className="signup-logo-mark"><WifiIcon /></span>
-            <span>Vlad WiFi</span>
-          </a>
-          <h1>Welcome back</h1>
-          <p>Log in with your permanent Vlad WiFi username and PIN.</p>
-        </header>
-
         <section className="signup-card login-card" aria-labelledby="login-title">
-          <div className="signup-card-header">
-            <h2 id="login-title">Log in to your account</h2>
-            <p>Enter your account details to continue.</p>
-          </div>
+          <header className="login-header">
+            <a className="login-brand" href="/" aria-label="Vlad WiFi home">
+              <span className="login-logo-mark"><LoginWifiIcon /></span>
+              <span className="login-brand-name">Vlad <strong>WiFi</strong></span>
+            </a>
+            <h1 className="sr-only" id="login-title">Log in to Vlad WiFi</h1>
+            <p>Log in with your permanent Vlad WiFi username and PIN.</p>
+          </header>
 
           <form className="login-form" noValidate onSubmit={submit}>
             <div className="signup-field">
               <label htmlFor="login-username">Username</label>
-              <input
-                autoCapitalize="none"
-                autoComplete="username"
-                className={errors.username ? 'signup-input invalid' : 'signup-input'}
-                id="login-username"
-                maxLength={64}
-                name="username"
-                placeholder="Enter your username"
-                spellCheck="false"
-                type="text"
-                value={form.username}
-                onChange={updateField}
-                aria-describedby={errors.username ? 'login-username-error' : undefined}
-                aria-invalid={Boolean(errors.username)}
-              />
+              <div className={`login-input-shell${errors.username ? ' invalid' : ''}`}>
+                <span className="login-field-icon"><UserIcon /></span>
+                <input autoCapitalize="none" autoComplete="username" id="login-username" maxLength={64} name="username" placeholder="Enter your username" spellCheck="false" type="text" value={form.username} onChange={updateField} aria-describedby={errors.username ? 'login-username-error' : undefined} aria-invalid={Boolean(errors.username)} />
+              </div>
               {errors.username && <span className="signup-field-error" id="login-username-error">{errors.username}</span>}
             </div>
 
             <div className="signup-field">
               <label htmlFor="login-pin">PIN</label>
-              <div className="signup-password-wrap">
+              <div className={`login-input-shell login-pin-shell${errors.pin ? ' invalid' : ''}`}>
+                <span className="login-field-icon"><LockIcon /></span>
                 <input
                   autoComplete="off"
-                  className={`${errors.pin ? 'signup-input invalid' : 'signup-input'} pin-input${showPin ? '' : ' pin-masked'}`}
+                  className={`pin-input${showPin ? '' : ' pin-masked'}`}
                   id="login-pin"
                   inputMode="numeric"
                   maxLength={6}
@@ -146,7 +177,7 @@ export default function LoginPage() {
                   aria-describedby={errors.pin ? 'login-pin-error' : undefined}
                   aria-invalid={Boolean(errors.pin)}
                 />
-                <button type="button" onClick={() => setShowPin((shown) => !shown)}>{showPin ? 'Hide' : 'Show'}</button>
+                <button className="login-pin-toggle" type="button" onClick={() => setShowPin((shown) => !shown)} aria-label={showPin ? 'Hide PIN' : 'Show PIN'} aria-pressed={showPin}><EyeIcon hidden={showPin} /></button>
               </div>
               {errors.pin && <span className="signup-field-error" id="login-pin-error">{errors.pin}</span>}
               <a className="login-recovery-link" href="/forgot-password">Forgot username or PIN?</a>
@@ -167,15 +198,17 @@ export default function LoginPage() {
             {accountLocked && <a className="login-unlock-link" href={`/forgot-password?mode=unlock&username=${encodeURIComponent(form.username)}`}>Unlock account with OTP</a>}
 
             <button className="signup-submit" disabled={busy} type="submit">
-              {busy ? 'Logging in...' : 'Log in'}
+              <span>{busy ? 'Logging in...' : 'Log in'}</span>
+              {!busy && <ArrowIcon />}
             </button>
           </form>
 
+          <div className="login-divider" aria-hidden="true"><span>OR</span></div>
           <div className="login-create-account">
-            <span>Do not have an account?</span>
+            <span>Don&apos;t have an account?</span>
             <a href="/signup">Create an account</a>
           </div>
-          <p className="auth-legal-links"><a href="/terms">Terms</a><span>&middot;</span><a href="/privacy">Privacy</a></p>
+          <p className="auth-legal-links"><a href="/terms">Terms of Service</a><span>&bull;</span><a href="/privacy">Privacy Policy</a></p>
         </section>
       </div>
     </main>
