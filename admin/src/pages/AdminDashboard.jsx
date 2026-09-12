@@ -1217,6 +1217,25 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
   const [actionSuccess, setActionSuccess] = useState('')
 
   useEffect(() => {
+    if (!customerAction) return undefined
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    function closeOnEscape(event) {
+      if (event.key === 'Escape' && !actionBusy) {
+        setCustomerAction(null)
+        setActionForm({ destinationRouterId: '', password: '' })
+        setActionError('')
+      }
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [customerAction, actionBusy])
+
+  useEffect(() => {
     if (mode === 'message') return undefined
     let active = true
     setLoading(true)
@@ -1249,6 +1268,13 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
     setActionForm({ destinationRouterId: '', password: '' })
     setActionError('')
     setActionSuccess('')
+  }
+
+  function closeCustomerAction() {
+    if (actionBusy) return
+    setCustomerAction(null)
+    setActionForm({ destinationRouterId: '', password: '' })
+    setActionError('')
   }
 
   async function submitCustomerAction(event) {
@@ -1318,15 +1344,17 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
       </form>
 
       {actionSuccess && <div className="customer-action-notice success" role="status"><Icon name="check" />{actionSuccess}</div>}
-      {customerAction && <section className={`customer-action-panel ${customerAction.action === 'delete' ? 'danger' : ''}`}>
-        <header><div><h2>{customerAction.action === 'delete' ? `Delete ${customerAction.customer.username}` : `Move ${customerAction.customer.username}`}</h2><p>{customerAction.action === 'delete' ? 'This permanently removes the account, history, web sessions, RouterOS user, active WiFi sessions, and remembered cookies.' : `The RouterOS account will move from ${customerAction.customer.hostel_name}. Active sessions and cookies will be removed, and used data will be deducted first.`}</p></div><button aria-label="Close customer action" disabled={actionBusy} type="button" onClick={() => setCustomerAction(null)}><Icon name="close" /></button></header>
-        <form onSubmit={submitCustomerAction}>
-          {customerAction.action === 'transfer' && <label><span>New hostel</span><select value={actionForm.destinationRouterId} onChange={(event) => { setActionForm((current) => ({ ...current, destinationRouterId: event.target.value })); setActionError('') }}><option value="">Select destination</option>{hostels.filter((hostel) => hostel.is_active && hostel.router_id !== customerAction.customer.hostel_id).map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></label>}
-          <label><span>Admin password</span><input autoComplete="current-password" maxLength={128} minLength={8} placeholder="Enter your password" type="password" value={actionForm.password} onChange={(event) => { setActionForm((current) => ({ ...current, password: event.target.value })); setActionError('') }} /></label>
-          {actionError && <p role="alert">{actionError}</p>}
-          <div><button disabled={actionBusy} type="button" onClick={() => setCustomerAction(null)}>Cancel</button><button className="primary" disabled={actionBusy} type="submit">{actionBusy ? 'Working...' : customerAction.action === 'delete' ? 'Delete permanently' : 'Confirm hostel move'}</button></div>
-        </form>
-      </section>}
+      {customerAction && <div className="admin-modal-backdrop" role="presentation" onMouseDown={closeCustomerAction}>
+        <section className={`customer-action-panel ${customerAction.action === 'delete' ? 'danger' : ''}`} role="dialog" aria-modal="true" aria-labelledby="customer-action-title" onMouseDown={(event) => event.stopPropagation()}>
+          <header><div><span className="customer-action-kicker">Password confirmation required</span><h2 id="customer-action-title">{customerAction.action === 'delete' ? `Delete ${customerAction.customer.username}?` : `Move ${customerAction.customer.username}?`}</h2><p>{customerAction.action === 'delete' ? 'This permanently removes the account, history, web sessions, RouterOS user, active WiFi sessions, and remembered cookies. This cannot be undone.' : `The RouterOS account will move from ${customerAction.customer.hostel_name}. Active sessions and cookies will be removed, and used data will be deducted first.`}</p></div><button aria-label="Close customer action" disabled={actionBusy} type="button" onClick={closeCustomerAction}><Icon name="close" /></button></header>
+          <form noValidate onSubmit={submitCustomerAction}>
+            {customerAction.action === 'transfer' && <label><span>New hostel</span><select autoFocus value={actionForm.destinationRouterId} onChange={(event) => { setActionForm((current) => ({ ...current, destinationRouterId: event.target.value })); setActionError('') }}><option value="">Select destination</option>{hostels.filter((hostel) => hostel.is_active && hostel.router_id !== customerAction.customer.hostel_id).map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></label>}
+            <label><span>Admin password</span><input autoFocus={customerAction.action === 'delete'} autoComplete="current-password" maxLength={128} minLength={8} placeholder="Enter your password" type="password" value={actionForm.password} onChange={(event) => { setActionForm((current) => ({ ...current, password: event.target.value })); setActionError('') }} /></label>
+            {actionError && <p role="alert">{actionError}</p>}
+            <div><button disabled={actionBusy} type="button" onClick={closeCustomerAction}>Cancel</button><button className="primary" disabled={actionBusy} type="submit">{actionBusy ? 'Working...' : customerAction.action === 'delete' ? 'Delete permanently' : 'Confirm hostel move'}</button></div>
+          </form>
+        </section>
+      </div>}
 
       {result?.unavailable_routers.length > 0 && <div className="router-warning"><Icon name="alert" /><div><strong>Some live data is unavailable</strong><p>{result.unavailable_routers.join(', ')} could not be reached. Stored customer information is still shown.</p></div></div>}
       {error && <div className="dashboard-load-error" role="alert"><Icon name="alert" /><div><strong>Unable to load customer information</strong><p>{error}</p></div></div>}

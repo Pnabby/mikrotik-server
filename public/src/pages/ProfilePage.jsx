@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import AccountHeader from '../components/AccountHeader'
-import { AccountIcon, GlobeIcon, ShieldIcon } from '../components/Icons'
+import { AccountIcon, GlobeIcon, ShieldIcon, WarningIcon } from '../components/Icons'
 import {
   AccountApiError,
   changePin,
@@ -65,6 +65,37 @@ export default function ProfilePage() {
       active = false
     }
   }, [])
+
+  useEffect(() => {
+    if (!showDelete && !showTransfer) return undefined
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    function closeOnEscape(event) {
+      if (event.key !== 'Escape' || deleting || transferring) return
+      if (showDelete) closeDeleteModal()
+      if (showTransfer) closeTransferModal()
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [showDelete, showTransfer, deleting, transferring])
+
+  function closeDeleteModal() {
+    if (deleting) return
+    setShowDelete(false)
+    setDeletePin('')
+    setDeleteError('')
+  }
+
+  function closeTransferModal() {
+    if (transferring) return
+    setShowTransfer(false)
+    setTransferForm({ destinationRouterId: '', pin: '' })
+    setTransferError('')
+  }
 
   async function signOut() {
     if (loggingOut) return
@@ -240,25 +271,7 @@ export default function ProfilePage() {
             <h2>Your hostel network</h2>
             <p>Your account is currently on {account.hostel_name}. If you move, transfer it to your new hostel here.</p>
             {transferSuccess && <p className="hostel-transfer-message success" role="status">{transferSuccess}</p>}
-            {!showTransfer ? (
-              <button className="hostel-transfer-open" disabled={hostels.filter((hostel) => hostel.router_id !== account.router_id).length === 0} type="button" onClick={() => { setShowTransfer(true); setTransferError(''); setTransferSuccess('') }}>Change hostel</button>
-            ) : (
-              <form className="hostel-transfer-form" noValidate onSubmit={submitHostelTransfer}>
-                <label htmlFor="destination-hostel">New hostel</label>
-                <select id="destination-hostel" value={transferForm.destinationRouterId} onChange={(event) => { setTransferForm((current) => ({ ...current, destinationRouterId: event.target.value })); setTransferError('') }}>
-                  <option value="">Select your new hostel</option>
-                  {hostels.filter((hostel) => hostel.router_id !== account.router_id).map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}
-                </select>
-                <label htmlFor="hostel-transfer-pin">PIN</label>
-                <input autoComplete="current-password" id="hostel-transfer-pin" inputMode="numeric" maxLength={6} placeholder="6-digit PIN" type="password" value={transferForm.pin} onChange={(event) => { setTransferForm((current) => ({ ...current, pin: event.target.value.replace(/\D/g, '').slice(0, 6) })); setTransferError('') }} />
-                <small>All WiFi sessions and remembered logins will end. Any data already used is deducted before your remaining allowance moves.</small>
-                {transferError && <p className="hostel-transfer-message error" role="alert">{transferError}</p>}
-                <div>
-                  <button type="button" onClick={() => { setShowTransfer(false); setTransferForm({ destinationRouterId: '', pin: '' }); setTransferError('') }}>Cancel</button>
-                  <button className="confirm-transfer" disabled={transferring} type="submit">{transferring ? 'Moving account...' : 'Confirm change'}</button>
-                </div>
-              </form>
-            )}
+            <button className="hostel-transfer-open" disabled={hostels.filter((hostel) => hostel.router_id !== account.router_id).length === 0} type="button" onClick={() => { setShowTransfer(true); setTransferError(''); setTransferSuccess('') }}>Change hostel</button>
           </aside>
         </div>
 
@@ -295,35 +308,58 @@ export default function ProfilePage() {
             <h2>Delete account permanently</h2>
             <p>This removes your Vlad WiFi account, plan history, sessions, hotspot user, and remembered hotspot cookies. This cannot be undone.</p>
           </div>
-          {!showDelete ? (
-            <button className="delete-account-open" type="button" onClick={() => setShowDelete(true)}>Delete account</button>
-          ) : (
-            <form className="delete-account-form" onSubmit={permanentlyDelete}>
-              <label htmlFor="delete-account-pin">Enter your PIN to confirm</label>
-              <input
-                autoComplete="off"
-                id="delete-account-pin"
-                inputMode="numeric"
-                maxLength={6}
-                placeholder="6-digit PIN"
-                type="password"
-                value={deletePin}
-                onChange={(event) => {
-                  setDeletePin(event.target.value.replace(/\D/g, ''))
-                  setDeleteError('')
-                }}
-              />
-              {deleteError && <p className="delete-account-error" role="alert">{deleteError}</p>}
-              <div>
-                <button type="button" onClick={() => { setShowDelete(false); setDeletePin(''); setDeleteError('') }}>Cancel</button>
-                <button className="confirm-delete" disabled={deleting} type="submit">{deleting ? 'Deleting...' : 'Delete permanently'}</button>
-              </div>
-            </form>
-          )}
+          <button className="delete-account-open" type="button" onClick={() => setShowDelete(true)}>Delete account</button>
         </section>
 
         <p className="profile-legal-links"><a href="/terms">Terms</a><span>&middot;</span><a href="/privacy">Privacy</a></p>
       </div>
+
+      {showTransfer && (
+        <div className="portal-modal-backdrop" role="presentation" onMouseDown={closeTransferModal}>
+          <section className="portal-modal profile-action-modal" role="dialog" aria-modal="true" aria-labelledby="transfer-hostel-title" onMouseDown={(event) => event.stopPropagation()}>
+            <span className="portal-modal-icon profile-transfer-modal-icon"><GlobeIcon /></span>
+            <h2 id="transfer-hostel-title">Move to a new hostel?</h2>
+            <p>Your account will be moved from <strong>{account.hostel_name}</strong>. All active WiFi sessions and remembered logins will end first.</p>
+            <form className="profile-modal-form" noValidate onSubmit={submitHostelTransfer}>
+              <label htmlFor="destination-hostel"><span>New hostel</span>
+                <select autoFocus id="destination-hostel" value={transferForm.destinationRouterId} onChange={(event) => { setTransferForm((current) => ({ ...current, destinationRouterId: event.target.value })); setTransferError('') }}>
+                  <option value="">Select your new hostel</option>
+                  {hostels.filter((hostel) => hostel.router_id !== account.router_id).map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}
+                </select>
+              </label>
+              <label htmlFor="hostel-transfer-pin"><span>Enter your PIN to confirm</span>
+                <input autoComplete="current-password" id="hostel-transfer-pin" inputMode="numeric" maxLength={6} placeholder="6-digit PIN" type="password" value={transferForm.pin} onChange={(event) => { setTransferForm((current) => ({ ...current, pin: event.target.value.replace(/\D/g, '').slice(0, 6) })); setTransferError('') }} />
+              </label>
+              <small>Any data already used is deducted before your remaining allowance moves to the new hostel.</small>
+              {transferError && <p className="portal-modal-error" role="alert">{transferError}</p>}
+              <div className="portal-modal-actions">
+                <button disabled={transferring} type="button" onClick={closeTransferModal}>Cancel</button>
+                <button className="confirm" disabled={transferring} type="submit">{transferring ? 'Moving account...' : 'Confirm hostel move'}</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {showDelete && (
+        <div className="portal-modal-backdrop" role="presentation" onMouseDown={closeDeleteModal}>
+          <section className="portal-modal profile-action-modal" role="dialog" aria-modal="true" aria-labelledby="delete-account-title" onMouseDown={(event) => event.stopPropagation()}>
+            <span className="portal-modal-icon"><WarningIcon /></span>
+            <h2 id="delete-account-title">Delete your account permanently?</h2>
+            <p>Your account, plan history, sessions, hotspot user, and remembered cookies will be removed. <strong>This cannot be undone.</strong></p>
+            <form className="profile-modal-form" noValidate onSubmit={permanentlyDelete}>
+              <label htmlFor="delete-account-pin"><span>Enter your PIN to confirm</span>
+                <input autoFocus autoComplete="off" id="delete-account-pin" inputMode="numeric" maxLength={6} placeholder="6-digit PIN" type="password" value={deletePin} onChange={(event) => { setDeletePin(event.target.value.replace(/\D/g, '')); setDeleteError('') }} />
+              </label>
+              {deleteError && <p className="portal-modal-error" role="alert">{deleteError}</p>}
+              <div className="portal-modal-actions">
+                <button disabled={deleting} type="button" onClick={closeDeleteModal}>Cancel</button>
+                <button className="danger" disabled={deleting} type="submit">{deleting ? 'Deleting...' : 'Delete permanently'}</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </main>
   )
 }

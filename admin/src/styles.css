@@ -1351,20 +1351,25 @@ a:focus-visible {
 .customer-action-notice { display: flex; align-items: center; gap: 0.55rem; margin-top: 0.8rem; padding: 0.72rem 0.85rem; border-radius: 9px; font-size: 0.63rem; font-weight: 700; }
 .customer-action-notice.success { color: #087f5b; background: #eafaf4; }
 .customer-action-notice svg { width: 16px; fill: none; stroke: currentColor; stroke-width: 2; }
-.customer-action-panel { margin-top: 0.85rem; padding: 1rem 1.1rem; border: 1px solid #dcd6f2; border-radius: 12px; background: #fbfaff; }
-.customer-action-panel.danger { border-color: #efc5c1; background: #fff9f8; }
+.admin-modal-backdrop { position: fixed; z-index: 1200; inset: 0; display: grid; place-items: center; padding: 1rem; background: rgba(30, 26, 43, 0.55); backdrop-filter: blur(5px); }
+.customer-action-panel { width: min(510px, 100%); max-height: calc(100svh - 2rem); overflow-y: auto; padding: 1.35rem; border: 1px solid #dcd6f2; border-radius: 16px; background: #fff; box-shadow: 0 28px 80px rgba(32, 27, 49, 0.28); }
+.customer-action-panel.danger { border-color: #efc5c1; background: #fff; }
 .customer-action-panel > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
-.customer-action-panel h2 { margin: 0; color: #302b42; font-family: 'Manrope', sans-serif; font-size: 0.8rem; }
-.customer-action-panel header p { max-width: 760px; margin: 0.25rem 0 0; color: #807b8d; font-size: 0.59rem; line-height: 1.55; }
+.customer-action-kicker { display: block; margin-bottom: 0.35rem; color: #6a51d0; font-size: 0.55rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.customer-action-panel.danger .customer-action-kicker { color: #b42318; }
+.customer-action-panel h2 { margin: 0; color: #302b42; font-family: 'Manrope', sans-serif; font-size: 1rem; }
+.customer-action-panel header p { max-width: 430px; margin: 0.4rem 0 0; color: #777181; font-size: 0.64rem; line-height: 1.65; }
 .customer-action-panel > header > button { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border: 1px solid #ddd9e6; border-radius: 7px; color: #716c7b; background: #fff; cursor: pointer; }
 .customer-action-panel > header svg { width: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; }
-.customer-action-panel form { display: grid; grid-template-columns: minmax(180px, 280px) minmax(220px, 320px) auto; align-items: end; gap: 0.7rem; margin-top: 0.85rem; }
+.customer-action-panel form { display: grid; gap: 0.8rem; margin-top: 1.1rem; }
 .customer-action-panel form label { display: grid; gap: 0.35rem; color: #565064; font-size: 0.58rem; font-weight: 800; }
 .customer-action-panel form select,
-.customer-action-panel form input { min-height: 38px; padding: 0.55rem 0.65rem; border: 1px solid #d8d4e1; border-radius: 8px; color: #3e3949; background: #fff; font: inherit; font-size: 0.63rem; }
-.customer-action-panel form > p { grid-column: 1 / -1; margin: 0; color: #b42318; font-size: 0.59rem; }
-.customer-action-panel form > div { display: flex; gap: 0.45rem; }
-.customer-action-panel form button { min-height: 38px; padding: 0.5rem 0.68rem; border: 1px solid #d8d4e1; border-radius: 8px; color: #5f5969; background: #fff; font-size: 0.58rem; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.customer-action-panel form input { min-height: 44px; padding: 0.62rem 0.75rem; border: 1px solid #d8d4e1; border-radius: 9px; outline: 0; color: #3e3949; background: #fff; font: inherit; font-size: 0.66rem; }
+.customer-action-panel form select:focus,
+.customer-action-panel form input:focus { border-color: #755fe0; box-shadow: 0 0 0 3px rgba(96, 71, 216, 0.12); }
+.customer-action-panel form > p { margin: 0; padding: 0.6rem 0.7rem; border-radius: 8px; color: #b42318; background: #fff2f0; font-size: 0.59rem; }
+.customer-action-panel form > div { display: grid; grid-template-columns: 1fr 1fr; gap: 0.55rem; margin-top: 0.25rem; }
+.customer-action-panel form button { min-height: 42px; padding: 0.55rem 0.72rem; border: 1px solid #d8d4e1; border-radius: 8px; color: #5f5969; background: #fff; font-size: 0.6rem; font-weight: 800; cursor: pointer; white-space: nowrap; }
 .customer-action-panel form button.primary { border-color: #6047d8; color: #fff; background: #6047d8; }
 .customer-action-panel.danger form button.primary { border-color: #b42318; background: #b42318; }
 .customer-action-panel form button:disabled { cursor: wait; opacity: 0.6; }
@@ -2669,8 +2674,6 @@ a:focus-visible {
   .revenue-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-data-filters,
   .customer-filters { grid-template-columns: repeat(2, minmax(145px, 1fr)); }
-  .customer-action-panel form { grid-template-columns: repeat(2, minmax(180px, 1fr)); }
-  .customer-action-panel form > div { grid-column: 1 / -1; }
 
   .profiles-table th:nth-child(2),
   .profiles-table td:nth-child(2) {
@@ -2787,8 +2790,6 @@ a:focus-visible {
   .dashboard-metric-grid article > div { margin-top: 0; }
   .revenue-date-presets { align-items: stretch; flex-direction: column; }
   .revenue-date-presets > div { display: grid; grid-template-columns: repeat(2, 1fr); }
-  .customer-action-panel form { grid-template-columns: 1fr; }
-  .customer-action-panel form > div { grid-column: auto; flex-wrap: wrap; }
 
   .admin-data-filters,
   .customer-filters { grid-template-columns: 1fr; }
