@@ -14,7 +14,10 @@ public/      Customer signup, login, and account React application
 The public application now uses account login instead of the former voucher-status lookup.
 Customers can create an account, log in with their username and PIN, view their current
 plan, see plans available at their hostel, review purchase history, and log out. These
-customer-facing paths and APIs are available:
+accounts can also be moved to another active hostel from Profile after PIN confirmation.
+The move ends RouterOS sessions and remembered logins, carries the hotspot user settings
+and comment to the destination, and deducts settled byte usage from finite allowances.
+The customer-facing paths and APIs are available:
 
 ```text
 GET  /
@@ -33,6 +36,8 @@ POST /api/auth/logout
 GET  /api/account
 GET  /api/account/hotspot-status
 POST /api/account/devices/{session_id}/logout
+POST /api/account/transfer-hostel
+POST /api/account/delete
 ```
 
 Successful login creates an opaque, HTTP-only customer session cookie. Only a SHA-256 hash
@@ -89,10 +94,13 @@ name, description, price, optional validity, data allowance, device limit, downl
 and customer visibility for each profile. Selecting **All hostels** shows only profile
 names present on every active router and applies one configuration to all of them. Download
 speed is prefilled from the RouterOS rate limit when available and can be edited before saving.
+The Revenue & Transactions view ranks revenue by plan, breaks revenue down by hostel when
+all hostels are selected, and supports all-time, last-7-days, last-30-days, and custom ranges.
 Profile changes are written to the audit log. The registration-only profile cannot be
 published for purchase. New configurations default to an unlimited device count. Deleting a
 configuration removes only its customer-facing plan mapping; it never deletes the profile from
-the MikroTik router.
+the MikroTik router. Operators and administrators can also move or permanently delete customer
+accounts from the user directory after confirming their own admin password.
 
 Admin API routes:
 
@@ -105,6 +113,8 @@ POST /api/admin/hostels/{router_id}/ip-cloud/force-update
 GET  /api/admin/hostels/{router_id}/profiles
 PUT  /api/admin/hostels/{router_id}/profiles/{mikrotik_profile}
 DELETE /api/admin/hostels/{router_id}/profiles/{mikrotik_profile}
+POST /api/admin/dashboard/customers/{customer_id}/transfer-hostel
+POST /api/admin/dashboard/customers/{customer_id}/delete
 ```
 
 To build both React applications:

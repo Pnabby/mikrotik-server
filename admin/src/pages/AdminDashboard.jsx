@@ -6,10 +6,12 @@ import {
   createHostel,
   createPlanGroup,
   deleteAllHostelPlanGroup,
+  deleteCustomer,
   deleteHostelProfileConfiguration,
   deletePlanGroup,
   forceHostelIpCloudUpdate,
   getAccessPoints,
+  getAdminSession,
   getCustomersAndDevices,
   getDashboard,
   getSupportSettings,
@@ -22,6 +24,7 @@ import {
   saveHostelProfile,
   saveSupportSettings,
   sendBroadcast,
+  transferCustomerHostel,
   updateAllHostelPlanGroup,
   updateHostel,
   updatePlanGroup,
@@ -961,9 +964,28 @@ function DashboardOverview({ hostels, loadingHostels, selectedId, onOpenCustomer
 const TRANSACTION_FILTER_DEFAULTS = {
   router_id: '',
   payment_status: '',
+  date_range: 'all',
   date_from: '',
   date_to: '',
   search: '',
+}
+
+function dateInputValue(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function dateRangeValues(range) {
+  if (!['last_7_days', 'last_30_days'].includes(range)) {
+    return { date_from: '', date_to: '' }
+  }
+  const days = range === 'last_7_days' ? 7 : 30
+  const end = new Date()
+  const start = new Date(end)
+  start.setDate(start.getDate() - (days - 1))
+  return { date_from: dateInputValue(start), date_to: dateInputValue(end) }
 }
 
 function AccessPointCard({ ap, routerReachable }) {
@@ -1058,7 +1080,9 @@ function RevenueTransactionsPanel({ hostels, onSessionExpired }) {
     let active = true
     setLoading(true)
     setError('')
-    getTransactions({ ...appliedFilters, limit: 100 })
+    const queryFilters = { ...appliedFilters, limit: 100 }
+    delete queryFilters.date_range
+    getTransactions(queryFilters)
       .then((data) => { if (active) setResult(data) })
       .catch((requestError) => {
         if (!active) return
@@ -1073,7 +1097,11 @@ function RevenueTransactionsPanel({ hostels, onSessionExpired }) {
   }, [appliedFilters, refreshKey])
 
   function change(event) {
-    setFilters((current) => ({ ...current, [event.target.name]: event.target.value }))
+    setFilters((current) => ({
+      ...current,
+      [event.target.name]: event.target.value,
+      ...(['date_from', 'date_to'].includes(event.target.name) ? { date_range: 'custom' } : {}),
+    }))
   }
 
   function apply(event) {
@@ -1086,17 +1114,38 @@ function RevenueTransactionsPanel({ hostels, onSessionExpired }) {
     setAppliedFilters(TRANSACTION_FILTER_DEFAULTS)
   }
 
+  function chooseDateRange(range) {
+    if (range === 'custom') {
+      setFilters((current) => ({ ...current, date_range: 'custom' }))
+      return
+    }
+    const next = { ...filters, date_range: range, ...dateRangeValues(range) }
+    setFilters(next)
+    setAppliedFilters(next)
+  }
+
+  const leadingPlan = result?.plan_revenue.find((plan) => Number(plan.successful_revenue) > 0)
+
   return <>
     <header className="dashboard-page-heading">
-      <div><p className="dashboard-kicker">Financial performance</p><h1>Revenue &amp; transactions</h1><p>Review successful revenue, payment outcomes, activation status, and individual transaction records.</p></div>
+      <div><p className="dashboard-kicker">Financial performance</p><h1>Revenue &amp; transactions</h1><p>Review revenue by plan and hostel alongside payment outcomes and individual transaction records.</p></div>
       <button className="dashboard-refresh-button" disabled={loading} type="button" onClick={() => setRefreshKey((value) => value + 1)}><Icon name="refresh" />{loading ? 'Refreshing' : 'Refresh'}</button>
     </header>
 
-    <form className="admin-data-filters" onSubmit={apply}>
+    <div className="revenue-date-presets" aria-label="Revenue date range">
+      <span>Date range</span>
+      <div>{[
+        ['all', 'All time'],
+        ['last_7_days', 'Last 7 days'],
+        ['last_30_days', 'Last 30 days'],
+        ['custom', 'Custom'],
+      ].map(([value, label]) => <button aria-pressed={filters.date_range === value} className={filters.date_range === value ? 'active' : ''} key={value} type="button" onClick={() => chooseDateRange(value)}>{label}</button>)}</div>
+    </div>
+
+    <form className={`admin-data-filters ${filters.date_range === 'custom' ? '' : 'revenue-filters-compact'}`} onSubmit={apply}>
       <label><span>Hostel</span><select name="router_id" value={filters.router_id} onChange={change}><option value="">All hostels</option>{hostels.map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></label>
       <label><span>Payment status</span><select name="payment_status" value={filters.payment_status} onChange={change}><option value="">All statuses</option><option value="success">Successful</option><option value="pending">Pending</option><option value="failed">Failed</option></select></label>
-      <label><span>From</span><input name="date_from" type="date" value={filters.date_from} onChange={change} /></label>
-      <label><span>To</span><input name="date_to" type="date" value={filters.date_to} onChange={change} /></label>
+      {filters.date_range === 'custom' && <><label><span>From</span><input name="date_from" type="date" value={filters.date_from} onChange={change} /></label><label><span>To</span><input name="date_to" type="date" value={filters.date_to} onChange={change} /></label></>}
       <label className="admin-filter-search"><span>Search</span><input name="search" placeholder="Reference, user, email or plan" type="search" value={filters.search} onChange={change} /></label>
       <div><button type="button" onClick={clearFilters}>Clear</button><button className="primary" type="submit">Apply filters</button></div>
     </form>
@@ -1109,6 +1158,24 @@ function RevenueTransactionsPanel({ hostels, onSessionExpired }) {
         <article><span className="stat-icon amber"><Icon name="clock" /></span><div><small>Pending</small><strong>{result.pending.toLocaleString()}</strong><p>Awaiting payment or verification</p></div></article>
         <article><span className="stat-icon blue"><Icon name="alert" /></span><div><small>Failed</small><strong>{result.failed.toLocaleString()}</strong><p>Unsuccessful payment attempts</p></div></article>
       </section>
+
+      <section className="admin-data-card profile-performance-card">
+        <header><div><h2>Revenue by plan</h2><p>Revenue generated by each plan for the selected hostel and date filters. Plans with no sales remain visible.</p></div>{leadingPlan && <span className="performance-leader"><Icon name="tag" /><small>Top revenue plan</small><strong>{leadingPlan.display_name}</strong></span>}</header>
+        <div className="admin-data-table-wrap"><table className="admin-data-table plan-revenue-table"><thead><tr><th>Plan</th><th>Successful revenue</th><th>Successful sales</th><th>Share of revenue</th><th>Availability</th></tr></thead><tbody>
+          {result.plan_revenue.map((plan) => <tr key={`${plan.profile}-${plan.currency}`}>
+            <td><strong>{plan.display_name}</strong><small>RouterOS profile: {plan.profile}</small></td>
+            <td><strong>{formatMoney(plan.successful_revenue, plan.currency)}</strong></td>
+            <td><strong>{plan.successful_sales.toLocaleString()}</strong><small>Completed payments and free claims</small></td>
+            <td><div className="performance-rate"><span><i style={{ width: `${plan.revenue_share_percent}%` }} /></span><strong>{Number(plan.revenue_share_percent).toFixed(1)}%</strong></div></td>
+            <td><strong>{plan.hostel_count} hostel{plan.hostel_count === 1 ? '' : 's'}</strong></td>
+          </tr>)}
+        </tbody></table>{!result.plan_revenue.length && <p className="dashboard-empty-copy">No configured plans are available in this hostel scope.</p>}</div>
+      </section>
+
+      {!appliedFilters.router_id && <section className="admin-data-card hostel-revenue-card">
+        <header><div><h2>Revenue by hostel</h2><p>How much each hostel generated for the selected date and payment filters.</p></div></header>
+        <div className="hostel-revenue-grid">{result.hostel_revenue.map((hostel) => <article key={hostel.hostel_id}><span><Icon name="building" /></span><div><small>{hostel.hostel_name}</small><strong>{formatRevenue(hostel.revenue)}</strong><p>{hostel.successful_sales.toLocaleString()} successful sale{hostel.successful_sales === 1 ? '' : 's'}</p></div></article>)}</div>
+      </section>}
 
       <section className="admin-data-card">
         <header><div><h2>Transactions</h2><p>{result.total.toLocaleString()} record{result.total === 1 ? '' : 's'} match the current filters. Showing up to 100 newest.</p></div></header>
@@ -1143,6 +1210,11 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
+  const [customerAction, setCustomerAction] = useState(null)
+  const [actionForm, setActionForm] = useState({ destinationRouterId: '', password: '' })
+  const [actionBusy, setActionBusy] = useState(false)
+  const [actionError, setActionError] = useState('')
+  const [actionSuccess, setActionSuccess] = useState('')
 
   useEffect(() => {
     if (mode === 'message') return undefined
@@ -1172,6 +1244,62 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
     setAppliedFilters({ ...filters })
   }
 
+  function openCustomerAction(customer, action) {
+    setCustomerAction({ customer, action })
+    setActionForm({ destinationRouterId: '', password: '' })
+    setActionError('')
+    setActionSuccess('')
+  }
+
+  async function submitCustomerAction(event) {
+    event.preventDefault()
+    if (!customerAction || actionBusy) return
+    if (actionForm.password.length < 8) {
+      setActionError('Enter your admin password to confirm this action.')
+      return
+    }
+    if (customerAction.action === 'transfer' && !actionForm.destinationRouterId) {
+      setActionError('Select the customer’s new hostel.')
+      return
+    }
+    setActionBusy(true)
+    setActionError('')
+    try {
+      if (customerAction.action === 'delete') {
+        await deleteCustomer(customerAction.customer.id, actionForm.password)
+        setActionSuccess(`${customerAction.customer.username} was permanently deleted.`)
+      } else {
+        const transferred = await transferCustomerHostel(
+          customerAction.customer.id,
+          actionForm.destinationRouterId,
+          actionForm.password,
+        )
+        setActionSuccess(`${customerAction.customer.username} was moved to ${transferred.hostel_name}.`)
+      }
+      setCustomerAction(null)
+      setActionForm({ destinationRouterId: '', password: '' })
+      setRefreshKey((value) => value + 1)
+    } catch (requestError) {
+      if (requestError instanceof AdminApiError && requestError.status === 401) {
+        try {
+          await getAdminSession()
+        } catch {
+          onSessionExpired()
+          return
+        }
+        setActionError('The admin password is incorrect. No changes were made.')
+      } else if (requestError instanceof AdminApiError && requestError.status === 409) {
+        setActionError('The action cannot be completed. For a transfer, confirm the plan exists at the new hostel and the username is available there.')
+      } else if (requestError instanceof AdminApiError && [502, 503].includes(requestError.status)) {
+        setActionError('A hostel router is unavailable. The action was not completed.')
+      } else {
+        setActionError('The customer action could not be completed. Please try again.')
+      }
+    } finally {
+      setActionBusy(false)
+    }
+  }
+
   return <>
     <header className="dashboard-page-heading">
       <div><p className="dashboard-kicker">Customer operations</p><h1>Customers &amp; devices</h1><p>Understand account status, subscriptions, live connections, and communicate with your users.</p></div>
@@ -1189,13 +1317,24 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
         <div><button type="button" onClick={() => { setFilters(CUSTOMER_FILTER_DEFAULTS); setAppliedFilters(CUSTOMER_FILTER_DEFAULTS) }}>Clear</button><button className="primary" type="submit">Apply filters</button></div>
       </form>
 
+      {actionSuccess && <div className="customer-action-notice success" role="status"><Icon name="check" />{actionSuccess}</div>}
+      {customerAction && <section className={`customer-action-panel ${customerAction.action === 'delete' ? 'danger' : ''}`}>
+        <header><div><h2>{customerAction.action === 'delete' ? `Delete ${customerAction.customer.username}` : `Move ${customerAction.customer.username}`}</h2><p>{customerAction.action === 'delete' ? 'This permanently removes the account, history, web sessions, RouterOS user, active WiFi sessions, and remembered cookies.' : `The RouterOS account will move from ${customerAction.customer.hostel_name}. Active sessions and cookies will be removed, and used data will be deducted first.`}</p></div><button aria-label="Close customer action" disabled={actionBusy} type="button" onClick={() => setCustomerAction(null)}><Icon name="close" /></button></header>
+        <form onSubmit={submitCustomerAction}>
+          {customerAction.action === 'transfer' && <label><span>New hostel</span><select value={actionForm.destinationRouterId} onChange={(event) => { setActionForm((current) => ({ ...current, destinationRouterId: event.target.value })); setActionError('') }}><option value="">Select destination</option>{hostels.filter((hostel) => hostel.is_active && hostel.router_id !== customerAction.customer.hostel_id).map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></label>}
+          <label><span>Admin password</span><input autoComplete="current-password" maxLength={128} minLength={8} placeholder="Enter your password" type="password" value={actionForm.password} onChange={(event) => { setActionForm((current) => ({ ...current, password: event.target.value })); setActionError('') }} /></label>
+          {actionError && <p role="alert">{actionError}</p>}
+          <div><button disabled={actionBusy} type="button" onClick={() => setCustomerAction(null)}>Cancel</button><button className="primary" disabled={actionBusy} type="submit">{actionBusy ? 'Working...' : customerAction.action === 'delete' ? 'Delete permanently' : 'Confirm hostel move'}</button></div>
+        </form>
+      </section>}
+
       {result?.unavailable_routers.length > 0 && <div className="router-warning"><Icon name="alert" /><div><strong>Some live data is unavailable</strong><p>{result.unavailable_routers.join(', ')} could not be reached. Stored customer information is still shown.</p></div></div>}
       {error && <div className="dashboard-load-error" role="alert"><Icon name="alert" /><div><strong>Unable to load customer information</strong><p>{error}</p></div></div>}
       {loading && !result ? <div className="dashboard-overview-loading"><span className="admin-page-spinner" /><p>Loading customers and checking connected devices...</p></div> : result && <>
         <section className="dashboard-metric-grid admin-data-metrics"><article><span className="stat-icon purple"><Icon name="users" /></span><div><small>Total users</small><strong>{result.total_users.toLocaleString()}</strong><p>{result.matched_users.toLocaleString()} match the filters</p></div></article><article><span className="stat-icon amber"><Icon name="clock" /></span><div><small>Active subscriptions</small><strong>{result.active_subscriptions.toLocaleString()}</strong><p>Across the selected hostel scope</p></div></article><article><span className="stat-icon green"><Icon name="wifi" /></span><div><small>Online users</small><strong>{result.online_users.toLocaleString()}</strong><p>Currently visible on RouterOS</p></div></article><article><span className="stat-icon blue"><Icon name="device" /></span><div><small>Active devices</small><strong>{result.active_devices.toLocaleString()}</strong><p>Live HotSpot sessions</p></div></article></section>
 
         <section className="admin-data-card"><header><div><h2>{mode === 'customers' ? 'User directory' : 'Connected devices'}</h2><p>{mode === 'customers' ? `Showing up to 200 of ${result.matched_users.toLocaleString()} matching users.` : 'Live sessions reported by reachable hostel routers.'}</p></div></header><div className="admin-data-table-wrap">
-          {mode === 'customers' ? <table className="admin-data-table"><thead><tr><th>User</th><th>Contact</th><th>Hostel</th><th>Account</th><th>Current plan</th><th>Connection</th><th>Last activity</th></tr></thead><tbody>{result.customers.map((customer) => <tr key={customer.id}><td><strong>{customer.username}</strong><small>Joined {formatDashboardTime(customer.joined_at)}</small></td><td><strong>{customer.email}</strong><small>{customer.phone_number || 'No phone number'}{customer.phone_verified ? ' · verified' : ''}</small></td><td><strong>{customer.hostel_name}</strong></td><td><span className={`admin-status-pill ${customer.account_status}`}>{formatStatus(customer.account_status)}</span></td><td><strong>{customer.current_plan || 'No active plan'}</strong><small>{formatStatus(customer.subscription_status, 'No subscription')}</small></td><td><span className={`admin-status-pill ${customer.is_online ? 'success' : 'offline'}`}>{customer.is_online ? 'Online' : 'Offline'}</span><small>{customer.connected_devices} device{customer.connected_devices === 1 ? '' : 's'}</small></td><td><strong>{formatDashboardTime(customer.last_activity_at)}</strong><small>{customer.last_login_at ? `Last login ${formatDashboardTime(customer.last_login_at)}` : 'Never logged in'}</small></td></tr>)}</tbody></table> : <table className="admin-data-table"><thead><tr><th>User</th><th>Hostel</th><th>IP address</th><th>MAC address</th><th>Uptime</th><th>Login method</th></tr></thead><tbody>{result.devices.map((device) => <tr key={`${device.hostel_id}-${device.session_id}`}><td><strong>{device.username}</strong><small>{device.customer_email || 'Not linked to a customer record'}</small></td><td><strong>{device.hostel_name}</strong></td><td><code>{device.ip_address || '--'}</code></td><td><code>{device.mac_address || '--'}</code></td><td><strong>{device.uptime || '--'}</strong></td><td><strong>{formatStatus(device.login_method, '--')}</strong></td></tr>)}</tbody></table>}
+          {mode === 'customers' ? <table className="admin-data-table"><thead><tr><th>User</th><th>Contact</th><th>Hostel</th><th>Account</th><th>Current plan</th><th>Connection</th><th>Last activity</th>{admin.role !== 'viewer' && <th>Actions</th>}</tr></thead><tbody>{result.customers.map((customer) => <tr key={customer.id}><td><strong>{customer.username}</strong><small>Joined {formatDashboardTime(customer.joined_at)}</small></td><td><strong>{customer.email}</strong><small>{customer.phone_number || 'No phone number'}{customer.phone_verified ? ' · verified' : ''}</small></td><td><strong>{customer.hostel_name}</strong></td><td><span className={`admin-status-pill ${customer.account_status}`}>{formatStatus(customer.account_status)}</span></td><td><strong>{customer.current_plan || 'No active plan'}</strong><small>{formatStatus(customer.subscription_status, 'No subscription')}</small></td><td><span className={`admin-status-pill ${customer.is_online ? 'success' : 'offline'}`}>{customer.is_online ? 'Online' : 'Offline'}</span><small>{customer.connected_devices} device{customer.connected_devices === 1 ? '' : 's'}</small></td><td><strong>{formatDashboardTime(customer.last_activity_at)}</strong><small>{customer.last_login_at ? `Last login ${formatDashboardTime(customer.last_login_at)}` : 'Never logged in'}</small></td>{admin.role !== 'viewer' && <td><div className="customer-row-actions"><button type="button" onClick={() => openCustomerAction(customer, 'transfer')}>Move</button><button className="danger" type="button" onClick={() => openCustomerAction(customer, 'delete')}>Delete</button></div></td>}</tr>)}</tbody></table> : <table className="admin-data-table"><thead><tr><th>User</th><th>Hostel</th><th>IP address</th><th>MAC address</th><th>Uptime</th><th>Login method</th></tr></thead><tbody>{result.devices.map((device) => <tr key={`${device.hostel_id}-${device.session_id}`}><td><strong>{device.username}</strong><small>{device.customer_email || 'Not linked to a customer record'}</small></td><td><strong>{device.hostel_name}</strong></td><td><code>{device.ip_address || '--'}</code></td><td><code>{device.mac_address || '--'}</code></td><td><strong>{device.uptime || '--'}</strong></td><td><strong>{formatStatus(device.login_method, '--')}</strong></td></tr>)}</tbody></table>}
           {mode === 'customers' && !result.customers.length && <p className="dashboard-empty-copy">No users match these filters.</p>}{mode === 'devices' && !result.devices.length && <p className="dashboard-empty-copy">No connected devices match these filters.</p>}
         </div></section>
       </>}

@@ -122,6 +122,7 @@ class CustomerAccountService:
             email=customer.email,
             phone_number=customer.phone_number,
             phone_verified=customer.phone_verified_at is not None,
+            router_id=customer.router_id,
             hostel_name=router_name,
             account_status=customer.account_status,
             current_plan=(

@@ -98,6 +98,17 @@ export function deleteAccount(pin) {
   })
 }
 
+export function transferHostel(destinationRouterId, pin) {
+  return request('/api/account/transfer-hostel', {
+    method: 'POST',
+    body: JSON.stringify({ destination_router_id: destinationRouterId, pin }),
+  })
+}
+
+export function listAvailableHostels() {
+  return request('/api/routers')
+}
+
 export function logout() {
   return request('/api/auth/logout', { method: 'POST' })
 }
