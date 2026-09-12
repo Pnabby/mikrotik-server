@@ -2,6 +2,7 @@ from collections.abc import Generator
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, Response, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
@@ -19,6 +20,8 @@ from app.schemas.account import (
     CustomerAccountResponse,
     DeleteAccountRequest,
     DeleteAccountResponse,
+    HostelTransferRequest,
+    HostelTransferResponse,
     PhoneVerificationCompleteRequest,
     PhoneVerificationResponse,
     PhoneVerificationStartRequest,
@@ -28,6 +31,7 @@ from app.schemas.hotspot import DeviceLogoutResponse, HotspotStatusResponse
 from app.services.account_deletion import AccountDeletionService
 from app.services.customer_account import CustomerAccountService
 from app.services.customer_auth import CUSTOMER_SESSION_COOKIE
+from app.services.hostel_transfer import HostelTransferService
 from app.services.hotspot import HotspotService
 from app.services.phone_verification import PhoneVerificationService
 from app.services.pin_management import PinManagementService
@@ -160,6 +164,48 @@ def delete_customer_account(
         samesite="lax",
     )
     return DeleteAccountResponse()
+
+
+@router.post("/transfer-hostel", response_model=HostelTransferResponse)
+def transfer_customer_hostel(
+    payload: HostelTransferRequest,
+    request: Request,
+    customer: CustomerDependency,
+    session: SessionDependency,
+    settings: SettingsDependency,
+) -> HostelTransferResponse:
+    customer = session.scalar(
+        select(Customer).where(Customer.id == customer.id).with_for_update()
+    )
+    if customer is None:
+        raise ServiceError(status.HTTP_404_NOT_FOUND, "Customer was not found.")
+    try:
+        source_router = get_router(session, customer.router_id)
+        destination_router = get_router(session, payload.destination_router_id)
+    except UnknownRouterError as exc:
+        raise ServiceError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            ROUTER_UNAVAILABLE_DETAIL,
+        ) from exc
+    with (
+        mikrotik_client_context(source_router) as source_client,
+        mikrotik_client_context(destination_router) as destination_client,
+    ):
+        result = HostelTransferService(session).transfer_with_pin(
+            customer,
+            pin=payload.pin.get_secret_value(),
+            pin_hasher=Argon2PinHasher.from_settings(settings),
+            destination_router_id=destination_router.router_id,
+            destination_router_name=destination_router.name,
+            source_client=source_client,
+            destination_client=destination_client,
+            ip_address=request.client.host if request.client else None,
+        )
+    return HostelTransferResponse(
+        router_id=result.router_id,
+        hostel_name=result.router_name,
+        remaining_data_limit_bytes=result.remaining_data_limit_bytes,
+    )
 
 
 @router.post("/change-pin", response_model=ChangePinResponse)

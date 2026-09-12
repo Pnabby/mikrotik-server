@@ -1,26 +1,39 @@
+import uuid
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.core.exceptions import ServiceError
+from app.core.security import Argon2PasswordHasher
 from app.db.session import get_db_session
+from app.dependencies import ROUTER_UNAVAILABLE_DETAIL, mikrotik_client_context
+from app.integrations.mikrotik.registry import UnknownRouterError, get_router
 from app.models.admin_user import AdminUser
-from app.models.enums import AccountStatus, AdminRole, PaymentStatus
+from app.models.audit_log import AuditLog
+from app.models.customer import Customer
+from app.models.enums import AccountStatus, AdminRole, AuditActorType, PaymentStatus
 from app.models.router import Router
 from app.routes.admin_auth import get_authenticated_admin
 from app.schemas.admin_dashboard import (
     AdminAccessPointListResponse,
     AdminBroadcastRequest,
     AdminBroadcastResponse,
+    AdminCustomerDeleteRequest,
+    AdminCustomerDeleteResponse,
     AdminCustomerDirectoryResponse,
+    AdminCustomerTransferRequest,
+    AdminCustomerTransferResponse,
     AdminDashboardResponse,
     AdminTransactionListResponse,
 )
+from app.services.account_deletion import AccountDeletionService
 from app.services.admin_dashboard import AdminDashboardService
 from app.services.admin_messaging import AdminMessagingService
+from app.services.hostel_transfer import HostelTransferService
 
 router = APIRouter(prefix="/api/admin/dashboard", tags=["admin dashboard"])
 SessionDependency = Annotated[Session, Depends(get_db_session)]
@@ -95,6 +108,107 @@ def list_customers_and_devices(
         search=search,
         limit=limit,
     )
+
+
+def _editable_customer(
+    customer_id: uuid.UUID,
+    admin: AdminUser,
+    session: Session,
+) -> Customer:
+    if admin.role not in {AdminRole.OPERATOR, AdminRole.ADMINISTRATOR}:
+        raise ServiceError(status.HTTP_403_FORBIDDEN, "Your role cannot manage customers.")
+    customer = session.scalar(
+        select(Customer).where(Customer.id == customer_id).with_for_update()
+    )
+    if customer is None:
+        raise ServiceError(status.HTTP_404_NOT_FOUND, "Customer was not found.")
+    return customer
+
+
+@router.post(
+    "/customers/{customer_id}/transfer-hostel",
+    response_model=AdminCustomerTransferResponse,
+)
+def transfer_customer_hostel(
+    customer_id: uuid.UUID,
+    payload: AdminCustomerTransferRequest,
+    request: Request,
+    admin: AdminDependency,
+    session: SessionDependency,
+) -> AdminCustomerTransferResponse:
+    customer = _editable_customer(customer_id, admin, session)
+    try:
+        source_router = get_router(session, customer.router_id)
+        destination_router = get_router(session, payload.destination_router_id)
+    except UnknownRouterError as exc:
+        raise ServiceError(status.HTTP_503_SERVICE_UNAVAILABLE, ROUTER_UNAVAILABLE_DETAIL) from exc
+    with (
+        mikrotik_client_context(source_router) as source_client,
+        mikrotik_client_context(destination_router) as destination_client,
+    ):
+        result = HostelTransferService(session).transfer_with_admin_password(
+            customer,
+            admin=admin,
+            password=payload.password.get_secret_value(),
+            password_hasher=Argon2PasswordHasher(),
+            destination_router_id=destination_router.router_id,
+            destination_router_name=destination_router.name,
+            source_client=source_client,
+            destination_client=destination_client,
+            ip_address=request.client.host if request.client else None,
+        )
+    return AdminCustomerTransferResponse(
+        router_id=result.router_id,
+        hostel_name=result.router_name,
+        remaining_data_limit_bytes=result.remaining_data_limit_bytes,
+    )
+
+
+@router.post(
+    "/customers/{customer_id}/delete",
+    response_model=AdminCustomerDeleteResponse,
+)
+def delete_customer(
+    customer_id: uuid.UUID,
+    payload: AdminCustomerDeleteRequest,
+    request: Request,
+    admin: AdminDependency,
+    session: SessionDependency,
+) -> AdminCustomerDeleteResponse:
+    customer = _editable_customer(customer_id, admin, session)
+    if not Argon2PasswordHasher().verify(
+        admin.password_hash, payload.password.get_secret_value()
+    ):
+        raise ServiceError(status.HTTP_401_UNAUTHORIZED, "The admin password is incorrect.")
+    try:
+        source_router = get_router(session, customer.router_id)
+    except UnknownRouterError as exc:
+        raise ServiceError(status.HTTP_503_SERVICE_UNAVAILABLE, ROUTER_UNAVAILABLE_DETAIL) from exc
+
+    # This audit row intentionally has no customer FK so it survives the same
+    # complete data erasure used by customer self-deletion.
+    session.add(
+        AuditLog(
+            actor_type=AuditActorType.ADMIN,
+            admin_user_id=admin.id,
+            customer_id=None,
+            action="customer.deleted_by_admin",
+            entity_type="customer",
+            entity_id=str(customer.id),
+            details={
+                "username": customer.username,
+                "router_id": customer.router_id,
+            },
+            ip_address=(request.client.host if request.client else "")[:64] or None,
+        )
+    )
+    try:
+        with mikrotik_client_context(source_router) as source_client:
+            AccountDeletionService(session).erase(customer, source_client)
+    except Exception:
+        session.rollback()
+        raise
+    return AdminCustomerDeleteResponse()
 
 
 @router.post("/broadcast", response_model=AdminBroadcastResponse)

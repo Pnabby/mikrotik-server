@@ -42,6 +42,27 @@ _HOSTNAME_DEVICE_TYPE_PATTERNS = (
     ),
 )
 
+# RouterOS exposes counters and other read-only values beside the fields accepted
+# by `/ip/hotspot/user/add`.  Keeping this allow-list explicit prevents a transfer
+# from accidentally trying to write runtime state such as `.id`, uptime or byte
+# counters while still preserving every configurable per-user setting.
+_HOTSPOT_USER_TRANSFER_FIELDS = (
+    "server",
+    "name",
+    "password",
+    "address",
+    "mac-address",
+    "profile",
+    "routes",
+    "email",
+    "limit-uptime",
+    "limit-bytes-in",
+    "limit-bytes-out",
+    "limit-bytes-total",
+    "comment",
+    "disabled",
+)
+
 
 @dataclass(slots=True)
 class MikroTikConfig:
@@ -257,6 +278,55 @@ class MikroTikClient:
             id=hotspot_user["id"],
             password=password,
         )
+
+    def clear_hotspot_authentication(self, username: str) -> dict[str, str] | None:
+        """End every session/cookie, then return counters after RouterOS settles them."""
+        api = self.connect()
+        normalized_username = _normalize_routeros_name(username)
+        self._remove_hotspot_records(
+            api.get_resource("/ip/hotspot/active"), normalized_username
+        )
+        self._remove_hotspot_records(
+            api.get_resource("/ip/hotspot/cookie"), normalized_username
+        )
+        return self.get_hotspot_user(normalized_username)
+
+    def create_hotspot_user_copy(
+        self,
+        user: dict[str, str],
+        *,
+        byte_limits: dict[str, int | None],
+    ) -> dict[str, str]:
+        """Create a transferred user from writable source fields and read it back."""
+        username = _normalize_routeros_name(user.get("name"))
+        profile = _normalize_routeros_name(user.get("profile"))
+        if not username or not profile or not user.get("password"):
+            raise RouterOsApiError("HotSpot user is missing transfer credentials.")
+        if self.get_hotspot_user(username) is not None:
+            raise RouterOsApiError("HotSpot user already exists on the destination.")
+        if self.get_hotspot_user_profile(profile) is None:
+            raise RouterOsApiError("HotSpot profile does not exist on the destination.")
+
+        attributes = {
+            field: str(user[field])
+            for field in _HOTSPOT_USER_TRANSFER_FIELDS
+            if field in user and user[field] is not None
+        }
+        attributes["name"] = username
+        attributes["profile"] = profile
+        for limit_field, remaining in byte_limits.items():
+            if remaining is None:
+                attributes[limit_field] = "0"
+            else:
+                # RouterOS treats zero as unlimited. One byte represents an
+                # exhausted finite allowance without reopening unlimited access.
+                attributes[limit_field] = str(max(1, remaining))
+
+        self.connect().get_resource("/ip/hotspot/user").add(**attributes)
+        copied_user = self.get_hotspot_user(username)
+        if copied_user is None:
+            raise RouterOsApiError("Transferred HotSpot user could not be read back.")
+        return copied_user
 
     @staticmethod
     def _remove_hotspot_records(resource, username: str) -> None:

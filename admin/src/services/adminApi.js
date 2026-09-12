@@ -1,10 +1,11 @@
 const API_URL = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
 
 export class AdminApiError extends Error {
-  constructor(status) {
+  constructor(status, detail = '') {
     super(`Admin request failed with status ${status}`)
     this.name = 'AdminApiError'
     this.status = status
+    this.detail = detail
   }
 }
 
@@ -17,7 +18,10 @@ async function request(path, options = {}) {
     },
     ...options,
   })
-  if (!response.ok) throw new AdminApiError(response.status)
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}))
+    throw new AdminApiError(response.status, body.detail || '')
+  }
   if (response.status === 204) return null
   return response.json()
 }
@@ -64,6 +68,20 @@ export function getCustomersAndDevices(filters = {}) {
     if (value !== '' && value !== null && value !== undefined) query.set(key, value)
   })
   return request(`/api/admin/dashboard/customers${query.size ? `?${query}` : ''}`)
+}
+
+export function transferCustomerHostel(customerId, destinationRouterId, password) {
+  return request(`/api/admin/dashboard/customers/${encodeURIComponent(customerId)}/transfer-hostel`, {
+    method: 'POST',
+    body: JSON.stringify({ destination_router_id: destinationRouterId, password }),
+  })
+}
+
+export function deleteCustomer(customerId, password) {
+  return request(`/api/admin/dashboard/customers/${encodeURIComponent(customerId)}/delete`, {
+    method: 'POST',
+    body: JSON.stringify({ password }),
+  })
 }
 
 export function createHostel(hostel) {

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, SecretStr, field_validator
 
 from app.models.enums import AccountStatus, ActivationStatus, PaymentStatus, SubscriptionStatus
 
@@ -78,6 +78,23 @@ class AdminTransactionDetail(BaseModel):
     paid_at: datetime | None
 
 
+class AdminPlanRevenue(BaseModel):
+    profile: str
+    display_name: str
+    currency: str
+    successful_revenue: Decimal
+    successful_sales: int
+    hostel_count: int
+    revenue_share_percent: float
+
+
+class AdminHostelRevenue(BaseModel):
+    hostel_id: str
+    hostel_name: str
+    revenue: dict[str, Decimal]
+    successful_sales: int
+
+
 class AdminTransactionListResponse(BaseModel):
     generated_at: datetime
     total: int
@@ -87,6 +104,8 @@ class AdminTransactionListResponse(BaseModel):
     successful: int
     pending: int
     failed: int
+    plan_revenue: list[AdminPlanRevenue]
+    hostel_revenue: list[AdminHostelRevenue]
     transactions: list[AdminTransactionDetail]
 
 
@@ -130,6 +149,41 @@ class AdminCustomerDirectoryResponse(BaseModel):
     unavailable_routers: list[str]
     customers: list[AdminCustomerDetail]
     devices: list[AdminConnectedDevice]
+
+
+class AdminCustomerDeleteRequest(BaseModel):
+    password: SecretStr
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: SecretStr) -> SecretStr:
+        if not 8 <= len(value.get_secret_value()) <= 128:
+            raise ValueError("Enter your admin password.")
+        return value
+
+
+class AdminCustomerDeleteResponse(BaseModel):
+    deleted: bool = True
+
+
+class AdminCustomerTransferRequest(AdminCustomerDeleteRequest):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    destination_router_id: str
+
+    @field_validator("destination_router_id")
+    @classmethod
+    def validate_destination_router_id(cls, value: str) -> str:
+        if not value or len(value) > 64:
+            raise ValueError("Select a valid hostel.")
+        return value
+
+
+class AdminCustomerTransferResponse(BaseModel):
+    transferred: bool = True
+    router_id: str
+    hostel_name: str
+    remaining_data_limit_bytes: int | None
 
 
 class AdminDashboardResponse(BaseModel):

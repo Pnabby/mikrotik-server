@@ -228,6 +228,34 @@ class DeleteAccountResponse(BaseModel):
     deleted: bool = True
 
 
+class HostelTransferRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    destination_router_id: str
+    pin: SecretStr
+
+    @field_validator("destination_router_id")
+    @classmethod
+    def validate_destination_router_id(cls, value: str) -> str:
+        if not value or len(value) > 64:
+            raise ValueError("Select a valid hostel.")
+        return value
+
+    @field_validator("pin")
+    @classmethod
+    def validate_transfer_pin(cls, value: SecretStr) -> SecretStr:
+        if not PIN_PATTERN.fullmatch(value.get_secret_value()):
+            raise ValueError("Enter your 6-digit PIN.")
+        return value
+
+
+class HostelTransferResponse(BaseModel):
+    transferred: bool = True
+    router_id: str
+    hostel_name: str
+    remaining_data_limit_bytes: int | None
+
+
 class CurrentPlanResponse(BaseModel):
     name: str
     status: SubscriptionStatus
@@ -285,6 +313,7 @@ class CustomerAccountResponse(BaseModel):
     email: str
     phone_number: str | None
     phone_verified: bool
+    router_id: str
     hostel_name: str
     account_status: AccountStatus
     current_plan: CurrentPlanResponse | None

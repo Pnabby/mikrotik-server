@@ -1844,6 +1844,43 @@ input {
   line-height: 1.65;
 }
 
+.hostel-transfer-open {
+  width: 100%;
+  margin-top: 1rem;
+  padding: 0.68rem 0.9rem;
+  border: 0;
+  border-radius: 9px;
+  color: #fff;
+  background: var(--account-primary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hostel-transfer-open:disabled { cursor: not-allowed; opacity: 0.55; }
+.hostel-transfer-form { display: grid; gap: 0.55rem; margin-top: 1rem; }
+.hostel-transfer-form label { color: #344054; font-size: 0.68rem; font-weight: 700; }
+.hostel-transfer-form select,
+.hostel-transfer-form input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid #d6dae3;
+  border-radius: 8px;
+  color: var(--account-ink);
+  background: #fff;
+  font: inherit;
+  font-size: 0.72rem;
+}
+.hostel-transfer-form > small { color: var(--account-muted); font-size: 0.62rem; line-height: 1.5; }
+.hostel-transfer-form > div { display: flex; gap: 0.5rem; margin-top: 0.2rem; }
+.hostel-transfer-form button { flex: 1; padding: 0.58rem; border: 1px solid #d6dae3; border-radius: 8px; color: #475467; background: #fff; font-size: 0.67rem; font-weight: 700; cursor: pointer; }
+.hostel-transfer-form button.confirm-transfer { border-color: var(--account-primary); color: #fff; background: var(--account-primary); }
+.hostel-transfer-form button:disabled { cursor: wait; opacity: 0.6; }
+.hostel-transfer-message { padding: 0.6rem; border-radius: 8px; font-size: 0.64rem !important; line-height: 1.45 !important; }
+.hostel-transfer-message.error { color: #b42318; background: #fff3f2; }
+.hostel-transfer-message.success { color: #087f5b; background: #eafaf4; }
+
 .profile-pin-card {
   margin-top: 1.2rem;
   padding: 1.5rem;

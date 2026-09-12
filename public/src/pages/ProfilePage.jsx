@@ -2,7 +2,15 @@ import { useEffect, useState } from 'react'
 
 import AccountHeader from '../components/AccountHeader'
 import { AccountIcon, GlobeIcon, ShieldIcon } from '../components/Icons'
-import { AccountApiError, changePin, deleteAccount, getAccount, logout } from '../services/accountApi'
+import {
+  AccountApiError,
+  changePin,
+  deleteAccount,
+  getAccount,
+  listAvailableHostels,
+  logout,
+  transferHostel,
+} from '../services/accountApi'
 
 function friendlyStatus(status) {
   const labels = {
@@ -26,6 +34,12 @@ export default function ProfilePage() {
   const [changingPin, setChangingPin] = useState(false)
   const [pinError, setPinError] = useState('')
   const [pinSuccess, setPinSuccess] = useState('')
+  const [hostels, setHostels] = useState([])
+  const [showTransfer, setShowTransfer] = useState(false)
+  const [transferForm, setTransferForm] = useState({ destinationRouterId: '', pin: '' })
+  const [transferring, setTransferring] = useState(false)
+  const [transferError, setTransferError] = useState('')
+  const [transferSuccess, setTransferSuccess] = useState('')
 
   useEffect(() => {
     document.title = 'Profile | Vlad WiFi'
@@ -36,6 +50,9 @@ export default function ProfilePage() {
         setAccount(result)
         setPhase('ready')
       })
+    listAvailableHostels().then((items) => {
+      if (active) setHostels(items)
+    }).catch(() => {})
       .catch((error) => {
         if (!active) return
         if (error instanceof AccountApiError && error.status === 401) {
@@ -124,6 +141,44 @@ export default function ProfilePage() {
     }
   }
 
+  async function submitHostelTransfer(event) {
+    event.preventDefault()
+    if (!transferForm.destinationRouterId) {
+      setTransferError('Select the hostel you are moving to.')
+      return
+    }
+    if (!/^[0-9]{6}$/.test(transferForm.pin)) {
+      setTransferError('Enter your 6-digit PIN to confirm the hostel change.')
+      return
+    }
+    setTransferring(true)
+    setTransferError('')
+    setTransferSuccess('')
+    try {
+      const result = await transferHostel(transferForm.destinationRouterId, transferForm.pin)
+      setAccount((current) => ({
+        ...current,
+        router_id: result.router_id,
+        hostel_name: result.hostel_name,
+      }))
+      setTransferForm({ destinationRouterId: '', pin: '' })
+      setShowTransfer(false)
+      setTransferSuccess(`Your account is now registered at ${result.hostel_name}. Sign in to that hostel's WiFi again.`)
+    } catch (error) {
+      if (error instanceof AccountApiError && error.status === 401) {
+        setTransferError('The PIN is incorrect. Your hostel was not changed.')
+      } else if (error instanceof AccountApiError && error.status === 409) {
+        setTransferError('This account cannot be moved to that hostel. Its network plan may not be available there.')
+      } else if (error instanceof AccountApiError && [502, 503].includes(error.status)) {
+        setTransferError('A hostel router is temporarily unavailable. Your account was not moved; please try again.')
+      } else {
+        setTransferError('The hostel change could not be completed. Please try again or contact support.')
+      }
+    } finally {
+      setTransferring(false)
+    }
+  }
+
   if (phase === 'loading') {
     return (
       <main className="account-page account-state-page" aria-busy="true">
@@ -183,7 +238,27 @@ export default function ProfilePage() {
           <aside className="profile-side-card">
             <span className="profile-side-icon"><GlobeIcon /></span>
             <h2>Your hostel network</h2>
-            <p>Your account is tied to {account.hostel_name}. Contact help and support if this is incorrect.</p>
+            <p>Your account is currently on {account.hostel_name}. If you move, transfer it to your new hostel here.</p>
+            {transferSuccess && <p className="hostel-transfer-message success" role="status">{transferSuccess}</p>}
+            {!showTransfer ? (
+              <button className="hostel-transfer-open" disabled={hostels.filter((hostel) => hostel.router_id !== account.router_id).length === 0} type="button" onClick={() => { setShowTransfer(true); setTransferError(''); setTransferSuccess('') }}>Change hostel</button>
+            ) : (
+              <form className="hostel-transfer-form" noValidate onSubmit={submitHostelTransfer}>
+                <label htmlFor="destination-hostel">New hostel</label>
+                <select id="destination-hostel" value={transferForm.destinationRouterId} onChange={(event) => { setTransferForm((current) => ({ ...current, destinationRouterId: event.target.value })); setTransferError('') }}>
+                  <option value="">Select your new hostel</option>
+                  {hostels.filter((hostel) => hostel.router_id !== account.router_id).map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}
+                </select>
+                <label htmlFor="hostel-transfer-pin">PIN</label>
+                <input autoComplete="current-password" id="hostel-transfer-pin" inputMode="numeric" maxLength={6} placeholder="6-digit PIN" type="password" value={transferForm.pin} onChange={(event) => { setTransferForm((current) => ({ ...current, pin: event.target.value.replace(/\D/g, '').slice(0, 6) })); setTransferError('') }} />
+                <small>All WiFi sessions and remembered logins will end. Any data already used is deducted before your remaining allowance moves.</small>
+                {transferError && <p className="hostel-transfer-message error" role="alert">{transferError}</p>}
+                <div>
+                  <button type="button" onClick={() => { setShowTransfer(false); setTransferForm({ destinationRouterId: '', pin: '' }); setTransferError('') }}>Cancel</button>
+                  <button className="confirm-transfer" disabled={transferring} type="submit">{transferring ? 'Moving account...' : 'Confirm change'}</button>
+                </div>
+              </form>
+            )}
           </aside>
         </div>
 

@@ -6,14 +6,15 @@ from decimal import Decimal
 from ipaddress import ip_network
 
 from fastapi import HTTPException
-from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.orm import Session, aliased, joinedload, selectinload
 
 from app.dependencies import mikrotik_client_context
 from app.integrations.mikrotik.registry import RouterDefinition
+from app.models.activation import Activation
 from app.models.customer import Customer
 from app.models.enums import AccountStatus, PaymentStatus, SubscriptionStatus
-from app.models.package import Package
+from app.models.package import Package, RouterPackageProfile
 from app.models.router import Router
 from app.models.subscription import Subscription
 from app.models.transaction import Transaction
@@ -24,6 +25,8 @@ from app.schemas.admin_dashboard import (
     AdminCustomerDetail,
     AdminCustomerDirectoryResponse,
     AdminDashboardResponse,
+    AdminHostelRevenue,
+    AdminPlanRevenue,
     AdminTransactionDetail,
     AdminTransactionListResponse,
     DashboardRevenue,
@@ -227,7 +230,7 @@ class AdminDashboardService:
         if date_from is not None and date_to is not None and date_to < date_from:
             raise HTTPException(status_code=400, detail="End date cannot be before start date.")
 
-        routers = self._routers(router_id)
+        routers = self._routers(router_id, include_inactive=True)
         router_ids = [router.id for router in routers]
         conditions = [Transaction.router_id.in_(router_ids)]
         occurred_at = func.coalesce(Transaction.paid_at, Transaction.created_at)
@@ -243,12 +246,28 @@ class AdminDashboardService:
         normalized_search = (search or "").strip().casefold()
         if normalized_search:
             pattern = f"%{normalized_search}%"
+            profile_search_mapping = aliased(RouterPackageProfile)
+            matching_profile = (
+                select(profile_search_mapping.id)
+                .where(
+                    profile_search_mapping.router_id == Transaction.router_id,
+                    profile_search_mapping.package_id == Transaction.package_id,
+                    or_(
+                        func.lower(profile_search_mapping.mikrotik_profile).like(pattern),
+                        func.lower(func.coalesce(profile_search_mapping.display_name, "")).like(
+                            pattern
+                        ),
+                    ),
+                )
+                .exists()
+            )
             conditions.append(
                 or_(
                     func.lower(Transaction.paystack_reference).like(pattern),
                     func.lower(Customer.username).like(pattern),
                     func.lower(Customer.email).like(pattern),
                     func.lower(Package.name).like(pattern),
+                    matching_profile,
                 )
             )
 
@@ -294,6 +313,10 @@ class AdminDashboardService:
         transactions = self.session.scalars(
             base_query.order_by(occurred_at.desc()).offset(offset).limit(limit)
         ).all()
+        plan_revenue = self._plan_revenue(
+            router_ids, conditions, search=normalized_search
+        )
+        hostel_revenue = self._hostel_revenue(routers, conditions)
 
         return AdminTransactionListResponse(
             generated_at=datetime.now(UTC),
@@ -304,6 +327,8 @@ class AdminDashboardService:
             successful=int(status_counts.get(PaymentStatus.SUCCESS, 0)),
             pending=int(status_counts.get(PaymentStatus.PENDING, 0)),
             failed=int(status_counts.get(PaymentStatus.FAILED, 0)),
+            plan_revenue=plan_revenue,
+            hostel_revenue=hostel_revenue,
             transactions=[
                 AdminTransactionDetail(
                     reference=transaction.paystack_reference,
@@ -326,6 +351,194 @@ class AdminDashboardService:
                 for transaction in transactions
             ],
         )
+
+    def _plan_revenue(
+        self,
+        router_ids: list[str],
+        conditions: list,
+        *,
+        search: str,
+    ) -> list[AdminPlanRevenue]:
+        successful = Transaction.payment_status == PaymentStatus.SUCCESS
+        profile_name = func.coalesce(
+            RouterPackageProfile.mikrotik_profile,
+            Activation.target_profile,
+            Package.code,
+        )
+        normalized_profile = func.lower(profile_name)
+        rows = self.session.execute(
+            select(
+                normalized_profile,
+                func.max(profile_name),
+                func.max(func.coalesce(RouterPackageProfile.display_name, Package.name)),
+                Transaction.currency,
+                func.count(Transaction.id).filter(successful),
+                func.coalesce(func.sum(Transaction.amount).filter(successful), 0),
+                func.count(func.distinct(Transaction.router_id)).filter(successful),
+            )
+            .join(Customer, Transaction.customer_id == Customer.id)
+            .join(Package, Transaction.package_id == Package.id)
+            .outerjoin(Activation, Activation.transaction_id == Transaction.id)
+            .outerjoin(
+                RouterPackageProfile,
+                and_(
+                    RouterPackageProfile.router_id == Transaction.router_id,
+                    RouterPackageProfile.package_id == Transaction.package_id,
+                ),
+            )
+            .where(*conditions)
+            .group_by(
+                normalized_profile,
+                Transaction.currency,
+            )
+        ).all()
+
+        mappings = self.session.scalars(
+            select(RouterPackageProfile)
+            .options(joinedload(RouterPackageProfile.package), joinedload(RouterPackageProfile.router))
+            .where(RouterPackageProfile.router_id.in_(router_ids))
+        ).all()
+        metadata: dict[tuple[str, str], dict[str, object]] = {}
+        for mapping in mappings:
+            key = (mapping.mikrotik_profile.casefold(), mapping.package.currency)
+            entry = metadata.setdefault(
+                key,
+                {
+                    "profile": mapping.mikrotik_profile,
+                    "display_names": set(),
+                    "hostel_ids": set(),
+                    "search_match": False,
+                },
+            )
+            entry["display_names"].add(mapping.display_name or mapping.package.name)
+            entry["hostel_ids"].add(mapping.router_id)
+            searchable = " ".join(
+                [
+                    mapping.mikrotik_profile,
+                    mapping.display_name or "",
+                    mapping.package.name,
+                    mapping.package.code,
+                ]
+            ).casefold()
+            entry["search_match"] = bool(entry["search_match"] or search in searchable)
+
+        plan_rows: dict[tuple[str, str], dict[str, object]] = {}
+        for row in rows:
+            (
+                normalized_name,
+                observed_profile,
+                observed_display_name,
+                currency,
+                successful_sales,
+                revenue,
+                selling_hostel_count,
+            ) = row
+            key = (str(normalized_name), currency)
+            mapping_metadata = metadata.get(key)
+            display_names = mapping_metadata["display_names"] if mapping_metadata else set()
+            plan_rows[key] = {
+                "profile": (
+                    mapping_metadata["profile"] if mapping_metadata else str(observed_profile)
+                ),
+                "display_name": (
+                    next(iter(display_names))
+                    if len(display_names) == 1
+                    else str(observed_display_name or observed_profile)
+                ),
+                "currency": currency,
+                "successful_revenue": revenue or Decimal(0),
+                "successful_sales": int(successful_sales),
+                "hostel_count": (
+                    len(mapping_metadata["hostel_ids"])
+                    if mapping_metadata
+                    else int(selling_hostel_count)
+                ),
+            }
+
+        for key, mapping_metadata in metadata.items():
+            if key in plan_rows:
+                continue
+            if search and not mapping_metadata["search_match"]:
+                continue
+            display_names = mapping_metadata["display_names"]
+            plan_rows[key] = {
+                "profile": mapping_metadata["profile"],
+                "display_name": (
+                    next(iter(display_names))
+                    if len(display_names) == 1
+                    else mapping_metadata["profile"]
+                ),
+                "currency": key[1],
+                "successful_revenue": Decimal(0),
+                "successful_sales": 0,
+                "hostel_count": len(mapping_metadata["hostel_ids"]),
+            }
+
+        totals_by_currency: dict[str, Decimal] = {}
+        for item in plan_rows.values():
+            totals_by_currency[item["currency"]] = (
+                totals_by_currency.get(item["currency"], Decimal(0))
+                + item["successful_revenue"]
+            )
+        result = [
+            AdminPlanRevenue(
+                **item,
+                revenue_share_percent=round(
+                    float(
+                        item["successful_revenue"]
+                        / totals_by_currency[item["currency"]]
+                        * 100
+                    ),
+                    1,
+                )
+                if totals_by_currency[item["currency"]]
+                else 0,
+            )
+            for item in plan_rows.values()
+        ]
+        return sorted(
+            result,
+            key=lambda item: (
+                -item.successful_revenue,
+                -item.successful_sales,
+                item.display_name.casefold(),
+            ),
+        )
+
+    def _hostel_revenue(
+        self,
+        routers: list[Router],
+        conditions: list,
+    ) -> list[AdminHostelRevenue]:
+        successful = Transaction.payment_status == PaymentStatus.SUCCESS
+        rows = self.session.execute(
+            select(
+                Transaction.router_id,
+                Transaction.currency,
+                func.count(Transaction.id),
+                func.coalesce(func.sum(Transaction.amount), 0),
+            )
+            .join(Customer, Transaction.customer_id == Customer.id)
+            .join(Package, Transaction.package_id == Package.id)
+            .where(*conditions, successful)
+            .group_by(Transaction.router_id, Transaction.currency)
+        ).all()
+        by_hostel: dict[str, dict[str, object]] = {
+            router.id: {"revenue": {}, "successful_sales": 0} for router in routers
+        }
+        for hostel_id, currency, successful_sales, revenue in rows:
+            entry = by_hostel[hostel_id]
+            entry["revenue"][currency] = revenue or Decimal(0)
+            entry["successful_sales"] += int(successful_sales)
+        return [
+            AdminHostelRevenue(
+                hostel_id=router.id,
+                hostel_name=router.name,
+                revenue=by_hostel[router.id]["revenue"],
+                successful_sales=by_hostel[router.id]["successful_sales"],
+            )
+            for router in routers
+        ]
 
     def customers_and_devices(
         self,
@@ -500,11 +713,13 @@ class AdminDashboardService:
             last_activity_at=customer.last_activity_at,
         )
 
-    def _routers(self, router_id: str | None) -> list[Router]:
+    def _routers(
+        self, router_id: str | None, *, include_inactive: bool = False
+    ) -> list[Router]:
         query = select(Router).order_by(Router.display_order, Router.name, Router.id)
         if router_id is not None:
             query = query.where(Router.id == router_id)
-        else:
+        elif not include_inactive:
             query = query.where(Router.is_active.is_(True))
         return list(self.session.scalars(query).all())
 
