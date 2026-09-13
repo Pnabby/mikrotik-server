@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import PageLoadingState from '../components/PageLoadingState'
 import { AccountApiError, getAccount, login } from '../services/accountApi'
 
 const USERNAME_PATTERN = /^[a-z0-9]{3,64}$/
@@ -133,7 +134,12 @@ export default function LoginPage() {
   }
 
   if (checkingSession) {
-    return <main className="signup-page auth-session-check" aria-label="Checking your session" />
+    return (
+      <PageLoadingState
+        title="Loading Vlad WiFi"
+        message="Checking your session and account details."
+      />
+    )
   }
 
   return (
@@ -198,6 +204,7 @@ export default function LoginPage() {
             {accountLocked && <a className="login-unlock-link" href={`/forgot-password?mode=unlock&username=${encodeURIComponent(form.username)}`}>Unlock account with OTP</a>}
 
             <button className="signup-submit" disabled={busy} type="submit">
+              {busy && <span className="login-button-loader" aria-hidden="true" />}
               <span>{busy ? 'Logging in...' : 'Log in'}</span>
               {!busy && <ArrowIcon />}
             </button>

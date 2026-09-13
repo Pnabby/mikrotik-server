@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import AccountHeader from '../components/AccountHeader'
 import { AccountIcon, GlobeIcon, ShieldIcon, WarningIcon } from '../components/Icons'
+import PageLoadingState from '../components/PageLoadingState'
 import {
   AccountApiError,
   changePin,
@@ -35,6 +36,7 @@ export default function ProfilePage() {
   const [pinError, setPinError] = useState('')
   const [pinSuccess, setPinSuccess] = useState('')
   const [hostels, setHostels] = useState([])
+  const [hostelsPhase, setHostelsPhase] = useState('loading')
   const [showTransfer, setShowTransfer] = useState(false)
   const [transferForm, setTransferForm] = useState({ destinationRouterId: '', pin: '' })
   const [transferring, setTransferring] = useState(false)
@@ -50,9 +52,6 @@ export default function ProfilePage() {
         setAccount(result)
         setPhase('ready')
       })
-    listAvailableHostels().then((items) => {
-      if (active) setHostels(items)
-    }).catch(() => {})
       .catch((error) => {
         if (!active) return
         if (error instanceof AccountApiError && error.status === 401) {
@@ -61,6 +60,13 @@ export default function ProfilePage() {
         }
         setPhase('error')
       })
+    listAvailableHostels().then((items) => {
+      if (!active) return
+      setHostels(items)
+      setHostelsPhase('ready')
+    }).catch(() => {
+      if (active) setHostelsPhase('error')
+    })
     return () => {
       active = false
     }
@@ -210,12 +216,12 @@ export default function ProfilePage() {
     }
   }
 
-  if (phase === 'loading') {
+  if (phase === 'loading' || hostelsPhase === 'loading') {
     return (
-      <main className="account-page account-state-page" aria-busy="true">
-        <div className="account-loader" />
-        <h1>Loading your profile</h1>
-      </main>
+      <PageLoadingState
+        title="Loading your profile"
+        message="Fetching your account and hostel details."
+      />
     )
   }
   if (phase === 'error' || !account) {
