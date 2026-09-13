@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import AccountHeader from '../components/AccountHeader'
+import PageLoadingState from '../components/PageLoadingState'
 import {
   CheckIcon,
   DataLeftIcon,
@@ -447,12 +448,17 @@ export default function AccountPage() {
     }
   }
 
-  if (accountPhase === 'loading') {
+  const loadingInitialDetails = accountPhase === 'loading'
+    || (accountPhase === 'ready'
+      && Boolean(account?.current_plan)
+      && networkPhase === 'loading'
+      && !networkStatus)
+  if (loadingInitialDetails) {
     return (
-      <main className="account-page account-state-page" aria-busy="true">
-        <div className="account-loader" />
-        <h1>Loading your account</h1>
-      </main>
+      <PageLoadingState
+        title="Loading your account"
+        message="Fetching your plan, usage, and connected devices."
+      />
     )
   }
   if (accountPhase === 'error' || !account) {

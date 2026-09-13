@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { WifiIcon } from '../components/Icons'
 import OtpInput from '../components/OtpInput'
+import PageLoadingState from '../components/PageLoadingState'
 import {
   AccountApiError,
   completePhoneVerification,
@@ -17,6 +18,7 @@ export default function VerifyPhonePage() {
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(true)
+  const [loadingAccount, setLoadingAccount] = useState(true)
 
   useEffect(() => {
     document.title = 'Verify phone | Vlad WiFi'
@@ -25,9 +27,19 @@ export default function VerifyPhonePage() {
       else {
         setPhoneNumber(account.phone_number || '')
         setBusy(false)
+        setLoadingAccount(false)
       }
     }).catch(() => window.location.replace('/'))
   }, [])
+
+  if (loadingAccount) {
+    return (
+      <PageLoadingState
+        title="Loading your account"
+        message="Fetching your phone verification details."
+      />
+    )
+  }
 
   async function sendCode(event) {
     event.preventDefault()
