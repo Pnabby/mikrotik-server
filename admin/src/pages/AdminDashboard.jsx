@@ -457,6 +457,7 @@ function HostelEditor({ hostel, canEdit, onClose, onSave }) {
     vpnHost: hostel?.vpn_host || '',
     apiPort: hostel?.api_port || 8728,
     hotspotNetwork: hostel?.hotspot_network || '',
+    paystackSplitCode: hostel?.paystack_split_code || '',
     displayOrder: hostel?.display_order ?? 0,
     isActive: hostel?.is_active ?? true,
   })
@@ -485,6 +486,7 @@ function HostelEditor({ hostel, canEdit, onClose, onSave }) {
         vpn_host: form.vpnHost.trim(),
         api_port: Number(form.apiPort),
         hotspot_network: form.hotspotNetwork.trim() || null,
+        paystack_split_code: form.paystackSplitCode.trim() || null,
         display_order: Number(form.displayOrder),
         is_active: form.isActive,
       })
@@ -524,6 +526,11 @@ function HostelEditor({ hostel, canEdit, onClose, onSave }) {
               <label className="editor-field"><span>Display order</span><input disabled={!canEdit} min="0" name="displayOrder" step="1" type="number" value={form.displayOrder} onChange={change} /></label>
             </div>
             <label className="editor-field"><span>Hotspot network <em>Optional</em></span><input disabled={!canEdit} maxLength="255" name="hotspotNetwork" placeholder="e.g. 192.168.88.0/24" value={form.hotspotNetwork} onChange={change} /></label>
+          </section>
+
+          <section>
+            <div className="editor-section-heading"><span>3</span><div><h3>Paystack settlement</h3><p>Route purchases made at this hostel through its Paystack split.</p></div></div>
+            <label className="editor-field"><span>Paystack split code <em>Optional</em></span><input autoCapitalize="none" disabled={!canEdit} maxLength="120" name="paystackSplitCode" placeholder="e.g. SPL_xxxxxxxxxx" spellCheck="false" value={form.paystackSplitCode} onChange={change} /><small>Paystack applies this split when a customer at this hostel starts checkout.</small></label>
           </section>
 
           <section className="visibility-section">

@@ -33,6 +33,7 @@ def _build_parser() -> argparse.ArgumentParser:
     add.add_argument("--network", required=True, dest="hotspot_network")
     add.add_argument("--location")
     add.add_argument("--order", type=int, default=0, dest="display_order")
+    add.add_argument("--split-code", dest="paystack_split_code")
     return parser
 
 
@@ -66,6 +67,7 @@ def _add_router(session: Session, arguments: argparse.Namespace) -> None:
         hotspot_network=arguments.hotspot_network,
         display_order=arguments.display_order,
         location=arguments.location,
+        paystack_split_code=arguments.paystack_split_code,
     )
     try:
         router = upsert_router(session, entry)

@@ -196,7 +196,10 @@ class PaymentVerificationService:
     ) -> InitializedTransaction:
         mapping = self._session.scalar(
             select(RouterPackageProfile)
-            .options(joinedload(RouterPackageProfile.package))
+            .options(
+                joinedload(RouterPackageProfile.package),
+                joinedload(RouterPackageProfile.router),
+            )
             .join(RouterPackageProfile.package)
             .where(
                 RouterPackageProfile.router_id == customer.router_id,
@@ -262,18 +265,24 @@ class PaymentVerificationService:
 
         amount_minor = _minor_units(mapping.package.amount)
         try:
-            initialized = self._gateway.initialize_transaction(
-                email=customer.email,
-                amount=amount_minor,
-                currency=mapping.package.currency,
-                reference=reference,
-                callback_url=callback_url,
-                metadata={
+            initialize_arguments: dict[str, object] = {
+                "email": customer.email,
+                "amount": amount_minor,
+                "currency": mapping.package.currency,
+                "reference": reference,
+                "callback_url": callback_url,
+                "metadata": {
                     "customer_id": str(customer.id),
                     "package_id": str(mapping.package.id),
                     "router_id": customer.router_id,
                     "plan_name": mapping.display_name or mapping.package.name,
                 },
+            }
+            split_code = (mapping.router.paystack_split_code or "").strip()
+            if split_code:
+                initialize_arguments["split_code"] = split_code
+            initialized = self._gateway.initialize_transaction(
+                **initialize_arguments,
             )
         except PaystackError:
             transaction.provider_status = "initialize_error"

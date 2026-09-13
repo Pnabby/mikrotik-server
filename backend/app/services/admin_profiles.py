@@ -114,6 +114,7 @@ class AdminProfileService:
             "vpn_host": router.vpn_host,
             "api_port": router.api_port,
             "hotspot_network": router.hotspot_network,
+            "paystack_split_code": router.paystack_split_code,
             "display_order": router.display_order,
             "is_active": router.is_active,
         }
@@ -122,6 +123,7 @@ class AdminProfileService:
         router.vpn_host = update.vpn_host
         router.api_port = update.api_port
         router.hotspot_network = update.hotspot_network
+        router.paystack_split_code = update.paystack_split_code
         router.display_order = update.display_order
         router.is_active = update.is_active
         try:
@@ -171,6 +173,7 @@ class AdminProfileService:
             vpn_host=create.vpn_host,
             api_port=create.api_port,
             hotspot_network=create.hotspot_network,
+            paystack_split_code=create.paystack_split_code,
             display_order=create.display_order,
             is_active=create.is_active,
         )
@@ -212,6 +215,7 @@ class AdminProfileService:
             vpn_host=router.vpn_host,
             api_port=router.api_port,
             hotspot_network=router.hotspot_network,
+            paystack_split_code=router.paystack_split_code,
             display_order=router.display_order,
             status=router.status,
             is_active=router.is_active,

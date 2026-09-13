@@ -42,6 +42,7 @@ class PaystackGateway(Protocol):
         reference: str,
         callback_url: str,
         metadata: dict[str, object],
+        split_code: str | None = None,
     ) -> InitializedTransaction: ...
 
     def verify_transaction(self, reference: str) -> VerifiedTransaction: ...
@@ -85,18 +86,23 @@ class PaystackClient:
         reference: str,
         callback_url: str,
         metadata: dict[str, object],
+        split_code: str | None = None,
     ) -> InitializedTransaction:
+        request_payload: dict[str, object] = {
+            "email": email,
+            "amount": str(amount),
+            "currency": currency,
+            "reference": reference,
+            "callback_url": callback_url,
+            "metadata": metadata,
+        }
+        normalized_split_code = (split_code or "").strip()
+        if normalized_split_code:
+            request_payload["split_code"] = normalized_split_code
         payload = self._request(
             "POST",
             "/transaction/initialize",
-            json={
-                "email": email,
-                "amount": str(amount),
-                "currency": currency,
-                "reference": reference,
-                "callback_url": callback_url,
-                "metadata": metadata,
-            },
+            json=request_payload,
         )
         data = _response_data(payload)
         authorization_url = _text(data.get("authorization_url"))

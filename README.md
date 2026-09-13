@@ -135,7 +135,7 @@ metadata is stored in PostgreSQL. In particular:
 
 - `MIKROTIK_USERNAME` and `MIKROTIK_PASSWORD` are shared RouterOS credentials.
 - The `routers` table is the single runtime source for router IDs, hostel names, VPN hosts,
-  API ports, hotspot networks, display order, active state, and health.
+  API ports, hotspot networks, Paystack split codes, display order, active state, and health.
 - `MIKROTIK_ROUTERS_JSON` is supported only as a legacy one-time import input and is never
   used for runtime router resolution.
 - `DATABASE_URL` is a PostgreSQL SQLAlchemy URL such as
@@ -155,6 +155,8 @@ metadata is stored in PostgreSQL. In particular:
 - `PAYSTACK_SECRET_KEY` and `PAYSTACK_PUBLIC_KEY` hold keys from the same Paystack mode.
   `PAYSTACK_CALLBACK_URL` must be the public HTTPS backend callback URL. Paystack signs
   webhooks with the secret key, so `PAYSTACK_WEBHOOK_SECRET` normally stays empty.
+- Each hostel's optional Paystack split code is managed from its admin details. When set,
+  it is sent server-side while initializing purchases for customers assigned to that hostel.
 
 For local Paystack testing, expose backend port 8000 through an HTTPS tunnel and configure
 these two URLs in the Paystack dashboard, replacing `YOUR_TUNNEL_HOST` with the active host:
@@ -201,6 +203,7 @@ Manage routers from the backend directory. These commands never store router cre
   --host 10.0.0.10 `
   --port 8728 `
   --network 192.168.100.0/24 `
+  --split-code SPL_xxxxxxxxxx `
   --order 10
 
 # One-time migration from an existing MIKROTIK_ROUTERS_JSON value
