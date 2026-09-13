@@ -398,12 +398,12 @@
   text-decoration: underline;
 }
 
-.login-container {
-  width: min(668px, 100%);
+.login-page .login-container {
+  width: min(500px, 100%);
 }
 
-.login-card {
-  padding: clamp(2.25rem, 4.5vw, 3.25rem) clamp(1.5rem, 5vw, 3rem) 2rem;
+.login-page .login-card {
+  padding: 2rem;
 }
 
 .login-form {
@@ -462,7 +462,7 @@
   box-shadow: 0 22px 55px rgba(38, 75, 132, 0.12), 0 3px 14px rgba(42, 73, 116, 0.04);
 }
 
-.login-header { margin-bottom: 2.35rem; text-align: center; }
+.login-header { margin-bottom: 1.5rem; text-align: center; }
 
 .login-brand {
   display: inline-flex;
@@ -473,34 +473,34 @@
   text-decoration: none;
 }
 
-.login-logo-mark { display: block; width: 88px; height: 66px; color: #2161f5; }
+.login-logo-mark { display: block; width: 56px; height: 42px; color: #2161f5; }
 .login-logo-mark svg { display: block; width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-linecap: round; stroke-width: 8.5; }
 .login-logo-mark circle { fill: currentColor; stroke: none; }
 
 .login-brand-name {
   font-family: 'Poppins', 'Inter', sans-serif;
-  font-size: clamp(2rem, 5vw, 2.45rem);
+  font-size: 1.6rem;
   font-weight: 700;
   letter-spacing: -0.045em;
   line-height: 1;
 }
 
 .login-brand-name strong { color: #1458f5; font-weight: 700; }
-.login-header p { margin-top: 0.95rem; color: #647596; font-size: 0.95rem; line-height: 1.6; }
+.login-header p { margin-top: 0.65rem; color: #647596; font-size: 0.8rem; line-height: 1.6; }
 
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-.login-page .login-form { gap: 1.35rem; }
-.login-page .signup-field { gap: 0.55rem; }
-.login-page .signup-field > label { color: #11162f; font-size: 0.92rem; font-weight: 700; }
+.login-page .login-form { gap: 1.1rem; }
+.login-page .signup-field { gap: 0.4rem; }
+.login-page .signup-field > label { color: #11162f; font-size: 0.79rem; font-weight: 700; }
 
 .login-input-shell {
   display: flex;
   width: 100%;
-  min-height: 60px;
+  min-height: 52px;
   align-items: stretch;
   overflow: hidden;
   border: 1px solid #ced8e8;
-  border-radius: 13px;
+  border-radius: 10px;
   background: #fff;
   transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
@@ -510,8 +510,8 @@
 
 .login-field-icon {
   display: grid;
-  width: 66px;
-  flex: 0 0 66px;
+  width: 52px;
+  flex: 0 0 52px;
   place-items: center;
   border-right: 1px solid #edf1f7;
   color: #7181a2;
@@ -519,18 +519,18 @@
 }
 
 .login-field-icon svg,
-.login-pin-toggle svg { width: 25px; height: 25px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+.login-pin-toggle svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
 
 .login-input-shell input {
   width: 100%;
   min-width: 0;
-  padding: 0 1.2rem;
+  padding: 0 0.95rem;
   border: 0;
   outline: 0;
   color: #17203a;
   background: transparent;
   font: inherit;
-  font-size: 0.94rem;
+  font-size: 0.9rem;
 }
 
 .login-input-shell input::placeholder { color: #8795b2; opacity: 1; }
@@ -538,8 +538,8 @@
 
 .login-pin-toggle {
   display: grid;
-  width: 58px;
-  flex: 0 0 58px;
+  width: 46px;
+  flex: 0 0 46px;
   place-items: center;
   border: 0;
   color: #7181a2;
@@ -550,22 +550,22 @@
 
 .login-pin-toggle:hover { color: #2161f5; background: #f8faff; }
 .login-pin-toggle:focus-visible { outline: 2px solid #2161f5; outline-offset: -5px; }
-.login-page .login-recovery-link { align-self: flex-end; margin-top: 0.05rem; color: #0758f5; font-size: 0.76rem; font-weight: 600; }
-.login-page .remember-checkbox { align-items: center; margin-top: -0.25rem; color: #5f708f; font-size: 0.84rem; cursor: pointer; }
-.login-page .remember-checkbox input { width: 24px; height: 24px; margin: 0; cursor: pointer; }
+.login-page .login-recovery-link { align-self: flex-end; margin-top: 0.05rem; color: #0758f5; font-size: 0.72rem; font-weight: 600; }
+.login-page .remember-checkbox { align-items: center; margin-top: -0.15rem; color: #5f708f; font-size: 0.76rem; cursor: pointer; }
+.login-page .remember-checkbox input { width: 18px; height: 18px; margin: 0; cursor: pointer; }
 
 .login-page .signup-submit {
   display: flex;
-  min-height: 62px;
+  min-height: 52px;
   align-items: center;
   justify-content: center;
-  gap: 1.65rem;
+  gap: 0.6rem;
   margin-top: -0.15rem;
-  border-radius: 24px;
+  border-radius: 10px;
   background: linear-gradient(100deg, #2859f4 0%, #1670f5 100%);
   box-shadow: 0 9px 18px rgba(31, 96, 241, 0.18);
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 0.86rem;
+  font-weight: 700;
 }
 
 .login-page .signup-submit svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
@@ -583,7 +583,7 @@
 }
 .login-page .signup-submit:hover:not(:disabled) { background: linear-gradient(100deg, #1c4fe5 0%, #0867ed 100%); box-shadow: 0 12px 22px rgba(31, 96, 241, 0.25); }
 
-.login-divider { display: flex; align-items: center; gap: 1rem; margin-top: 2rem; color: #627291; font-size: 0.76rem; font-weight: 600; }
+.login-divider { display: flex; align-items: center; gap: 1rem; margin-top: 1.5rem; color: #627291; font-size: 0.7rem; font-weight: 600; }
 .login-divider::before,
 .login-divider::after { height: 1px; flex: 1; background: #dbe2ed; content: ''; }
 
@@ -607,14 +607,14 @@
   text-decoration: none;
 }
 
-.login-card .auth-legal-links {
+.login-page .login-card .auth-legal-links {
   gap: 0.75rem;
-  margin-top: 2rem;
+  margin-top: 1.25rem;
   color: #657493;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
 }
 
-.login-card .auth-legal-links a { color: #657493; font-weight: 500; }
+.login-page .login-card .auth-legal-links a { color: #657493; font-weight: 500; }
 
 .legal-shell {
   width: min(900px, 100%);
@@ -705,9 +705,9 @@
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
-  margin-top: 1.4rem;
+  margin-top: 1rem;
   color: #667795;
-  font-size: 0.84rem;
+  font-size: 0.76rem;
 }
 
 .login-recovery-link,
@@ -939,7 +939,7 @@
     padding: 1.4rem;
   }
 
-  .login-card {
+  .login-page .login-card {
     padding: 1.4rem;
   }
 
