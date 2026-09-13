@@ -17,6 +17,7 @@ class AdminHostelSummary(BaseModel):
     vpn_host: str
     api_port: int
     hotspot_network: str | None
+    paystack_split_code: str | None
     display_order: int
     status: RouterStatus
     is_active: bool
@@ -33,6 +34,7 @@ class AdminHostelUpdate(BaseModel):
     vpn_host: str = Field(min_length=1, max_length=255)
     api_port: int = Field(gt=0, le=65535)
     hotspot_network: str | None = Field(default=None, max_length=255)
+    paystack_split_code: str | None = Field(default=None, max_length=120)
     display_order: int = Field(ge=0)
     is_active: bool
 
@@ -41,7 +43,7 @@ class AdminHostelUpdate(BaseModel):
     def normalize_name(cls, value: str) -> str:
         return " ".join(value.split())
 
-    @field_validator("location", "hotspot_network")
+    @field_validator("location", "hotspot_network", "paystack_split_code")
     @classmethod
     def normalize_optional_text(cls, value: str | None) -> str | None:
         normalized = " ".join(value.split()) if value else ""

@@ -31,6 +31,10 @@ class Router(TimestampMixin, Base):
             "hotspot_network IS NULL OR char_length(hotspot_network) > 0",
             name="router_hotspot_network_not_blank",
         ),
+        CheckConstraint(
+            "paystack_split_code IS NULL OR char_length(paystack_split_code) > 0",
+            name="router_paystack_split_code_not_blank",
+        ),
         CheckConstraint("display_order >= 0", name="router_display_order_non_negative"),
     )
 
@@ -40,6 +44,7 @@ class Router(TimestampMixin, Base):
     vpn_host: Mapped[str] = mapped_column(String(255), unique=True)
     api_port: Mapped[int] = mapped_column(Integer, default=8728, server_default="8728")
     hotspot_network: Mapped[str | None] = mapped_column(String(255))
+    paystack_split_code: Mapped[str | None] = mapped_column(String(120))
     display_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     location: Mapped[str | None] = mapped_column(String(255))
     status: Mapped[RouterStatus] = mapped_column(

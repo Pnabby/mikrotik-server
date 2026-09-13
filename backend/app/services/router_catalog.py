@@ -25,6 +25,7 @@ class RouterCatalogEntry:
     hotspot_network: str
     display_order: int = 0
     location: str | None = None
+    paystack_split_code: str | None = None
 
     @classmethod
     def from_legacy_settings(
@@ -48,6 +49,7 @@ class RouterCatalogEntry:
         host = self.host.strip()
         hotspot_network = self.hotspot_network.strip()
         location = self.location.strip() if self.location else None
+        paystack_split_code = self.paystack_split_code.strip() if self.paystack_split_code else None
         if not ROUTER_ID_PATTERN.fullmatch(router_id):
             raise RouterCatalogError(
                 "Router IDs must contain only lowercase letters, numbers, and hyphens."
@@ -66,6 +68,7 @@ class RouterCatalogEntry:
             hotspot_network=hotspot_network,
             display_order=self.display_order,
             location=location,
+            paystack_split_code=paystack_split_code,
         )
 
 
@@ -81,6 +84,10 @@ def upsert_router(session: Session, entry: RouterCatalogEntry) -> Router:
     router.hotspot_network = validated.hotspot_network
     router.display_order = validated.display_order
     router.location = validated.location
+    # Legacy imports and older CLI calls have no split code; preserve any code
+    # already configured through the hostel details screen in that case.
+    if validated.paystack_split_code is not None:
+        router.paystack_split_code = validated.paystack_split_code
     router.is_active = True
     return router
 

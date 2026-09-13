@@ -29,6 +29,7 @@ class SeedHostel(BaseModel):
     vpn_host: str = Field(min_length=1, max_length=255)
     api_port: int = Field(gt=0, le=65535)
     hotspot_network: str | None = Field(default=None, max_length=255)
+    paystack_split_code: str | None = Field(default=None, max_length=120)
     display_order: int = Field(ge=0)
     is_active: bool = True
 
@@ -87,6 +88,7 @@ def export_seed_document(session: Session) -> SeedDocument:
                 vpn_host=hostel.vpn_host,
                 api_port=hostel.api_port,
                 hotspot_network=hostel.hotspot_network,
+                paystack_split_code=hostel.paystack_split_code,
                 display_order=hostel.display_order,
                 is_active=hostel.is_active,
             )
@@ -115,6 +117,10 @@ def import_seed_document(session: Session, document: SeedDocument) -> tuple[int,
         hostel.vpn_host = seed_hostel.vpn_host
         hostel.api_port = seed_hostel.api_port
         hostel.hotspot_network = seed_hostel.hotspot_network
+        # Version 1 bundles created before this field existed must not erase a
+        # split code that was configured later through the admin application.
+        if "paystack_split_code" in seed_hostel.model_fields_set:
+            hostel.paystack_split_code = seed_hostel.paystack_split_code
         hostel.display_order = seed_hostel.display_order
         hostel.is_active = seed_hostel.is_active
 

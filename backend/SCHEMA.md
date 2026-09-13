@@ -8,8 +8,9 @@ payment remains recoverable when RouterOS is offline or returns an uncertain res
 ## Core records
 
 - `routers` is the runtime source for each site's identity, display name, VPN host, API
-  port, hotspot network, display order, active state, and health. Shared credentials remain
-  outside the database in environment secrets.
+  port, hotspot network, Paystack split code, display order, active state, and health. Shared
+  credentials remain outside the database in environment secrets. A configured split code is
+  applied only to checkout initialization for a customer assigned to that router.
 - `packages` stores business terms; `router_package_profiles` maps each package to the
   exact MikroTik profile available on a router and stores the hostel-specific display name,
   description, and customer-facing download speed. Package validity is optional for plans
