@@ -56,6 +56,17 @@ def active_identity_sets(
     return usernames, device_keys
 
 
+def enabled_hotspot_usernames(users: list[dict[str, str]]) -> set[str]:
+    """Return unique RouterOS HotSpot users that are not disabled."""
+    disabled_values = {"1", "on", "true", "yes"}
+    return {
+        str(item.get("name", "")).strip().casefold()
+        for item in users
+        if str(item.get("name", "")).strip()
+        and str(item.get("disabled", "no")).strip().casefold() not in disabled_values
+    }
+
+
 def _optional_text(value: object) -> str | None:
     normalized = str(value).strip() if value is not None else ""
     return normalized or None
@@ -168,7 +179,6 @@ class AdminDashboardService:
             active_device_keys.update(device_keys)
 
         customer_filter = Customer.router_id.in_(router_ids)
-        subscription_filter = Subscription.router_id.in_(router_ids)
         transaction_filter = Transaction.router_id.in_(router_ids)
 
         total_users = self.session.scalar(
@@ -180,12 +190,7 @@ class AdminDashboardService:
                 Customer.account_status == AccountStatus.ACTIVE,
             )
         ) or 0
-        active_subscriptions = self.session.scalar(
-            select(func.count(Subscription.id)).where(
-                subscription_filter,
-                Subscription.status == SubscriptionStatus.ACTIVE,
-            )
-        ) or 0
+        active_subscriptions = sum(status.active_subscriptions for status in live_statuses)
 
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         month_start = today_start.replace(day=1)
@@ -610,14 +615,8 @@ class AdminDashboardService:
             self.session.scalar(select(func.count(Customer.id)).where(*conditions)) or 0
         )
         total_users = int(self.session.scalar(select(func.count(Customer.id)).where(scope)) or 0)
-        active_subscriptions = int(
-            self.session.scalar(
-                select(func.count(Subscription.id)).where(
-                    Subscription.router_id.in_(router_ids),
-                    Subscription.status == SubscriptionStatus.ACTIVE,
-                )
-            )
-            or 0
+        active_subscriptions = sum(
+            live_status.active_subscriptions for live_status, _sessions in live_results
         )
         device_counts: dict[tuple[str, str], int] = {}
         for device_router_id, _session_id, username, _item in device_rows:
@@ -744,6 +743,7 @@ class AdminDashboardService:
                     reachable=False,
                     active_users=0,
                     active_devices=0,
+                    active_subscriptions=0,
                     error="Hostel is inactive or not fully configured.",
                 ),
                 set(),
@@ -753,6 +753,7 @@ class AdminDashboardService:
         try:
             with mikrotik_client_context(self._definition(router)) as client:
                 sessions = client.get_hotspot_active_sessions()
+                hotspot_users = client.get_hotspot_users()
         except HTTPException:
             return (
                 DashboardRouterStatus(
@@ -761,6 +762,7 @@ class AdminDashboardService:
                     reachable=False,
                     active_users=0,
                     active_devices=0,
+                    active_subscriptions=0,
                     error="Router could not be reached.",
                 ),
                 set(),
@@ -768,6 +770,7 @@ class AdminDashboardService:
             )
 
         usernames, device_keys = active_identity_sets(router.id, sessions)
+        enabled_usernames = enabled_hotspot_usernames(hotspot_users)
         return (
             DashboardRouterStatus(
                 router_id=router.id,
@@ -775,6 +778,7 @@ class AdminDashboardService:
                 reachable=True,
                 active_users=len(usernames),
                 active_devices=len(device_keys),
+                active_subscriptions=len(enabled_usernames),
             ),
             usernames,
             device_keys,
@@ -791,6 +795,7 @@ class AdminDashboardService:
                     reachable=False,
                     active_users=0,
                     active_devices=0,
+                    active_subscriptions=0,
                     error="Hostel is inactive or not fully configured.",
                 ),
                 [],
@@ -798,6 +803,7 @@ class AdminDashboardService:
         try:
             with mikrotik_client_context(self._definition(router)) as client:
                 sessions = client.get_hotspot_active_sessions()
+                hotspot_users = client.get_hotspot_users()
         except HTTPException:
             return (
                 DashboardRouterStatus(
@@ -806,11 +812,13 @@ class AdminDashboardService:
                     reachable=False,
                     active_users=0,
                     active_devices=0,
+                    active_subscriptions=0,
                     error="Router could not be reached.",
                 ),
                 [],
             )
         usernames, device_keys = active_identity_sets(router.id, sessions)
+        enabled_usernames = enabled_hotspot_usernames(hotspot_users)
         return (
             DashboardRouterStatus(
                 router_id=router.id,
@@ -818,6 +826,7 @@ class AdminDashboardService:
                 reachable=True,
                 active_users=len(usernames),
                 active_devices=len(device_keys),
+                active_subscriptions=len(enabled_usernames),
             ),
             sessions,
         )

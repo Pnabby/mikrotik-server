@@ -2,7 +2,11 @@ from contextlib import contextmanager
 
 from app.main import app
 from app.models.router import Router
-from app.services.admin_dashboard import AdminDashboardService, active_identity_sets
+from app.services.admin_dashboard import (
+    AdminDashboardService,
+    active_identity_sets,
+    enabled_hotspot_usernames,
+)
 
 
 def test_dashboard_route_is_registered() -> None:
@@ -37,6 +41,49 @@ def test_device_identity_is_scoped_to_router() -> None:
     _, second_router_devices = active_identity_sets("hostel-two", session)
 
     assert len(first_router_devices | second_router_devices) == 2
+
+
+def test_enabled_hotspot_usernames_excludes_disabled_and_deduplicates() -> None:
+    users = [
+        {"name": "Alice", "disabled": "false"},
+        {"name": " alice ", "disabled": "no"},
+        {"name": "bob", "disabled": "true"},
+        {"name": "carol", "disabled": "yes"},
+        {"name": "david", "disabled": "0"},
+        {"name": "", "disabled": "false"},
+    ]
+
+    assert enabled_hotspot_usernames(users) == {"alice", "david"}
+
+
+def test_live_router_status_counts_enabled_hotspot_users(monkeypatch) -> None:
+    class FakeClient:
+        def get_hotspot_active_sessions(self):
+            return [{"user": "alice", "mac-address": "AA:AA:AA:AA:AA:AA"}]
+
+        def get_hotspot_users(self):
+            return [
+                {"name": "alice", "disabled": "false"},
+                {"name": "bob", "disabled": "true"},
+                {"name": "carol", "disabled": "no"},
+            ]
+
+    @contextmanager
+    def fake_context(_definition):
+        yield FakeClient()
+
+    monkeypatch.setattr("app.services.admin_dashboard.mikrotik_client_context", fake_context)
+    hostel = Router(
+        id="hall", name="Hall", vpn_host="hall.example", api_port=8728,
+        hotspot_network="192.168.88.0/23", is_active=True,
+    )
+
+    status, usernames, devices = AdminDashboardService(None)._live_router_status(hostel)
+
+    assert status.reachable is True
+    assert status.active_subscriptions == 2
+    assert usernames == {"alice"}
+    assert len(devices) == 1
 
 
 def test_access_points_only_include_leases_in_range_and_use_active_mac(monkeypatch) -> None:
