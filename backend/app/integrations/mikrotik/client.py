@@ -182,6 +182,11 @@ class MikroTikClient:
 
         return users[0]
 
+    def get_hotspot_users(self) -> list[dict[str, str]]:
+        """Return every HotSpot user so callers can inspect RouterOS account state."""
+        api = self.connect()
+        return [dict(user) for user in api.get_resource("/ip/hotspot/user").get()]
+
     def get_hotspot_user_profile(self, profile: str) -> dict[str, str] | None:
         api = self.connect()
         normalized_profile = _normalize_routeros_name(profile)

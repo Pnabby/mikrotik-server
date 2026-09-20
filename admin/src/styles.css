@@ -1472,6 +1472,10 @@ a:focus-visible {
 .admin-data-filters > div { display: flex; grid-column: span 2; align-items: end; justify-content: flex-end; gap: 0.5rem; }
 .admin-data-filters button { min-height: 41px; padding: 0 0.9rem; border: 1px solid #dcd8e9; border-radius: 8px; color: #635f70; background: #fff; font-size: 0.62rem; font-weight: 800; cursor: pointer; }
 .admin-data-filters button.primary { border-color: #6047d8; color: #fff; background: linear-gradient(135deg, #6047d8, #4933b8); }
+.admin-data-filters.revenue-filters-compact { grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr) minmax(260px, 2fr) auto; }
+.admin-data-filters.revenue-filters-compact .admin-filter-search,
+.admin-data-filters.revenue-filters-compact > div { grid-column: auto; }
+.admin-data-filters.revenue-filters-compact > div { white-space: nowrap; }
 .revenue-date-presets { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1.5rem; padding: 0.65rem 0.75rem 0.65rem 1rem; border: 1px solid var(--dashboard-line); border-radius: 12px; background: #fff; box-shadow: 0 6px 18px rgba(34, 35, 58, 0.03); }
 .revenue-date-presets > span { color: #686375; font-size: 0.61rem; font-weight: 800; }
 .revenue-date-presets > div { display: flex; gap: 0.25rem; padding: 0.2rem; border-radius: 9px; background: #f4f3f7; }
@@ -2897,6 +2901,9 @@ a:focus-visible {
   .revenue-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-data-filters,
   .customer-filters { grid-template-columns: repeat(2, minmax(145px, 1fr)); }
+  .admin-data-filters.revenue-filters-compact { grid-template-columns: repeat(2, minmax(145px, 1fr)); }
+  .admin-data-filters.revenue-filters-compact .admin-filter-search,
+  .admin-data-filters.revenue-filters-compact > div { grid-column: span 2; }
 
   .profiles-table th:nth-child(2),
   .profiles-table td:nth-child(2) {
@@ -3057,6 +3064,9 @@ a:focus-visible {
 
   .admin-data-filters,
   .customer-filters { grid-template-columns: 1fr; }
+  .admin-data-filters.revenue-filters-compact { grid-template-columns: 1fr; }
+  .admin-data-filters.revenue-filters-compact .admin-filter-search,
+  .admin-data-filters.revenue-filters-compact > div { grid-column: auto; }
   .admin-data-filters .admin-filter-search,
   .admin-data-filters > div { grid-column: auto; }
   .admin-data-filters > div { align-items: stretch; }

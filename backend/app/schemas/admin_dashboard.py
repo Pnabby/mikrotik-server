@@ -23,6 +23,7 @@ class DashboardRouterStatus(BaseModel):
     reachable: bool
     active_users: int
     active_devices: int
+    active_subscriptions: int
     error: str | None = None
 
 
