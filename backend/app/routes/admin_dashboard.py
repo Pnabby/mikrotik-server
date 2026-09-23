@@ -83,11 +83,20 @@ def get_analytics(
     _admin: AdminDependency,
     session: SessionDependency,
     router_id: str | None = Query(default=None, max_length=64),
-    days: int = Query(default=30, ge=7, le=365),
+    days: int = Query(default=30, ge=1, le=3650),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    all_time: bool = False,
 ) -> AdminAnalyticsResponse:
     if router_id is not None and session.get(Router, router_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-    return AdminDashboardService(session).analytics(router_id=router_id, days=days)
+    return AdminDashboardService(session).analytics(
+        router_id=router_id,
+        days=days,
+        date_from=date_from,
+        date_to=date_to,
+        all_time=all_time,
+    )
 
 
 @router.get("/transactions", response_model=AdminTransactionListResponse)
