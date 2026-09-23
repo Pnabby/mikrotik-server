@@ -144,6 +144,53 @@ class MikroTikClient:
         api = self.connect()
         return api.get_resource("/interface").get()
 
+    def get_interface_traffic(self, interface_name: str) -> dict[str, int | str | bool]:
+        """Return live throughput and cumulative counters for one RouterOS interface."""
+        normalized_name = _normalize_routeros_name(interface_name)
+        if not normalized_name:
+            raise ValueError("An interface name is required.")
+
+        interface_resource = self.connect().get_resource("/interface")
+        interfaces = interface_resource.get(name=normalized_name)
+        if not interfaces:
+            interfaces = [
+                item
+                for item in interface_resource.get()
+                if _normalize_routeros_name(item.get("name")).casefold()
+                == normalized_name.casefold()
+            ]
+        if not interfaces:
+            raise RouterOsApiError(f"Interface {normalized_name} was not found.")
+
+        interface = interfaces[0]
+        samples = interface_resource.call(
+            "monitor-traffic",
+            {"interface": normalized_name, "once": ""},
+        )
+        sample = next(iter(samples), {})
+        disabled = str(interface.get("disabled", "no")).strip().casefold() in {
+            "1",
+            "on",
+            "true",
+            "yes",
+        }
+        running = str(interface.get("running", "no")).strip().casefold() in {
+            "1",
+            "on",
+            "true",
+            "yes",
+        }
+        return {
+            "name": str(interface.get("name") or normalized_name),
+            "type": str(interface.get("type") or "ether"),
+            "running": running,
+            "disabled": disabled,
+            "download_bps": _parse_routeros_int(sample.get("rx-bits-per-second")),
+            "upload_bps": _parse_routeros_int(sample.get("tx-bits-per-second")),
+            "download_bytes": _parse_routeros_int(interface.get("rx-byte")),
+            "upload_bytes": _parse_routeros_int(interface.get("tx-byte")),
+        }
+
     def get_dhcp_leases(self) -> list[dict[str, str]]:
         """Return DHCP leases, including RouterOS active address/MAC fields."""
         api = self.connect()

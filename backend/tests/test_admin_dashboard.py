@@ -1,5 +1,6 @@
 from contextlib import contextmanager
 
+from app.integrations.mikrotik.client import MikroTikClient, MikroTikConfig
 from app.main import app
 from app.models.router import Router
 from app.services.admin_dashboard import (
@@ -14,8 +15,10 @@ def test_dashboard_route_is_registered() -> None:
 
     assert "/api/admin/dashboard" in paths
     assert "/api/admin/dashboard/transactions" in paths
+    assert "/api/admin/dashboard/analytics" in paths
     assert "/api/admin/dashboard/customers" in paths
     assert "/api/admin/dashboard/access-points" in paths
+    assert "/api/admin/dashboard/network-usage" in paths
     assert "/api/payments/claim-free" in paths
     assert "/api/payments/claim-free/{reference}/retry" in paths
 
@@ -84,6 +87,78 @@ def test_live_router_status_counts_enabled_hotspot_users(monkeypatch) -> None:
     assert status.active_subscriptions == 2
     assert usernames == {"alice"}
     assert len(devices) == 1
+
+
+def test_network_usage_maps_ether1_live_and_total_traffic(monkeypatch) -> None:
+    class FakeClient:
+        def get_interface_traffic(self, interface_name):
+            assert interface_name == "ether1"
+            return {
+                "name": "ether1",
+                "type": "ether",
+                "running": True,
+                "disabled": False,
+                "download_bps": 8_000_000,
+                "upload_bps": 2_000_000,
+                "download_bytes": 12_000_000_000,
+                "upload_bytes": 3_000_000_000,
+            }
+
+    @contextmanager
+    def fake_context(_definition):
+        yield FakeClient()
+
+    monkeypatch.setattr("app.services.admin_dashboard.mikrotik_client_context", fake_context)
+    hostel = Router(
+        id="hall", name="Hall", vpn_host="hall.example", api_port=8728,
+        hotspot_network="192.168.88.0/23", is_active=True,
+    )
+
+    result = AdminDashboardService(None).network_usage(hostel)
+
+    assert result.router_reachable is True
+    assert result.interface_running is True
+    assert result.download_bps == 8_000_000
+    assert result.upload_bps == 2_000_000
+    assert result.total_usage_bytes == 15_000_000_000
+
+
+def test_mikrotik_client_reads_interface_counters_and_live_rates(monkeypatch) -> None:
+    class FakeInterfaceResource:
+        def get(self, **filters):
+            assert filters == {"name": "ether1"}
+            return [{
+                "name": "ether1",
+                "type": "ether",
+                "running": "true",
+                "disabled": "false",
+                "rx-byte": "12000",
+                "tx-byte": "3000",
+            }]
+
+        def call(self, command, arguments):
+            assert command == "monitor-traffic"
+            assert arguments == {"interface": "ether1", "once": ""}
+            return [{
+                "rx-bits-per-second": "8000000",
+                "tx-bits-per-second": "2000000",
+            }]
+
+    class FakeApi:
+        def get_resource(self, path):
+            assert path == "/interface"
+            return FakeInterfaceResource()
+
+    client = MikroTikClient(MikroTikConfig(host="router", username="admin", password="secret"))
+    monkeypatch.setattr(client, "connect", lambda: FakeApi())
+
+    traffic = client.get_interface_traffic("ether1")
+
+    assert traffic["running"] is True
+    assert traffic["download_bps"] == 8_000_000
+    assert traffic["upload_bps"] == 2_000_000
+    assert traffic["download_bytes"] == 12_000
+    assert traffic["upload_bytes"] == 3_000
 
 
 def test_access_points_only_include_leases_in_range_and_use_active_mac(monkeypatch) -> None:

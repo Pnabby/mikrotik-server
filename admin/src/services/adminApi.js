@@ -50,8 +50,20 @@ export function getDashboard(routerId = null) {
   return request(`/api/admin/dashboard${query}`)
 }
 
+export function getAnalytics(filters = {}) {
+  const query = new URLSearchParams()
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== '' && value !== null && value !== undefined) query.set(key, value)
+  })
+  return request(`/api/admin/dashboard/analytics${query.size ? `?${query}` : ''}`)
+}
+
 export function getAccessPoints(routerId) {
   return request(`/api/admin/dashboard/access-points?router_id=${encodeURIComponent(routerId)}`)
+}
+
+export function getNetworkUsage(routerId) {
+  return request(`/api/admin/dashboard/network-usage?router_id=${encodeURIComponent(routerId)}`)
 }
 
 export function getTransactions(filters = {}) {

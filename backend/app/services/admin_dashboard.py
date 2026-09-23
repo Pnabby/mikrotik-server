@@ -21,17 +21,20 @@ from app.models.transaction import Transaction
 from app.schemas.admin_dashboard import (
     AdminAccessPointListResponse,
     AdminAccessPointStatus,
+    AdminAnalyticsResponse,
     AdminConnectedDevice,
     AdminCustomerDetail,
     AdminCustomerDirectoryResponse,
     AdminDashboardResponse,
+    AdminHostelAnalytics,
     AdminHostelRevenue,
+    AdminNetworkUsageResponse,
     AdminPlanRevenue,
     AdminTransactionDetail,
     AdminTransactionListResponse,
+    AnalyticsDailyPoint,
     DashboardRevenue,
     DashboardRouterStatus,
-    DashboardTransaction,
 )
 
 
@@ -160,10 +163,71 @@ class AdminDashboardService:
             offline_count=len(points), access_points=points,
         )
 
+    def network_usage(self, router: Router) -> AdminNetworkUsageResponse:
+        """Read live and cumulative WAN traffic from the hostel's ether1 interface."""
+        if not router.is_active:
+            return self._network_usage_response(
+                router,
+                error="The hostel router is inactive.",
+            )
+        try:
+            with mikrotik_client_context(self._definition(router)) as client:
+                traffic = client.get_interface_traffic("ether1")
+        except (HTTPException, ValueError):
+            return self._network_usage_response(
+                router,
+                error="Router or ether1 traffic counters could not be reached.",
+            )
+
+        download_bytes = int(traffic["download_bytes"])
+        upload_bytes = int(traffic["upload_bytes"])
+        return AdminNetworkUsageResponse(
+            generated_at=datetime.now(UTC),
+            router_id=router.id,
+            hostel_name=router.name,
+            interface_name=str(traffic["name"]),
+            router_reachable=True,
+            interface_running=bool(traffic["running"]) and not bool(traffic["disabled"]),
+            download_bps=int(traffic["download_bps"]),
+            upload_bps=int(traffic["upload_bps"]),
+            total_download_bytes=download_bytes,
+            total_upload_bytes=upload_bytes,
+            total_usage_bytes=download_bytes + upload_bytes,
+        )
+
+    @staticmethod
+    def _network_usage_response(
+        router: Router,
+        *,
+        error: str,
+    ) -> AdminNetworkUsageResponse:
+        return AdminNetworkUsageResponse(
+            generated_at=datetime.now(UTC),
+            router_id=router.id,
+            hostel_name=router.name,
+            interface_name="ether1",
+            router_reachable=False,
+            interface_running=False,
+            error=error,
+            download_bps=0,
+            upload_bps=0,
+            total_download_bytes=0,
+            total_upload_bytes=0,
+            total_usage_bytes=0,
+        )
+
     def summary(self, router_id: str | None = None) -> AdminDashboardResponse:
         now = datetime.now(UTC)
         routers = self._routers(router_id)
         router_ids = [router.id for router in routers]
+        customer_filter = Customer.router_id.in_(router_ids)
+        user_counts_by_router = dict(
+            self.session.execute(
+                select(Customer.router_id, func.count(Customer.id))
+                .where(customer_filter)
+                .group_by(Customer.router_id)
+            ).all()
+        )
 
         live_statuses: list[DashboardRouterStatus] = []
         active_usernames: set[str] = set()
@@ -174,11 +238,11 @@ class AdminDashboardService:
         else:
             live_results = []
         for status, usernames, device_keys in live_results:
+            status.total_users = user_counts_by_router.get(status.router_id, 0)
             live_statuses.append(status)
             active_usernames.update(usernames)
             active_device_keys.update(device_keys)
 
-        customer_filter = Customer.router_id.in_(router_ids)
         transaction_filter = Transaction.router_id.in_(router_ids)
 
         total_users = self.session.scalar(
@@ -194,6 +258,7 @@ class AdminDashboardService:
 
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         month_start = today_start.replace(day=1)
+        seven_day_start = today_start.date() - timedelta(days=6)
 
         return AdminDashboardResponse(
             generated_at=now,
@@ -217,9 +282,204 @@ class AdminDashboardService:
                     transaction_filter, PaymentStatus.PENDING
                 ),
             ),
+            revenue_last_7_days=self._daily_analytics(
+                router_ids,
+                seven_day_start,
+                today_start.date(),
+            ),
             routers=live_statuses,
-            recent_transactions=self._recent_transactions(transaction_filter),
         )
+
+    def analytics(self, *, router_id: str | None, days: int) -> AdminAnalyticsResponse:
+        now = datetime.now(UTC)
+        date_to = now.date()
+        date_from = date_to - timedelta(days=days - 1)
+        previous_to = date_from - timedelta(days=1)
+        previous_from = previous_to - timedelta(days=days - 1)
+        routers = self._routers(router_id, include_inactive=True)
+        router_ids = [router.id for router in routers]
+
+        occurred_at = func.coalesce(Transaction.paid_at, Transaction.created_at)
+        current_start = datetime.combine(date_from, time.min, tzinfo=UTC)
+        current_end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=UTC)
+        previous_start = datetime.combine(previous_from, time.min, tzinfo=UTC)
+        previous_end = datetime.combine(previous_to + timedelta(days=1), time.min, tzinfo=UTC)
+        scope = Transaction.router_id.in_(router_ids)
+        current_conditions = [scope, occurred_at >= current_start, occurred_at < current_end]
+        previous_conditions = [
+            scope,
+            occurred_at >= previous_start,
+            occurred_at < previous_end,
+        ]
+        successful = Transaction.payment_status == PaymentStatus.SUCCESS
+
+        def revenue_for(conditions: list) -> dict[str, Decimal]:
+            return {
+                currency: amount or Decimal(0)
+                for currency, amount in self.session.execute(
+                    select(Transaction.currency, func.sum(Transaction.amount))
+                    .where(*conditions, successful)
+                    .group_by(Transaction.currency)
+                )
+            }
+
+        def successful_count(conditions: list) -> int:
+            return int(
+                self.session.scalar(
+                    select(func.count(Transaction.id)).where(*conditions, successful)
+                )
+                or 0
+            )
+
+        revenue = revenue_for(current_conditions)
+        previous_revenue = revenue_for(previous_conditions)
+        successful_sales = successful_count(current_conditions)
+        previous_successful_sales = successful_count(previous_conditions)
+        status_counts = {
+            payment_status: int(count)
+            for payment_status, count in self.session.execute(
+                select(Transaction.payment_status, func.count(Transaction.id))
+                .where(*current_conditions)
+                .group_by(Transaction.payment_status)
+            )
+        }
+        payment_attempts = sum(status_counts.values())
+        average_order_value = {
+            currency: Decimal(str(average or 0)).quantize(Decimal("0.01"))
+            for currency, average in self.session.execute(
+                select(Transaction.currency, func.avg(Transaction.amount))
+                .where(*current_conditions, successful)
+                .group_by(Transaction.currency)
+            )
+        }
+
+        customer_scope = Customer.router_id.in_(router_ids)
+        new_customers = int(
+            self.session.scalar(
+                select(func.count(Customer.id)).where(
+                    customer_scope,
+                    Customer.created_at >= current_start,
+                    Customer.created_at < current_end,
+                )
+            )
+            or 0
+        )
+        previous_new_customers = int(
+            self.session.scalar(
+                select(func.count(Customer.id)).where(
+                    customer_scope,
+                    Customer.created_at >= previous_start,
+                    Customer.created_at < previous_end,
+                )
+            )
+            or 0
+        )
+        total_customers = int(
+            self.session.scalar(select(func.count(Customer.id)).where(customer_scope)) or 0
+        )
+        user_counts = {
+            hostel_id: int(count)
+            for hostel_id, count in self.session.execute(
+                select(Customer.router_id, func.count(Customer.id))
+                .where(customer_scope)
+                .group_by(Customer.router_id)
+            )
+        }
+        hostel_performance = [
+            AdminHostelAnalytics(
+                hostel_id=hostel.hostel_id,
+                hostel_name=hostel.hostel_name,
+                revenue=hostel.revenue,
+                successful_sales=hostel.successful_sales,
+                total_users=user_counts.get(hostel.hostel_id, 0),
+            )
+            for hostel in self._hostel_revenue(routers, current_conditions)
+        ]
+        primary_currency = max(revenue, key=lambda currency: revenue[currency], default="GHS")
+
+        return AdminAnalyticsResponse(
+            generated_at=now,
+            router_id=router_id,
+            period_days=days,
+            date_from=date_from,
+            date_to=date_to,
+            primary_currency=primary_currency,
+            revenue=revenue,
+            previous_revenue=previous_revenue,
+            average_order_value=average_order_value,
+            successful_sales=successful_sales,
+            previous_successful_sales=previous_successful_sales,
+            pending_payments=status_counts.get(PaymentStatus.PENDING, 0),
+            failed_payments=status_counts.get(PaymentStatus.FAILED, 0),
+            success_rate=round(successful_sales / payment_attempts * 100, 1)
+            if payment_attempts
+            else 0,
+            new_customers=new_customers,
+            previous_new_customers=previous_new_customers,
+            total_customers=total_customers,
+            daily=self._daily_analytics(router_ids, date_from, date_to),
+            plan_performance=self._plan_revenue(router_ids, current_conditions, search=""),
+            hostel_performance=hostel_performance,
+        )
+
+    def _daily_analytics(
+        self,
+        router_ids: list[str],
+        date_from: date,
+        date_to: date,
+    ) -> list[AnalyticsDailyPoint]:
+        occurred_at = func.coalesce(Transaction.paid_at, Transaction.created_at)
+        date_bucket = func.date(occurred_at)
+        start = datetime.combine(date_from, time.min, tzinfo=UTC)
+        end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=UTC)
+        points = {
+            date_from + timedelta(days=index): {
+                "revenue": {},
+                "successful_sales": 0,
+                "new_customers": 0,
+            }
+            for index in range((date_to - date_from).days + 1)
+        }
+
+        for day_value, currency, sales, revenue in self.session.execute(
+            select(
+                date_bucket,
+                Transaction.currency,
+                func.count(Transaction.id),
+                func.sum(Transaction.amount),
+            )
+            .where(
+                Transaction.router_id.in_(router_ids),
+                Transaction.payment_status == PaymentStatus.SUCCESS,
+                occurred_at >= start,
+                occurred_at < end,
+            )
+            .group_by(date_bucket, Transaction.currency)
+        ):
+            day = day_value if isinstance(day_value, date) else date.fromisoformat(str(day_value))
+            if day not in points:
+                continue
+            points[day]["revenue"][currency] = revenue or Decimal(0)
+            points[day]["successful_sales"] += int(sales)
+
+        customer_date_bucket = func.date(Customer.created_at)
+        for day_value, customers in self.session.execute(
+            select(customer_date_bucket, func.count(Customer.id))
+            .where(
+                Customer.router_id.in_(router_ids),
+                Customer.created_at >= start,
+                Customer.created_at < end,
+            )
+            .group_by(customer_date_bucket)
+        ):
+            day = day_value if isinstance(day_value, date) else date.fromisoformat(str(day_value))
+            if day in points:
+                points[day]["new_customers"] = int(customers)
+
+        return [
+            AnalyticsDailyPoint(date=day, **values)
+            for day, values in points.items()
+        ]
 
     def transactions(
         self,
@@ -857,25 +1117,3 @@ class AdminDashboardService:
         if since is not None:
             query = query.where(Transaction.paid_at >= since)
         return self.session.scalar(query) or 0
-
-    def _recent_transactions(self, scope_filter) -> list[DashboardTransaction]:
-        query = (
-            select(Transaction, Customer.username, Package.name)
-            .join(Customer, Transaction.customer_id == Customer.id)
-            .join(Package, Transaction.package_id == Package.id)
-            .where(scope_filter)
-            .order_by(func.coalesce(Transaction.paid_at, Transaction.created_at).desc())
-            .limit(6)
-        )
-        return [
-            DashboardTransaction(
-                reference=transaction.paystack_reference,
-                customer=username,
-                package=package_name,
-                amount=transaction.amount,
-                currency=transaction.currency,
-                status=transaction.payment_status,
-                occurred_at=transaction.paid_at or transaction.created_at,
-            )
-            for transaction, username, package_name in self.session.execute(query)
-        ]
