@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, SecretStr, field_validator
@@ -17,10 +17,18 @@ class DashboardRevenue(BaseModel):
     pending_payments: int
 
 
+class AnalyticsDailyPoint(BaseModel):
+    date: date
+    revenue: dict[str, Decimal]
+    successful_sales: int
+    new_customers: int
+
+
 class DashboardRouterStatus(BaseModel):
     router_id: str
     name: str
     reachable: bool
+    total_users: int = 0
     active_users: int
     active_devices: int
     active_subscriptions: int
@@ -52,14 +60,19 @@ class AdminAccessPointListResponse(BaseModel):
     access_points: list[AdminAccessPointStatus]
 
 
-class DashboardTransaction(BaseModel):
-    reference: str
-    customer: str
-    package: str
-    amount: Decimal
-    currency: str
-    status: PaymentStatus
-    occurred_at: datetime
+class AdminNetworkUsageResponse(BaseModel):
+    generated_at: datetime
+    router_id: str
+    hostel_name: str
+    interface_name: str
+    router_reachable: bool
+    interface_running: bool
+    error: str | None = None
+    download_bps: int
+    upload_bps: int
+    total_download_bytes: int
+    total_upload_bytes: int
+    total_usage_bytes: int
 
 
 class AdminTransactionDetail(BaseModel):
@@ -94,6 +107,33 @@ class AdminHostelRevenue(BaseModel):
     hostel_name: str
     revenue: dict[str, Decimal]
     successful_sales: int
+
+
+class AdminHostelAnalytics(AdminHostelRevenue):
+    total_users: int
+
+
+class AdminAnalyticsResponse(BaseModel):
+    generated_at: datetime
+    router_id: str | None
+    period_days: int
+    date_from: date
+    date_to: date
+    primary_currency: str
+    revenue: dict[str, Decimal]
+    previous_revenue: dict[str, Decimal]
+    average_order_value: dict[str, Decimal]
+    successful_sales: int
+    previous_successful_sales: int
+    pending_payments: int
+    failed_payments: int
+    success_rate: float
+    new_customers: int
+    previous_new_customers: int
+    total_customers: int
+    daily: list[AnalyticsDailyPoint]
+    plan_performance: list[AdminPlanRevenue]
+    hostel_performance: list[AdminHostelAnalytics]
 
 
 class AdminTransactionListResponse(BaseModel):
@@ -196,8 +236,8 @@ class AdminDashboardResponse(BaseModel):
     active_devices: int
     active_subscriptions: int
     revenue: DashboardRevenue
+    revenue_last_7_days: list[AnalyticsDailyPoint]
     routers: list[DashboardRouterStatus]
-    recent_transactions: list[DashboardTransaction]
 
 
 class AdminBroadcastRequest(BaseModel):

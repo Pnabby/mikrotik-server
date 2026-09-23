@@ -166,6 +166,7 @@ def test_transaction_report_includes_plan_and_hostel_revenue() -> None:
             offset=0,
             limit=100,
         )
+        analytics = AdminDashboardService(session).analytics(router_id=None, days=30)
 
     weekly_result = next(
         plan for plan in result.plan_revenue if plan.profile == "weekly"
@@ -184,3 +185,10 @@ def test_transaction_report_includes_plan_and_hostel_revenue() -> None:
     hostel_revenue = {hostel.hostel_id: hostel for hostel in result.hostel_revenue}
     assert hostel_revenue["hall"].revenue == {"GHS": Decimal("10.00")}
     assert hostel_revenue["annex"].revenue == {"GHS": Decimal("20.00")}
+    assert analytics.revenue == {"GHS": Decimal("30.00")}
+    assert analytics.successful_sales == 2
+    assert analytics.failed_payments == 1
+    assert analytics.success_rate == 66.7
+    assert analytics.new_customers == 2
+    assert sum(point.successful_sales for point in analytics.daily) == 2
+    assert {hostel.hostel_id for hostel in analytics.hostel_performance} == {"hall", "annex"}

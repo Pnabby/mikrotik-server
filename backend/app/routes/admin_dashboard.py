@@ -20,6 +20,7 @@ from app.models.router import Router
 from app.routes.admin_auth import get_authenticated_admin
 from app.schemas.admin_dashboard import (
     AdminAccessPointListResponse,
+    AdminAnalyticsResponse,
     AdminBroadcastRequest,
     AdminBroadcastResponse,
     AdminCustomerDeleteRequest,
@@ -28,6 +29,7 @@ from app.schemas.admin_dashboard import (
     AdminCustomerTransferRequest,
     AdminCustomerTransferResponse,
     AdminDashboardResponse,
+    AdminNetworkUsageResponse,
     AdminTransactionListResponse,
 )
 from app.services.account_deletion import AccountDeletionService
@@ -62,6 +64,30 @@ def list_access_points(
     if hostel is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
     return AdminDashboardService(session).access_points(hostel)
+
+
+@router.get("/network-usage", response_model=AdminNetworkUsageResponse)
+def get_network_usage(
+    _admin: AdminDependency,
+    session: SessionDependency,
+    router_id: str = Query(max_length=64),
+) -> AdminNetworkUsageResponse:
+    hostel = session.get(Router, router_id)
+    if hostel is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    return AdminDashboardService(session).network_usage(hostel)
+
+
+@router.get("/analytics", response_model=AdminAnalyticsResponse)
+def get_analytics(
+    _admin: AdminDependency,
+    session: SessionDependency,
+    router_id: str | None = Query(default=None, max_length=64),
+    days: int = Query(default=30, ge=7, le=365),
+) -> AdminAnalyticsResponse:
+    if router_id is not None and session.get(Router, router_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    return AdminDashboardService(session).analytics(router_id=router_id, days=days)
 
 
 @router.get("/transactions", response_model=AdminTransactionListResponse)
