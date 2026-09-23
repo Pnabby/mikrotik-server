@@ -98,6 +98,15 @@ function formatMoney(amount, currency = 'GHS') {
   }).format(Number(amount))
 }
 
+function formatCompactMoney(amount, currency = 'GHS') {
+  return new Intl.NumberFormat('en-GH', {
+    style: 'currency',
+    currency,
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(Number(amount) || 0)
+}
+
 function formatNetworkRate(bitsPerSecond) {
   const bits = Math.max(0, Number(bitsPerSecond) || 0)
   if (bits >= 1_000_000_000) return `${(bits / 1_000_000_000).toFixed(bits >= 10_000_000_000 ? 1 : 2)} Gbps`
@@ -938,19 +947,40 @@ function dominantCurrency(points, fallback = 'GHS') {
   return Object.entries(totals).sort((left, right) => right[1] - left[1])[0]?.[0] || fallback
 }
 
-function DailyBarChart({ points, valueFor, formatValue, tone = 'purple', compact = false, emptyLabel = 'No activity in this period.' }) {
-  const values = points.map(valueFor)
+function DailyBarChart({ points, valueFor, formatValue, axisFormatValue = formatValue, tone = 'purple', compact = false, emptyLabel = 'No activity in this period.' }) {
+  const maximumColumns = compact ? 14 : 72
+  const bucketSize = Math.max(1, Math.ceil(points.length / maximumColumns))
+  const chartPoints = []
+  for (let index = 0; index < points.length; index += bucketSize) {
+    const bucket = points.slice(index, index + bucketSize)
+    chartPoints.push({
+      date: bucket[0].date,
+      endDate: bucket.at(-1).date,
+      value: bucket.reduce((total, point) => total + Number(valueFor(point) || 0), 0),
+    })
+  }
+  const values = chartPoints.map((point) => point.value)
   const maximum = Math.max(...values, 0)
-  const labelEvery = compact ? 1 : Math.max(1, Math.ceil(points.length / 8))
+  const magnitude = maximum ? 10 ** Math.floor(Math.log10(maximum)) : 1
+  const normalizedMaximum = maximum / magnitude
+  const chartMaximum = maximum
+    ? (normalizedMaximum <= 1 ? 1 : normalizedMaximum <= 2 ? 2 : normalizedMaximum <= 5 ? 5 : 10) * magnitude
+    : 0
+  const ticks = [1, 0.75, 0.5, 0.25, 0].map((ratio) => chartMaximum * ratio)
+  const labelEvery = compact ? 1 : Math.max(1, Math.ceil(chartPoints.length / 8))
 
   return <div className={`daily-bar-chart ${tone}${compact ? ' compact' : ''}`} role="img" aria-label={emptyLabel}>
-    <div className="daily-chart-grid"><i /><i /><i /></div>
+    <div className="daily-chart-y-axis" aria-hidden="true">{ticks.map((tick, index) => <span key={`${tick}-${index}`}>{axisFormatValue(tick)}</span>)}</div>
+    <div className="daily-chart-grid" aria-hidden="true">{ticks.map((tick, index) => <i key={`${tick}-${index}`} />)}</div>
     <div className="daily-chart-columns">
-      {points.map((point, index) => {
+      {chartPoints.map((point, index) => {
         const value = values[index]
-        const height = maximum ? Math.max(value ? 7 : 2, (value / maximum) * 100) : 2
-        const showLabel = index % labelEvery === 0 || index === points.length - 1
-        return <div className="daily-chart-column" key={point.date} title={`${chartDateLabel(point.date, true)}: ${formatValue(value)}`}>
+        const height = chartMaximum ? Math.max(value ? 7 : 2, (value / chartMaximum) * 100) : 2
+        const showLabel = index % labelEvery === 0 || index === chartPoints.length - 1
+        const dateLabel = point.date === point.endDate
+          ? chartDateLabel(point.date, true)
+          : `${chartDateLabel(point.date, true)} – ${chartDateLabel(point.endDate, true)}`
+        return <div className="daily-chart-column" key={`${point.date}-${point.endDate}`} title={`${dateLabel}: ${formatValue(value)}`}>
           <div><span style={{ height: `${height}%` }} /></div>
           <small>{showLabel ? chartDateLabel(point.date, !compact) : ''}</small>
         </div>
@@ -1023,7 +1053,7 @@ function DashboardOverview({ hostels, loadingHostels, selectedId, onOpenAnalysis
           <header><div><h2>Revenue in the last 7 days</h2><p>Successful payments in this hostel scope</p></div><button type="button" onClick={onOpenAnalysis}>View analysis</button></header>
           <div className="dashboard-revenue-chart">
             <div><strong>{formatMoney(sevenDayRevenue, chartCurrency)}</strong><span>{summary.revenue_last_7_days.reduce((total, point) => total + point.successful_sales, 0).toLocaleString()} successful sales</span></div>
-            <DailyBarChart compact emptyLabel="Revenue over the last seven days" formatValue={(value) => formatMoney(value, chartCurrency)} points={summary.revenue_last_7_days} valueFor={(point) => Number(point.revenue?.[chartCurrency] || 0)} />
+            <DailyBarChart compact axisFormatValue={(value) => formatCompactMoney(value, chartCurrency)} emptyLabel="Revenue over the last seven days" formatValue={(value) => formatMoney(value, chartCurrency)} points={summary.revenue_last_7_days} valueFor={(point) => Number(point.revenue?.[chartCurrency] || 0)} />
           </div>
         </section>
       </div>
@@ -1041,7 +1071,7 @@ const TRANSACTION_FILTER_DEFAULTS = {
   search: '',
 }
 
-const TRANSACTIONS_PER_PAGE = 10
+const TRANSACTIONS_PER_PAGE = 50
 
 function paginationItems(currentPage, totalPages) {
   if (totalPages <= 7) return Array.from({ length: totalPages }, (_, index) => index + 1)
@@ -1222,7 +1252,7 @@ function AccessPointsPanel({ hostels, loadingHostels, selectedId, onSelect, onSe
   </>
 }
 
-function RevenueTransactionsPanel({ hostels, onSessionExpired }) {
+function TransactionsPanel({ hostels, onSessionExpired }) {
   const [filters, setFilters] = useState(TRANSACTION_FILTER_DEFAULTS)
   const [appliedFilters, setAppliedFilters] = useState(TRANSACTION_FILTER_DEFAULTS)
   const [result, setResult] = useState(null)
@@ -1257,7 +1287,7 @@ function RevenueTransactionsPanel({ hostels, onSessionExpired }) {
           onSessionExpired()
           return
         }
-        setError('Revenue and transaction information could not be loaded.')
+        setError('Transaction records could not be loaded. Please try again.')
       })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
@@ -1294,7 +1324,6 @@ function RevenueTransactionsPanel({ hostels, onSessionExpired }) {
     setAppliedFilters(next)
   }
 
-  const leadingPlan = result?.plan_revenue.find((plan) => Number(plan.successful_revenue) > 0)
   const totalPages = Math.max(1, Math.ceil((result?.total || 0) / TRANSACTIONS_PER_PAGE))
   const firstTransaction = result?.total ? (page - 1) * TRANSACTIONS_PER_PAGE + 1 : 0
   const lastTransaction = result?.total
@@ -1304,11 +1333,11 @@ function RevenueTransactionsPanel({ hostels, onSessionExpired }) {
 
   return <>
     <header className="dashboard-page-heading">
-      <div><p className="dashboard-kicker">Financial performance</p><h1>Revenue &amp; transactions</h1><p>Review revenue by plan and hostel alongside payment outcomes and individual transaction records.</p></div>
+      <div><p className="dashboard-kicker">Payment records</p><h1>Transactions</h1><p>Search, filter, and review individual payment and activation records.</p></div>
       <button className="dashboard-refresh-button" disabled={loading} type="button" onClick={() => setRefreshKey((value) => value + 1)}><Icon name="refresh" />{loading ? 'Refreshing' : 'Refresh'}</button>
     </header>
 
-    <div className="revenue-date-presets" aria-label="Revenue date range">
+    <div className="revenue-date-presets" aria-label="Transaction date range">
       <span>Date range</span>
       <div>{[
         ['all', 'All time'],
@@ -1327,16 +1356,9 @@ function RevenueTransactionsPanel({ hostels, onSessionExpired }) {
     </form>
 
     {error && <div className="dashboard-load-error" role="alert"><Icon name="alert" /><div><strong>Unable to load transactions</strong><p>{error}</p></div></div>}
-    {loading && !result ? <div className="dashboard-overview-loading"><span className="admin-page-spinner" /><p>Loading financial records...</p></div> : result && <>
-      <section className="dashboard-metric-grid admin-data-metrics">
-        <article><span className="stat-icon green"><Icon name="money" /></span><div><small>Filtered revenue</small><strong>{formatRevenue(result.revenue)}</strong><p>Successful transactions only</p></div></article>
-        <article><span className="stat-icon purple"><Icon name="check" /></span><div><small>Successful</small><strong>{result.successful.toLocaleString()}</strong><p>Completed payments and free claims</p></div></article>
-        <article><span className="stat-icon amber"><Icon name="clock" /></span><div><small>Pending</small><strong>{result.pending.toLocaleString()}</strong><p>Awaiting payment or verification</p></div></article>
-        <article><span className="stat-icon blue"><Icon name="alert" /></span><div><small>Failed</small><strong>{result.failed.toLocaleString()}</strong><p>Unsuccessful payment attempts</p></div></article>
-      </section>
-
+    {loading && !result ? <div className="dashboard-overview-loading"><span className="admin-page-spinner" /><p>Loading transactions...</p></div> : result && <>
       <section className="admin-data-card transactions-list-card" aria-busy={loading}>
-        <header><div><h2>Transactions</h2><p>Newest payment records matching the current filters.</p></div><span className="transactions-page-size">10 per page</span></header>
+        <header><div><h2>Transactions</h2><p>Newest payment records matching the current filters.</p></div><span className="transactions-page-size">{TRANSACTIONS_PER_PAGE} per page</span></header>
         <div className="admin-data-table-wrap"><table className="admin-data-table"><thead><tr><th>Customer</th><th>Plan / hostel</th><th>Amount</th><th>Payment</th><th>Activation</th><th>Date</th><th>Reference</th></tr></thead><tbody>
           {result.transactions.map((transaction) => <tr key={transaction.reference}>
             <td><strong>{transaction.customer_username}</strong><small>{transaction.customer_email}</small>{transaction.customer_phone && <small>{transaction.customer_phone}</small>}</td>
@@ -1361,25 +1383,6 @@ function RevenueTransactionsPanel({ hostels, onSessionExpired }) {
           </div>
         </nav>}
       </section>
-
-      <section className="admin-data-card profile-performance-card">
-        <header><div><h2>Revenue by plan</h2><p>Revenue generated by each plan for the selected hostel and date filters. Plans with no sales remain visible.</p></div>{leadingPlan && <span className="performance-leader"><Icon name="tag" /><small>Top revenue plan</small><strong>{leadingPlan.display_name}</strong></span>}</header>
-        <div className="admin-data-table-wrap"><table className="admin-data-table plan-revenue-table"><thead><tr><th>Plan</th><th>Successful revenue</th><th>Successful sales</th><th>Share of revenue</th><th>Availability</th></tr></thead><tbody>
-          {result.plan_revenue.map((plan) => <tr key={`${plan.profile}-${plan.currency}`}>
-            <td><strong>{plan.display_name}</strong><small>RouterOS profile: {plan.profile}</small></td>
-            <td><strong>{formatMoney(plan.successful_revenue, plan.currency)}</strong></td>
-            <td><strong>{plan.successful_sales.toLocaleString()}</strong><small>Completed payments and free claims</small></td>
-            <td><div className="performance-rate"><span><i style={{ width: `${plan.revenue_share_percent}%` }} /></span><strong>{Number(plan.revenue_share_percent).toFixed(1)}%</strong></div></td>
-            <td><strong>{plan.hostel_count} hostel{plan.hostel_count === 1 ? '' : 's'}</strong></td>
-          </tr>)}
-        </tbody></table>{!result.plan_revenue.length && <p className="dashboard-empty-copy">No configured plans are available in this hostel scope.</p>}</div>
-      </section>
-
-      {!appliedFilters.router_id && <section className="admin-data-card hostel-revenue-card">
-        <header><div><h2>Revenue by hostel</h2><p>How much each hostel generated for the selected date and payment filters.</p></div></header>
-        <div className="hostel-revenue-grid">{result.hostel_revenue.map((hostel) => <article key={hostel.hostel_id}><span><Icon name="building" /></span><div><small>{hostel.hostel_name}</small><strong>{formatRevenue(hostel.revenue)}</strong><p>{hostel.successful_sales.toLocaleString()} successful sale{hostel.successful_sales === 1 ? '' : 's'}</p></div></article>)}</div>
-      </section>}
-
     </>}
   </>
 }
@@ -1398,17 +1401,26 @@ function ComparisonBadge({ current, previous }) {
 
 function AnalysisPanel({ hostels, onSessionExpired }) {
   const [routerId, setRouterId] = useState('')
-  const [days, setDays] = useState(30)
+  const [period, setPeriod] = useState('30')
+  const [customRange, setCustomRange] = useState(() => dateRangeValues('last_30_days'))
+  const [appliedCustomRange, setAppliedCustomRange] = useState(() => dateRangeValues('last_30_days'))
+  const [customError, setCustomError] = useState('')
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
+  const [showAllPlans, setShowAllPlans] = useState(false)
 
   useEffect(() => {
     let active = true
     setLoading(true)
     setError('')
-    getAnalytics({ router_id: routerId, days })
+    const analyticsFilters = { router_id: routerId }
+    if (period === 'all') analyticsFilters.all_time = true
+    else if (period === 'custom') Object.assign(analyticsFilters, appliedCustomRange)
+    else analyticsFilters.days = Number(period)
+
+    getAnalytics(analyticsFilters)
       .then((data) => { if (active) setResult(data) })
       .catch((requestError) => {
         if (!active) return
@@ -1420,7 +1432,36 @@ function AnalysisPanel({ hostels, onSessionExpired }) {
       })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [days, routerId, refreshKey])
+  }, [appliedCustomRange, period, routerId, refreshKey])
+
+  useEffect(() => {
+    if (!showAllPlans) return undefined
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    function closeOnEscape(event) {
+      if (event.key === 'Escape') setShowAllPlans(false)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [showAllPlans])
+
+  function applyCustomPeriod(event) {
+    event.preventDefault()
+    if (!customRange.date_from || !customRange.date_to) {
+      setCustomError('Choose both a start and end date.')
+      return
+    }
+    if (customRange.date_to < customRange.date_from) {
+      setCustomError('The end date cannot be before the start date.')
+      return
+    }
+    setCustomError('')
+    setAppliedCustomRange({ ...customRange })
+    setPeriod('custom')
+  }
 
   const currency = result?.primary_currency || 'GHS'
   const currentRevenue = Number(result?.revenue?.[currency] || 0)
@@ -1433,9 +1474,14 @@ function AnalysisPanel({ hostels, onSessionExpired }) {
   const pendingAngle = paymentAttempts
     ? ((result.successful_sales + result.pending_payments) / paymentAttempts) * 360
     : 0
-  const topPlans = (result?.plan_performance || [])
-    .filter((plan) => plan.currency === currency && plan.successful_sales > 0)
-    .slice(0, 6)
+  const allRankedPlans = [...(result?.plan_performance || [])].sort((left, right) => {
+    if (left.currency === currency && right.currency !== currency) return -1
+    if (right.currency === currency && left.currency !== currency) return 1
+    if (left.currency !== right.currency) return left.currency.localeCompare(right.currency)
+    return Number(right.successful_revenue) - Number(left.successful_revenue)
+  })
+  const rankedPlans = allRankedPlans.filter((plan) => plan.currency === currency)
+  const topPlans = rankedPlans.filter((plan) => plan.successful_sales > 0).slice(0, 6)
   const maximumPlanRevenue = Math.max(...topPlans.map((plan) => Number(plan.successful_revenue)), 0)
   const rankedHostels = [...(result?.hostel_performance || [])].sort(
     (left, right) => Number(right.revenue?.[currency] || 0) - Number(left.revenue?.[currency] || 0),
@@ -1447,34 +1493,42 @@ function AnalysisPanel({ hostels, onSessionExpired }) {
 
   return <>
     <header className="dashboard-page-heading analysis-heading">
-      <div><p className="dashboard-kicker">Business intelligence</p><h1>Analysis</h1><p>Understand revenue, customer growth, payment quality, plan demand, and hostel performance.</p></div>
+      <div><p className="dashboard-kicker">Financial intelligence</p><h1>Revenue &amp; analysis</h1><p>Understand revenue, customer growth, payment quality, plan demand, and hostel performance.</p></div>
       <button aria-label="Refresh analysis" className="dashboard-refresh-button" disabled={loading} type="button" onClick={() => setRefreshKey((value) => value + 1)}><Icon name="refresh" />{loading ? 'Refreshing' : 'Refresh'}</button>
     </header>
 
     <section className="analysis-controls" aria-label="Analysis scope">
       <label><span>Hostel scope</span><select value={routerId} onChange={(event) => setRouterId(event.target.value)}><option value="">All hostels</option>{hostels.map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></label>
-      <div><span>Reporting period</span><div>{[[7, '7 days'], [30, '30 days'], [90, '90 days'], [365, '12 months']].map(([value, label]) => <button aria-pressed={days === value} className={days === value ? 'active' : ''} key={value} type="button" onClick={() => setDays(value)}>{label}</button>)}</div></div>
+      <div><span>Reporting period</span><div>{[['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['365', '12 months'], ['all', 'All time'], ['custom', 'Custom']].map(([value, label]) => <button aria-pressed={period === value} className={period === value ? 'active' : ''} key={value} type="button" onClick={() => { setCustomError(''); setPeriod(value) }}>{label}</button>)}</div></div>
     </section>
+
+    {period === 'custom' && <form className="analysis-custom-range" onSubmit={applyCustomPeriod}>
+      <div><Icon name="clock" /><span><strong>Custom reporting period</strong><small>Choose the exact dates to include in this report.</small></span></div>
+      <label><span>From</span><input max={dateInputValue(new Date())} type="date" value={customRange.date_from} onChange={(event) => setCustomRange((current) => ({ ...current, date_from: event.target.value }))} /></label>
+      <label><span>To</span><input max={dateInputValue(new Date())} type="date" value={customRange.date_to} onChange={(event) => setCustomRange((current) => ({ ...current, date_to: event.target.value }))} /></label>
+      <button type="submit">Apply period</button>
+      {customError && <p role="alert">{customError}</p>}
+    </form>}
 
     {error && <div className="dashboard-load-error" role="alert"><Icon name="alert" /><div><strong>Unable to load analysis</strong><p>{error}</p></div><button type="button" onClick={() => setRefreshKey((value) => value + 1)}>Try again</button></div>}
     {loading && !result ? <div className="dashboard-overview-loading"><span className="admin-page-spinner" /><p>Analysing business performance...</p></div> : result && <div className={`analysis-content${loading ? ' refreshing' : ''}`}>
       <section className="analysis-metrics" aria-label="Performance summary">
-        <article className="primary"><span><Icon name="money" /></span><small>Total revenue</small><strong>{formatRevenue(result.revenue)}</strong><ComparisonBadge current={currentRevenue} previous={previousRevenue} /></article>
-        <article><span className="purple"><Icon name="receipt" /></span><small>Successful sales</small><strong>{result.successful_sales.toLocaleString()}</strong><ComparisonBadge current={result.successful_sales} previous={result.previous_successful_sales} /></article>
+        <article className="primary"><span><Icon name="money" /></span><small>Total revenue</small><strong>{formatRevenue(result.revenue)}</strong>{result.comparison_available ? <ComparisonBadge current={currentRevenue} previous={previousRevenue} /> : <span className="analysis-change neutral">Complete history</span>}</article>
+        <article><span className="purple"><Icon name="receipt" /></span><small>Successful sales</small><strong>{result.successful_sales.toLocaleString()}</strong>{result.comparison_available ? <ComparisonBadge current={result.successful_sales} previous={result.previous_successful_sales} /> : <span className="analysis-change neutral">Complete history</span>}</article>
         <article><span className="green"><Icon name="activity" /></span><small>Payment success</small><strong>{result.success_rate.toFixed(1)}%</strong><p>{paymentAttempts.toLocaleString()} total payment attempts</p></article>
-        <article><span className="amber"><Icon name="users" /></span><small>New customers</small><strong>{result.new_customers.toLocaleString()}</strong><ComparisonBadge current={result.new_customers} previous={result.previous_new_customers} /></article>
+        <article><span className="amber"><Icon name="users" /></span><small>New customers</small><strong>{result.new_customers.toLocaleString()}</strong>{result.comparison_available ? <ComparisonBadge current={result.new_customers} previous={result.previous_new_customers} /> : <span className="analysis-change neutral">Complete history</span>}</article>
         <article><span className="blue"><Icon name="tag" /></span><small>Average order value</small><strong>{formatMoney(averageOrder, currency)}</strong><p>Across successful payments</p></article>
       </section>
 
       <section className="analysis-chart-card revenue-trend-card">
-        <header><div><h2>Revenue trend</h2><p>Daily successful revenue from {chartDateLabel(result.date_from, true)} to {chartDateLabel(result.date_to, true)}</p></div><div><small>Period total</small><strong>{formatMoney(currentRevenue, currency)}</strong></div></header>
-        <DailyBarChart emptyLabel="Daily successful revenue" formatValue={(value) => formatMoney(value, currency)} points={result.daily} valueFor={(point) => Number(point.revenue?.[currency] || 0)} />
+        <header><div><h2>Revenue trend</h2><p>Successful revenue from {chartDateLabel(result.date_from, true)} to {chartDateLabel(result.date_to, true)}</p></div><div><small>Period total</small><strong>{formatMoney(currentRevenue, currency)}</strong></div></header>
+        <DailyBarChart axisFormatValue={(value) => formatCompactMoney(value, currency)} emptyLabel="Successful revenue over time" formatValue={(value) => formatMoney(value, currency)} points={result.daily} valueFor={(point) => Number(point.revenue?.[currency] || 0)} />
       </section>
 
       <div className="analysis-two-column">
         <section className="analysis-chart-card">
-          <header><div><h2>Customer acquisition</h2><p>New registrations per day</p></div><div><small>Total customers</small><strong>{result.total_customers.toLocaleString()}</strong></div></header>
-          <DailyBarChart emptyLabel="New customer registrations by day" formatValue={(value) => `${value} new customer${value === 1 ? '' : 's'}`} points={result.daily} tone="green" valueFor={(point) => point.new_customers} />
+          <header><div><h2>Customer acquisition</h2><p>New registrations over the selected period</p></div><div><small>Total customers</small><strong>{result.total_customers.toLocaleString()}</strong></div></header>
+          <DailyBarChart axisFormatValue={(value) => Number(value).toLocaleString('en-GH', { notation: 'compact', maximumFractionDigits: 1 })} emptyLabel="New customer registrations over time" formatValue={(value) => `${value} new customer${value === 1 ? '' : 's'}`} points={result.daily} tone="green" valueFor={(point) => point.new_customers} />
         </section>
 
         <section className="analysis-chart-card payment-outcomes-card">
@@ -1492,7 +1546,7 @@ function AnalysisPanel({ hostels, onSessionExpired }) {
 
       <div className="analysis-two-column performance-columns">
         <section className="analysis-list-card">
-          <header><div><h2>Top-performing plans</h2><p>Ranked by successful revenue</p></div><span>{currency}</span></header>
+          <header><div><h2>Plan performance</h2><p>Ranked by successful revenue</p></div><div className="analysis-list-actions"><span>{currency}</span><button type="button" onClick={() => setShowAllPlans(true)}>View all</button></div></header>
           <div className="analysis-plan-list">{topPlans.length ? topPlans.map((plan, index) => <article key={`${plan.profile}-${plan.currency}`}>
             <b>{index + 1}</b><div><span><strong>{plan.display_name}</strong><small>{plan.successful_sales.toLocaleString()} sale{plan.successful_sales === 1 ? '' : 's'}</small></span><i><em style={{ width: `${maximumPlanRevenue ? Number(plan.successful_revenue) / maximumPlanRevenue * 100 : 0}%` }} /></i></div><strong>{formatMoney(plan.successful_revenue, plan.currency)}</strong>
           </article>) : <p className="dashboard-empty-copy">No successful plan sales in this period.</p>}</div>
@@ -1513,6 +1567,23 @@ function AnalysisPanel({ hostels, onSessionExpired }) {
           <article><span className="green"><Icon name="tag" /></span><div><small>Leading plan</small><strong>{topPlans[0]?.display_name || 'No plan sales yet'}</strong><p>{topPlans[0] ? `${topPlans[0].revenue_share_percent.toFixed(1)}% of ${currency} revenue` : 'Sales will appear here once completed'}</p></div></article>
           <article><span className="amber"><Icon name="building" /></span><div><small>Leading hostel</small><strong>{topHostel?.hostel_name || 'No hostel revenue yet'}</strong><p>{topHostel ? formatMoney(topHostel.revenue?.[currency] || 0, currency) : 'Performance will appear here'}</p></div></article>
         </div>
+      </section>
+    </div>}
+
+    {showAllPlans && <div className="admin-modal-backdrop" role="presentation" onMouseDown={() => setShowAllPlans(false)}>
+      <section className="analysis-plan-modal" role="dialog" aria-modal="true" aria-labelledby="plan-performance-title" onMouseDown={(event) => event.stopPropagation()}>
+        <header><div><span>Complete report</span><h2 id="plan-performance-title">Plan performance</h2><p>Every configured plan in the current hostel and reporting period.</p></div><button aria-label="Close plan performance" type="button" onClick={() => setShowAllPlans(false)}><Icon name="close" /></button></header>
+        <div className="admin-data-table-wrap"><table className="admin-data-table plan-performance-modal-table"><thead><tr><th>Rank</th><th>Plan</th><th>Revenue</th><th>Sales</th><th>Revenue share</th><th>Availability</th></tr></thead><tbody>
+          {allRankedPlans.map((plan, index) => <tr key={`${plan.profile}-${plan.currency}`}>
+            <td><span className="plan-rank">{index + 1}</span></td>
+            <td><strong>{plan.display_name}</strong><small>RouterOS profile: {plan.profile}</small></td>
+            <td><strong>{formatMoney(plan.successful_revenue, plan.currency)}</strong></td>
+            <td><strong>{plan.successful_sales.toLocaleString()}</strong><small>Successful transactions</small></td>
+            <td><div className="performance-rate"><span><i style={{ width: `${plan.revenue_share_percent}%` }} /></span><strong>{Number(plan.revenue_share_percent).toFixed(1)}%</strong></div></td>
+            <td><strong>{plan.hostel_count} hostel{plan.hostel_count === 1 ? '' : 's'}</strong></td>
+          </tr>)}
+        </tbody></table>{!allRankedPlans.length && <p className="dashboard-empty-copy">No configured plans are available in this scope.</p>}</div>
+        <footer><span>{allRankedPlans.length.toLocaleString()} plan{allRankedPlans.length === 1 ? '' : 's'} shown across all currencies</span><button type="button" onClick={() => setShowAllPlans(false)}>Done</button></footer>
       </section>
     </div>}
   </>
@@ -2145,8 +2216,8 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
           <p>Management</p>
           <button aria-label="Customers and devices" className={view === 'customers' ? 'active' : ''} title="Customers & devices" type="button" onClick={() => selectView('customers')}><Icon name="users" /><span className="sidebar-nav-label">Customers &amp; devices</span></button>
           <button aria-label="Network and usage" className={view === 'network' ? 'active' : ''} title="Network & usage" type="button" onClick={() => selectView('network')}><Icon name="network" /><span className="sidebar-nav-label">Network &amp; usage</span></button>
-          <button aria-label="Revenue and transactions" className={view === 'transactions' ? 'active' : ''} title="Revenue & transactions" type="button" onClick={() => selectView('transactions')}><Icon name="receipt" /><span className="sidebar-nav-label">Revenue &amp; transactions</span></button>
-          <button aria-label="Analysis" className={view === 'analysis' ? 'active' : ''} title="Analysis" type="button" onClick={() => selectView('analysis')}><Icon name="activity" /><span className="sidebar-nav-label">Analysis</span></button>
+          <button aria-label="Transactions" className={view === 'transactions' ? 'active' : ''} title="Transactions" type="button" onClick={() => selectView('transactions')}><Icon name="receipt" /><span className="sidebar-nav-label">Transactions</span></button>
+          <button aria-label="Revenue and analysis" className={view === 'analysis' ? 'active' : ''} title="Revenue & analysis" type="button" onClick={() => selectView('analysis')}><Icon name="activity" /><span className="sidebar-nav-label">Revenue &amp; analysis</span></button>
           <button aria-label="Help and support" className={view === 'support' ? 'active' : ''} title="Help & support" type="button" onClick={() => selectView('support')}><Icon name="settings" /><span className="sidebar-nav-label">Help &amp; support</span></button>
         </nav>
         <div className="sidebar-security"><span><Icon name="check" /></span><div><strong>Secure session</strong><small>Protected admin access</small></div></div>
@@ -2176,7 +2247,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
         </header>
 
         <div className="dashboard-content">
-          {view === 'dashboard' ? <DashboardOverview hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onOpenAnalysis={() => setView('analysis')} onOpenCustomers={() => setView('customers')} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'customers' ? <CustomersDevicesPanel admin={admin} hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'network' ? <AccessPointsPanel hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'transactions' ? <RevenueTransactionsPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'analysis' ? <AnalysisPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'support' ? <SupportSettingsPanel canEdit={admin.role !== 'viewer'} onSessionExpired={onSessionExpired} /> : view === 'hostels' ? <>
+          {view === 'dashboard' ? <DashboardOverview hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onOpenAnalysis={() => setView('analysis')} onOpenCustomers={() => setView('customers')} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'customers' ? <CustomersDevicesPanel admin={admin} hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'network' ? <AccessPointsPanel hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'transactions' ? <TransactionsPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'analysis' ? <AnalysisPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'support' ? <SupportSettingsPanel canEdit={admin.role !== 'viewer'} onSessionExpired={onSessionExpired} /> : view === 'hostels' ? <>
             <header className="dashboard-page-heading">
               <div><p className="dashboard-kicker">Network management</p><h1>Hostels</h1><p>Add and manage the hostel routers stored in the database.</p></div>
             </header>

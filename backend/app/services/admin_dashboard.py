@@ -290,16 +290,49 @@ class AdminDashboardService:
             routers=live_statuses,
         )
 
-    def analytics(self, *, router_id: str | None, days: int) -> AdminAnalyticsResponse:
+    def analytics(
+        self,
+        *,
+        router_id: str | None,
+        days: int,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        all_time: bool = False,
+    ) -> AdminAnalyticsResponse:
         now = datetime.now(UTC)
-        date_to = now.date()
-        date_from = date_to - timedelta(days=days - 1)
-        previous_to = date_from - timedelta(days=1)
-        previous_from = previous_to - timedelta(days=days - 1)
         routers = self._routers(router_id, include_inactive=True)
         router_ids = [router.id for router in routers]
-
         occurred_at = func.coalesce(Transaction.paid_at, Transaction.created_at)
+
+        if all_time and (date_from is not None or date_to is not None):
+            raise HTTPException(status_code=400, detail="Choose all time or a custom period.")
+        if (date_from is None) != (date_to is None):
+            raise HTTPException(status_code=400, detail="Both custom dates are required.")
+        if date_from is not None and date_to is not None and date_to < date_from:
+            raise HTTPException(status_code=400, detail="End date cannot be before start date.")
+
+        comparison_available = not all_time
+        if all_time:
+            earliest_transaction = self.session.scalar(
+                select(func.min(occurred_at)).where(Transaction.router_id.in_(router_ids))
+            )
+            earliest_customer = self.session.scalar(
+                select(func.min(Customer.created_at)).where(Customer.router_id.in_(router_ids))
+            )
+            earliest_dates = [
+                date.fromisoformat(str(value)[:10])
+                for value in (earliest_transaction, earliest_customer)
+                if value is not None
+            ]
+            date_to = now.date()
+            date_from = min(earliest_dates, default=date_to)
+        elif date_from is None or date_to is None:
+            date_to = now.date()
+            date_from = date_to - timedelta(days=days - 1)
+
+        period_days = (date_to - date_from).days + 1
+        previous_to = date_from - timedelta(days=1)
+        previous_from = previous_to - timedelta(days=period_days - 1)
         current_start = datetime.combine(date_from, time.min, tzinfo=UTC)
         current_end = datetime.combine(date_to + timedelta(days=1), time.min, tzinfo=UTC)
         previous_start = datetime.combine(previous_from, time.min, tzinfo=UTC)
@@ -332,9 +365,11 @@ class AdminDashboardService:
             )
 
         revenue = revenue_for(current_conditions)
-        previous_revenue = revenue_for(previous_conditions)
+        previous_revenue = revenue_for(previous_conditions) if comparison_available else {}
         successful_sales = successful_count(current_conditions)
-        previous_successful_sales = successful_count(previous_conditions)
+        previous_successful_sales = (
+            successful_count(previous_conditions) if comparison_available else 0
+        )
         status_counts = {
             payment_status: int(count)
             for payment_status, count in self.session.execute(
@@ -364,15 +399,19 @@ class AdminDashboardService:
             )
             or 0
         )
-        previous_new_customers = int(
-            self.session.scalar(
-                select(func.count(Customer.id)).where(
-                    customer_scope,
-                    Customer.created_at >= previous_start,
-                    Customer.created_at < previous_end,
+        previous_new_customers = (
+            int(
+                self.session.scalar(
+                    select(func.count(Customer.id)).where(
+                        customer_scope,
+                        Customer.created_at >= previous_start,
+                        Customer.created_at < previous_end,
+                    )
                 )
+                or 0
             )
-            or 0
+            if comparison_available
+            else 0
         )
         total_customers = int(
             self.session.scalar(select(func.count(Customer.id)).where(customer_scope)) or 0
@@ -400,7 +439,8 @@ class AdminDashboardService:
         return AdminAnalyticsResponse(
             generated_at=now,
             router_id=router_id,
-            period_days=days,
+            period_days=period_days,
+            comparison_available=comparison_available,
             date_from=date_from,
             date_to=date_to,
             primary_currency=primary_currency,
@@ -555,45 +595,15 @@ class AdminDashboardService:
             .where(*conditions)
         )
         total = int(self.session.scalar(count_query) or 0)
-        status_counts = {
-            status_value: count
-            for status_value, count in self.session.execute(
-                select(Transaction.payment_status, func.count(Transaction.id))
-                .join(Customer, Transaction.customer_id == Customer.id)
-                .join(Package, Transaction.package_id == Package.id)
-                .where(*conditions)
-                .group_by(Transaction.payment_status)
-            )
-        }
-        revenue = {
-            currency: amount or Decimal(0)
-            for currency, amount in self.session.execute(
-                select(Transaction.currency, func.sum(Transaction.amount))
-                .join(Customer, Transaction.customer_id == Customer.id)
-                .join(Package, Transaction.package_id == Package.id)
-                .where(*conditions, Transaction.payment_status == PaymentStatus.SUCCESS)
-                .group_by(Transaction.currency)
-            )
-        }
         transactions = self.session.scalars(
             base_query.order_by(occurred_at.desc()).offset(offset).limit(limit)
         ).all()
-        plan_revenue = self._plan_revenue(
-            router_ids, conditions, search=normalized_search
-        )
-        hostel_revenue = self._hostel_revenue(routers, conditions)
 
         return AdminTransactionListResponse(
             generated_at=datetime.now(UTC),
             total=total,
             offset=offset,
             limit=limit,
-            revenue=revenue,
-            successful=int(status_counts.get(PaymentStatus.SUCCESS, 0)),
-            pending=int(status_counts.get(PaymentStatus.PENDING, 0)),
-            failed=int(status_counts.get(PaymentStatus.FAILED, 0)),
-            plan_revenue=plan_revenue,
-            hostel_revenue=hostel_revenue,
             transactions=[
                 AdminTransactionDetail(
                     reference=transaction.paystack_reference,

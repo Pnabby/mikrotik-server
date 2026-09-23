@@ -117,6 +117,7 @@ class AdminAnalyticsResponse(BaseModel):
     generated_at: datetime
     router_id: str | None
     period_days: int
+    comparison_available: bool
     date_from: date
     date_to: date
     primary_currency: str
@@ -141,12 +142,6 @@ class AdminTransactionListResponse(BaseModel):
     total: int
     offset: int
     limit: int
-    revenue: dict[str, Decimal]
-    successful: int
-    pending: int
-    failed: int
-    plan_revenue: list[AdminPlanRevenue]
-    hostel_revenue: list[AdminHostelRevenue]
     transactions: list[AdminTransactionDetail]
 
 

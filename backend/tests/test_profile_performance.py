@@ -15,7 +15,7 @@ from app.models.transaction import Transaction
 from app.services.admin_dashboard import AdminDashboardService
 
 
-def test_transaction_report_includes_plan_and_hostel_revenue() -> None:
+def test_transactions_and_analytics_keep_reporting_concerns_separate() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:")
 
     @event.listens_for(engine, "connect")
@@ -166,13 +166,21 @@ def test_transaction_report_includes_plan_and_hostel_revenue() -> None:
             offset=0,
             limit=100,
         )
-        analytics = AdminDashboardService(session).analytics(router_id=None, days=30)
+        service = AdminDashboardService(session)
+        analytics = service.analytics(router_id=None, days=30)
+        custom_analytics = service.analytics(
+            router_id=None,
+            days=30,
+            date_from=now.date(),
+            date_to=now.date(),
+        )
+        all_time_analytics = service.analytics(router_id=None, days=30, all_time=True)
 
     weekly_result = next(
-        plan for plan in result.plan_revenue if plan.profile == "weekly"
+        plan for plan in analytics.plan_performance if plan.profile == "weekly"
     )
     monthly_result = next(
-        plan for plan in result.plan_revenue if plan.profile == "monthly"
+        plan for plan in analytics.plan_performance if plan.profile == "monthly"
     )
     assert weekly_result.display_name == "Weekly Plus"
     assert weekly_result.successful_revenue == Decimal("30.00")
@@ -181,8 +189,10 @@ def test_transaction_report_includes_plan_and_hostel_revenue() -> None:
     assert weekly_result.revenue_share_percent == 100.0
     assert monthly_result.successful_sales == 0
     assert monthly_result.successful_revenue == Decimal(0)
-    assert [plan.profile for plan in search_result.plan_revenue] == ["monthly"]
-    hostel_revenue = {hostel.hostel_id: hostel for hostel in result.hostel_revenue}
+    assert result.total == 3
+    assert search_result.total == 0
+    assert not hasattr(result, "revenue")
+    hostel_revenue = {hostel.hostel_id: hostel for hostel in analytics.hostel_performance}
     assert hostel_revenue["hall"].revenue == {"GHS": Decimal("10.00")}
     assert hostel_revenue["annex"].revenue == {"GHS": Decimal("20.00")}
     assert analytics.revenue == {"GHS": Decimal("30.00")}
@@ -192,3 +202,8 @@ def test_transaction_report_includes_plan_and_hostel_revenue() -> None:
     assert analytics.new_customers == 2
     assert sum(point.successful_sales for point in analytics.daily) == 2
     assert {hostel.hostel_id for hostel in analytics.hostel_performance} == {"hall", "annex"}
+    assert custom_analytics.period_days == 1
+    assert custom_analytics.comparison_available is True
+    assert all_time_analytics.comparison_available is False
+    assert all_time_analytics.previous_revenue == {}
+    assert all_time_analytics.date_to == now.date()
