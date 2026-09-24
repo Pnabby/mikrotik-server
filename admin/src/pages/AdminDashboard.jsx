@@ -963,10 +963,17 @@ function DailyBarChart({ points, valueFor, formatValue, axisFormatValue = format
   const maximum = Math.max(...values, 0)
   const magnitude = maximum ? 10 ** Math.floor(Math.log10(maximum)) : 1
   const normalizedMaximum = maximum / magnitude
-  const chartMaximum = maximum
+  const roundedMaximum = maximum
     ? (normalizedMaximum <= 1 ? 1 : normalizedMaximum <= 2 ? 2 : normalizedMaximum <= 5 ? 5 : 10) * magnitude
     : 0
-  const ticks = [1, 0.75, 0.5, 0.25, 0].map((ratio) => chartMaximum * ratio)
+  // Start with a familiar 1/2/5 scale, then drop unused whole grid bands.
+  // This keeps the axis labels clean while avoiding a short-looking chart when
+  // the highest value sits well below the rounded ceiling.
+  const gridStep = roundedMaximum ? roundedMaximum / 4 : 0
+  const chartMaximum = gridStep ? Math.ceil(maximum / gridStep) * gridStep : 0
+  const ticks = gridStep
+    ? Array.from({ length: Math.round(chartMaximum / gridStep) + 1 }, (_, index) => chartMaximum - index * gridStep)
+    : [0]
   const labelEvery = compact ? 1 : Math.max(1, Math.ceil(chartPoints.length / 8))
 
   return <div className={`daily-bar-chart ${tone}${compact ? ' compact' : ''}`} role="img" aria-label={emptyLabel}>
