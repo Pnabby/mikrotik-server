@@ -140,6 +140,39 @@ class MikroTikClient:
         api = self.connect()
         return api.get_resource("/system/identity").get()
 
+    def get_system_resource(self) -> dict[str, int | float | str | None]:
+        """Return normalized resource usage and optional hardware-health values."""
+        api = self.connect()
+        rows = api.get_resource("/system/resource").get()
+        resource = rows[0] if rows else {}
+        total_memory = _parse_routeros_int(resource.get("total-memory"))
+        free_memory = _parse_routeros_int(resource.get("free-memory"))
+        health: dict[str, object] = {}
+        try:
+            for item in api.get_resource("/system/health").get():
+                if item.get("name") is not None:
+                    health[str(item["name"])] = item.get("value")
+                else:
+                    health.update(item)
+        except RouterOsApiError:
+            # Sensors are optional and may be unavailable to a read-only API user.
+            pass
+        return {
+            "cpu_usage": _parse_routeros_int(resource.get("cpu-load")),
+            "memory_total_bytes": total_memory,
+            "memory_free_bytes": free_memory,
+            "memory_usage_percent": (
+                max(0.0, min(100.0, (total_memory - free_memory) / total_memory * 100))
+                if total_memory
+                else 0.0
+            ),
+            "uptime_seconds": _parse_routeros_duration(resource.get("uptime")),
+            "temperature": _first_routeros_number(
+                health, "temperature", "cpu-temperature", "board-temperature1"
+            ),
+            "voltage": _first_routeros_number(health, "voltage", "board-voltage"),
+        }
+
     def get_interfaces(self) -> list[dict[str, str]]:
         api = self.connect()
         return api.get_resource("/interface").get()
@@ -688,6 +721,29 @@ def _parse_routeros_int(value: str | None) -> int:
 def _parse_routeros_optional_int(value: str | None) -> int | None:
     parsed = _parse_routeros_int(value)
     return parsed or None
+
+
+def _parse_routeros_duration(value: object) -> int:
+    """Parse RouterOS durations such as 1w2d03:04:05 into seconds."""
+    text = str(value or "").strip().casefold()
+    if not text:
+        return 0
+    total = 0.0
+    for amount, unit in re.findall(r"(\d+(?:\.\d+)?)(w|d|h|m|s)", text):
+        total += float(amount) * {"w": 604800, "d": 86400, "h": 3600, "m": 60, "s": 1}[unit]
+    clock_match = re.search(r"(?<!\d)(\d{1,2}):(\d{2}):(\d{2})(?!\d)", text)
+    if clock_match:
+        hours, minutes, seconds = (int(part) for part in clock_match.groups())
+        total += hours * 3600 + minutes * 60 + seconds
+    return int(total)
+
+
+def _first_routeros_number(values: dict[str, object], *names: str) -> float | None:
+    for name in names:
+        raw = values.get(name)
+        if raw is not None and (match := re.search(r"-?\d+(?:\.\d+)?", str(raw))):
+            return float(match.group())
+    return None
 
 
 def _normalize_routeros_name(value: object) -> str:

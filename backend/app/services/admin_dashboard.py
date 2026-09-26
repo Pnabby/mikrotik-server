@@ -16,6 +16,7 @@ from app.models.customer import Customer
 from app.models.enums import AccountStatus, PaymentStatus, SubscriptionStatus
 from app.models.package import Package, RouterPackageProfile
 from app.models.router import Router
+from app.models.router_hourly_metric import RouterHourlyMetric
 from app.models.subscription import Subscription
 from app.models.transaction import Transaction
 from app.schemas.admin_dashboard import (
@@ -30,11 +31,14 @@ from app.schemas.admin_dashboard import (
     AdminHostelRevenue,
     AdminNetworkUsageResponse,
     AdminPlanRevenue,
+    AdminRouterAnalytics,
     AdminTransactionDetail,
     AdminTransactionListResponse,
     AnalyticsDailyPoint,
     DashboardRevenue,
     DashboardRouterStatus,
+    RouterHourlyProfilePoint,
+    RouterPerformanceSummary,
 )
 
 
@@ -319,9 +323,14 @@ class AdminDashboardService:
             earliest_customer = self.session.scalar(
                 select(func.min(Customer.created_at)).where(Customer.router_id.in_(router_ids))
             )
+            earliest_metric = self.session.scalar(
+                select(func.min(RouterHourlyMetric.hour)).where(
+                    RouterHourlyMetric.router_id.in_(router_ids)
+                )
+            )
             earliest_dates = [
                 date.fromisoformat(str(value)[:10])
-                for value in (earliest_transaction, earliest_customer)
+                for value in (earliest_transaction, earliest_customer, earliest_metric)
                 if value is not None
             ]
             date_to = now.date()
@@ -460,6 +469,174 @@ class AdminDashboardService:
             daily=self._daily_analytics(router_ids, date_from, date_to),
             plan_performance=self._plan_revenue(router_ids, current_conditions, search=""),
             hostel_performance=hostel_performance,
+            router_analytics=self._router_analytics(
+                routers, current_start=current_start, current_end=current_end
+            ),
+        )
+
+    def _router_analytics(
+        self,
+        routers: list[Router],
+        *,
+        current_start: datetime,
+        current_end: datetime,
+    ) -> AdminRouterAnalytics:
+        router_ids = [router.id for router in routers]
+        rows = list(
+            self.session.scalars(
+                select(RouterHourlyMetric)
+                .where(
+                    RouterHourlyMetric.router_id.in_(router_ids),
+                    RouterHourlyMetric.hour >= current_start,
+                    RouterHourlyMetric.hour < current_end,
+                )
+                .order_by(RouterHourlyMetric.hour)
+            )
+        )
+        if not rows:
+            return AdminRouterAnalytics(
+                available=False,
+                baseline_days=0,
+                prediction_ready=False,
+                days_until_prediction=7,
+                predicted_peak_hours=[],
+                hourly_profile=[],
+                routers=[],
+            )
+
+        def summarize(
+            metric_rows: list[RouterHourlyMetric],
+            *,
+            name: str,
+            router_id: str | None,
+        ) -> RouterPerformanceSummary:
+            successful = sum(max(row.sample_count - row.failed_samples, 0) for row in metric_rows)
+            attempts = sum(row.sample_count for row in metric_rows)
+
+            def weighted(attribute: str) -> float:
+                if not successful:
+                    return 0.0
+                return sum(
+                    float(getattr(row, attribute))
+                    * max(row.sample_count - row.failed_samples, 0)
+                    for row in metric_rows
+                ) / successful
+
+            sensor_rows = [
+                row for row in metric_rows if row.temperature_avg is not None
+            ]
+            voltage_rows = [row for row in metric_rows if row.voltage_avg is not None]
+            running_samples = sum(row.interface_running_samples for row in metric_rows)
+            latest_row = max(metric_rows, key=lambda row: row.last_sample_at)
+            return RouterPerformanceSummary(
+                router_id=router_id,
+                router_name=name,
+                successful_samples=successful,
+                failed_samples=sum(row.failed_samples for row in metric_rows),
+                average_devices=round(weighted("active_devices_avg"), 1),
+                peak_devices=max((row.active_devices_peak for row in metric_rows), default=0),
+                average_cpu_percent=round(weighted("cpu_usage_avg"), 1),
+                peak_cpu_percent=round(max((row.cpu_usage_peak for row in metric_rows), default=0), 1),
+                average_memory_percent=round(weighted("memory_usage_avg"), 1),
+                peak_memory_percent=round(max((row.memory_usage_peak for row in metric_rows), default=0), 1),
+                average_free_memory_bytes=round(weighted("memory_free_bytes_avg"), 1),
+                average_download_bps=round(weighted("download_bps_avg"), 1),
+                peak_download_bps=max((row.download_bps_peak for row in metric_rows), default=0),
+                average_upload_bps=round(weighted("upload_bps_avg"), 1),
+                peak_upload_bps=max((row.upload_bps_peak for row in metric_rows), default=0),
+                downloaded_bytes=sum(row.download_bytes for row in metric_rows),
+                uploaded_bytes=sum(row.upload_bytes for row in metric_rows),
+                interface_availability_percent=round(running_samples / successful * 100, 1)
+                if successful
+                else 0,
+                collection_success_percent=round(successful / attempts * 100, 1)
+                if attempts
+                else 0,
+                current_uptime_seconds=latest_row.uptime_seconds,
+                restart_count=sum((row.restart_count or 0) for row in metric_rows),
+                average_temperature=round(
+                    sum(float(row.temperature_avg) for row in sensor_rows) / len(sensor_rows), 1
+                ) if sensor_rows else None,
+                average_voltage=round(
+                    sum(float(row.voltage_avg) for row in voltage_rows) / len(voltage_rows), 1
+                ) if voltage_rows else None,
+            )
+
+        rows_by_router = {
+            router.id: [row for row in rows if row.router_id == router.id] for router in routers
+        }
+        router_summaries = [
+            summarize(rows_by_router[router.id], name=router.name, router_id=router.id)
+            for router in routers
+            if rows_by_router[router.id]
+        ]
+        hour_rows = {
+            hour: [row for row in rows if row.hour.hour == hour] for hour in range(24)
+        }
+        hour_device_averages: dict[int, float] = {}
+        for hour, grouped_rows in hour_rows.items():
+            successful = sum(max(row.sample_count - row.failed_samples, 0) for row in grouped_rows)
+            hour_device_averages[hour] = (
+                sum(
+                    row.active_devices_avg * max(row.sample_count - row.failed_samples, 0)
+                    for row in grouped_rows
+                ) / successful
+                if successful
+                else 0
+            )
+        populated_hours = [hour for hour, grouped_rows in hour_rows.items() if grouped_rows]
+        peak_hours = sorted(
+            populated_hours,
+            key=lambda hour: (hour_device_averages[hour], hour),
+            reverse=True,
+        )[:3]
+        peak_hour_set = set(peak_hours)
+        profile = []
+        for hour in range(24):
+            grouped_rows = hour_rows[hour]
+            successful = sum(max(row.sample_count - row.failed_samples, 0) for row in grouped_rows)
+
+            def hour_weighted(
+                attribute: str,
+                metric_rows: list[RouterHourlyMetric] = grouped_rows,
+                sample_count: int = successful,
+            ) -> float:
+                return (
+                    sum(
+                        float(getattr(row, attribute))
+                        * max(row.sample_count - row.failed_samples, 0)
+                        for row in metric_rows
+                    ) / sample_count
+                    if sample_count
+                    else 0
+                )
+
+            profile.append(
+                RouterHourlyProfilePoint(
+                    hour=hour,
+                    label=datetime(2000, 1, 1, hour, tzinfo=UTC).strftime("%I %p").lstrip("0"),
+                    samples=successful,
+                    average_devices=round(hour_weighted("active_devices_avg"), 1),
+                    peak_devices=max((row.active_devices_peak for row in grouped_rows), default=0),
+                    average_cpu_percent=round(hour_weighted("cpu_usage_avg"), 1),
+                    average_memory_percent=round(hour_weighted("memory_usage_avg"), 1),
+                    average_download_bps=round(hour_weighted("download_bps_avg"), 1),
+                    average_upload_bps=round(hour_weighted("upload_bps_avg"), 1),
+                    predicted_peak=hour in peak_hour_set,
+                )
+            )
+        baseline_days = len({row.hour.date() for row in rows})
+        return AdminRouterAnalytics(
+            available=True,
+            collection_started_at=min(row.hour for row in rows),
+            last_collected_at=max(row.last_sample_at for row in rows),
+            baseline_days=baseline_days,
+            prediction_ready=baseline_days >= 7,
+            days_until_prediction=max(7 - baseline_days, 0),
+            predicted_peak_hours=sorted(peak_hours),
+            summary=summarize(rows, name="All selected hostels", router_id=None),
+            hourly_profile=profile,
+            routers=router_summaries,
         )
 
     def _daily_analytics(

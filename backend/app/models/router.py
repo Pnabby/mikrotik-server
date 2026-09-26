@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.models.activation import Activation
     from app.models.customer import Customer
     from app.models.package import PlanGroup, RouterPackageProfile
+    from app.models.router_hourly_metric import RouterHourlyMetric
     from app.models.subscription import Subscription
     from app.models.transaction import Transaction
 
@@ -66,3 +67,6 @@ class Router(TimestampMixin, Base):
     transactions: Mapped[list[Transaction]] = relationship(back_populates="router")
     activations: Mapped[list[Activation]] = relationship(back_populates="router")
     subscriptions: Mapped[list[Subscription]] = relationship(back_populates="router")
+    hourly_metrics: Mapped[list[RouterHourlyMetric]] = relationship(
+        back_populates="router", cascade="all, delete-orphan"
+    )

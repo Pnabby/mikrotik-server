@@ -1406,6 +1406,59 @@ function ComparisonBadge({ current, previous }) {
   return <span className={`analysis-change ${direction}`}>{change > 0 ? '+' : ''}{change.toFixed(1)}% vs previous period</span>
 }
 
+function RouterAnalysisSection({ analytics }) {
+  if (!analytics?.available) return <section className="router-analysis-card router-analysis-empty">
+    <header><div><p>Network intelligence</p><h2>Router performance &amp; peak hours</h2><span>Five-minute readings are summarized into hourly averages.</span></div><Icon name="network" /></header>
+    <div><Icon name="clock" /><p><strong>Collection has started</strong><span>Router trends will appear here after the first successful samples in this reporting period.</span></p></div>
+  </section>
+
+  const summary = analytics.summary
+  const maximumDevices = Math.max(...analytics.hourly_profile.map((point) => point.average_devices), 1)
+  const peakLabels = analytics.hourly_profile
+    .filter((point) => analytics.predicted_peak_hours.includes(point.hour))
+    .map((point) => point.label)
+  return <section className="router-analysis-card">
+    <header>
+      <div><p>Network intelligence</p><h2>Router performance &amp; peak hours</h2><span>Hourly behavior for the selected hostel and reporting period.</span></div>
+      <div className={`router-baseline-status ${analytics.prediction_ready ? 'ready' : ''}`}><Icon name={analytics.prediction_ready ? 'check' : 'clock'} /><span><strong>{analytics.prediction_ready ? 'Forecast ready' : 'Learning usage patterns'}</strong><small>{analytics.prediction_ready ? `${analytics.baseline_days} days of history` : `${analytics.days_until_prediction} more day${analytics.days_until_prediction === 1 ? '' : 's'} for a reliable forecast`}</small></span></div>
+    </header>
+
+    <div className="router-analysis-metrics">
+      <article><small>Average devices</small><strong>{summary.average_devices.toFixed(1)}</strong><span>Peak {summary.peak_devices.toLocaleString()}</span></article>
+      <article><small>Average CPU</small><strong>{summary.average_cpu_percent.toFixed(1)}%</strong><span>Peak {summary.peak_cpu_percent.toFixed(1)}%</span></article>
+      <article><small>Average memory</small><strong>{summary.average_memory_percent.toFixed(1)}%</strong><span>{formatDataSize(summary.average_free_memory_bytes)} free</span></article>
+      <article><small>Average download</small><strong>{formatNetworkRate(summary.average_download_bps)}</strong><span>Peak {formatNetworkRate(summary.peak_download_bps)}</span></article>
+      <article><small>Average upload</small><strong>{formatNetworkRate(summary.average_upload_bps)}</strong><span>Peak {formatNetworkRate(summary.peak_upload_bps)}</span></article>
+      <article><small>Interface availability</small><strong>{summary.interface_availability_percent.toFixed(1)}%</strong><span>{summary.collection_success_percent.toFixed(1)}% collection success</span></article>
+    </div>
+
+    <div className="router-peak-layout">
+      <div className="router-hourly-chart">
+        <div className="router-hourly-chart-heading"><div><h3>Expected devices by hour</h3><p>Typical active-device demand across a 24-hour day (UTC).</p></div><span>{peakLabels.length ? `Likely peaks: ${peakLabels.join(', ')}` : 'Building forecast'}</span></div>
+        <div className="router-hour-bars" role="img" aria-label="Average active devices by hour">
+          {analytics.hourly_profile.map((point) => <div className={`router-hour-bar${point.predicted_peak ? ' peak' : ''}`} key={point.hour} title={`${point.label}: ${point.average_devices.toFixed(1)} average devices, ${point.average_cpu_percent.toFixed(1)}% CPU, ${point.average_memory_percent.toFixed(1)}% memory`}>
+            <strong>{point.average_devices ? point.average_devices.toFixed(1) : ''}</strong><div><i style={{ height: `${Math.max(point.average_devices ? 6 : 2, point.average_devices / maximumDevices * 100)}%` }} /></div><small>{point.hour % 3 === 0 ? point.label : ''}</small>
+          </div>)}
+        </div>
+      </div>
+      <aside className="router-traffic-summary">
+        <h3>Traffic &amp; health</h3>
+        <p><span>Downloaded</span><strong>{formatDataSize(summary.downloaded_bytes)}</strong></p>
+        <p><span>Uploaded</span><strong>{formatDataSize(summary.uploaded_bytes)}</strong></p>
+        <p><span>Peak memory</span><strong>{summary.peak_memory_percent.toFixed(1)}%</strong></p>
+        <p><span>Current uptime</span><strong>{formatDuration(summary.current_uptime_seconds)}</strong></p>
+        <p><span>Detected restarts</span><strong>{summary.restart_count.toLocaleString()}</strong></p>
+        {summary.average_temperature !== null && <p><span>Average temperature</span><strong>{summary.average_temperature.toFixed(1)}°C</strong></p>}
+        {summary.average_voltage !== null && <p><span>Average voltage</span><strong>{summary.average_voltage.toFixed(1)} V</strong></p>}
+        <p><span>Successful readings</span><strong>{summary.successful_samples.toLocaleString()}</strong></p>
+        <p><span>Failed readings</span><strong>{summary.failed_samples.toLocaleString()}</strong></p>
+      </aside>
+    </div>
+
+    {analytics.routers.length > 1 && <div className="router-comparison-table"><h3>Hostel router comparison</h3><div><table><thead><tr><th>Router</th><th>Devices</th><th>CPU</th><th>Memory</th><th>Download</th><th>Availability</th></tr></thead><tbody>{analytics.routers.map((router) => <tr key={router.router_id}><td><strong>{router.router_name}</strong></td><td>{router.average_devices.toFixed(1)} avg / {router.peak_devices} peak</td><td>{router.average_cpu_percent.toFixed(1)}%</td><td>{router.average_memory_percent.toFixed(1)}%</td><td>{formatNetworkRate(router.average_download_bps)}</td><td>{router.interface_availability_percent.toFixed(1)}%</td></tr>)}</tbody></table></div></div>}
+  </section>
+}
+
 function AnalysisPanel({ hostels, onSessionExpired }) {
   const [routerId, setRouterId] = useState('')
   const [period, setPeriod] = useState('30')
@@ -1566,6 +1619,8 @@ function AnalysisPanel({ hostels, onSessionExpired }) {
           </article>) : <p className="dashboard-empty-copy">No hostels are available in this scope.</p>}</div>
         </section>
       </div>
+
+      <RouterAnalysisSection analytics={result.router_analytics} />
 
       <section className="analysis-insights">
         <header><h2>Performance insights</h2><p>Important signals from the selected period.</p></header>
