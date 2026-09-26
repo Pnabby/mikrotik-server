@@ -150,6 +150,10 @@ metadata is stored in PostgreSQL. In particular:
   seven days.
 - `MIKROTIK_REGISTRATION_PROFILE` is the RouterOS HotSpot profile assigned during signup
   and defaults to `disabled`; the RouterOS user itself is also created disabled.
+- `ROUTER_METRICS_COLLECTION_ENABLED` enables the background RouterOS analytics collector.
+  It samples every five minutes by default and stores one rolling summary per router/hour.
+  `ROUTER_METRICS_SAMPLE_INTERVAL_SECONDS` changes the interval and
+  `ROUTER_METRICS_INTERFACE` selects the monitored WAN interface (default `ether1`).
 - `API_CORS_ORIGINS`, `FRONTEND_URL`, and optionally `FRONTEND_DIST_DIR` control
   public-app/backend deployment boundaries.
 - `PAYSTACK_SECRET_KEY` and `PAYSTACK_PUBLIC_KEY` hold keys from the same Paystack mode.
@@ -189,6 +193,12 @@ Set-Location backend
 .venv\Scripts\alembic.exe upgrade head
 Set-Location ..
 ```
+
+Migration `20260926_0013` adds hourly router analytics. Once it is applied and the backend
+is running, the collector records active HotSpot devices, CPU and memory use, WAN transfer
+rates and byte deltas, interface availability, uptime, failures, and temperature/voltage
+where the router exposes those sensors. The admin Analysis page builds a 24-hour demand
+profile and marks likely peak hours after accumulating at least seven distinct days.
 
 Manage routers from the backend directory. These commands never store router credentials:
 

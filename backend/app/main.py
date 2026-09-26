@@ -29,6 +29,7 @@ from app.routes import (
     support,
 )
 from app.services.retention import delete_inactive_accounts
+from app.services.router_metrics import collect_router_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -67,12 +68,28 @@ async def _retention_worker() -> None:
         await asyncio.sleep(settings.inactive_account_cleanup_interval_seconds)
 
 
+async def _router_metrics_worker() -> None:
+    settings = get_settings()
+    await asyncio.sleep(15)
+    while True:
+        try:
+            collected = await asyncio.to_thread(collect_router_metrics, settings)
+            if collected:
+                logger.info("Collected performance samples for %s router(s).", collected)
+        except Exception:
+            logger.exception("Router performance collection failed and will retry.")
+        await asyncio.sleep(settings.router_metrics_sample_interval_seconds)
+
+
 @asynccontextmanager
 async def _lifespan(_application: FastAPI):
     settings = get_settings()
     retention_task = None
+    router_metrics_task = None
     if settings.inactive_account_cleanup_enabled:
         retention_task = asyncio.create_task(_retention_worker())
+    if settings.router_metrics_collection_enabled and settings.database_url:
+        router_metrics_task = asyncio.create_task(_router_metrics_worker())
     try:
         yield
     finally:
@@ -80,6 +97,10 @@ async def _lifespan(_application: FastAPI):
             retention_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await retention_task
+        if router_metrics_task is not None:
+            router_metrics_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await router_metrics_task
 
 
 def create_app() -> FastAPI:

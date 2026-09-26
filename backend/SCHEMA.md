@@ -107,5 +107,13 @@ read back before the operation is classified as failed, making a retry idempoten
   be later than the start time.
 - No table contains a plaintext customer PIN, OTP code, or session token.
 
+### `router_hourly_metrics`
+
+One UTC row per router/hour, incrementally updated by five-minute RouterOS samples. It stores
+active-device, CPU, memory, WAN-rate averages and peaks; traffic-counter deltas; interface
+availability; uptime; optional temperature/voltage; and failed collection attempts. The
+composite `(router_id, hour)` primary key keeps storage bounded and supports hourly demand
+forecasting without retaining device identities.
+
 The migration is intentionally not run by application startup. Review it and apply it
 explicitly with `alembic upgrade head` when the schema is approved.

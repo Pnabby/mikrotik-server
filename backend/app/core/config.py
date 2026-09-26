@@ -85,6 +85,9 @@ class Settings(BaseSettings):
     mikrotik_ssl_verify_hostname: bool = True
     mikrotik_router_id: str = "flint-main"
     mikrotik_registration_profile: str = "disabled"
+    router_metrics_collection_enabled: bool = True
+    router_metrics_sample_interval_seconds: int = Field(default=300, ge=60, le=3600)
+    router_metrics_interface: str = "ether1"
     # Retained temporarily so existing JSON configuration can be imported into PostgreSQL.
     # Runtime router resolution never reads this value.
     mikrotik_routers_json: list[RouterSettings] = Field(default_factory=list)

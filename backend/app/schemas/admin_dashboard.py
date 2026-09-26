@@ -113,6 +113,58 @@ class AdminHostelAnalytics(AdminHostelRevenue):
     total_users: int
 
 
+class RouterHourlyProfilePoint(BaseModel):
+    hour: int
+    label: str
+    samples: int
+    average_devices: float
+    peak_devices: int
+    average_cpu_percent: float
+    average_memory_percent: float
+    average_download_bps: float
+    average_upload_bps: float
+    predicted_peak: bool
+
+
+class RouterPerformanceSummary(BaseModel):
+    router_id: str | None = None
+    router_name: str
+    successful_samples: int
+    failed_samples: int
+    average_devices: float
+    peak_devices: int
+    average_cpu_percent: float
+    peak_cpu_percent: float
+    average_memory_percent: float
+    peak_memory_percent: float
+    average_free_memory_bytes: float
+    average_download_bps: float
+    peak_download_bps: int
+    average_upload_bps: float
+    peak_upload_bps: int
+    downloaded_bytes: int
+    uploaded_bytes: int
+    interface_availability_percent: float
+    collection_success_percent: float
+    current_uptime_seconds: int
+    restart_count: int
+    average_temperature: float | None = None
+    average_voltage: float | None = None
+
+
+class AdminRouterAnalytics(BaseModel):
+    available: bool
+    collection_started_at: datetime | None = None
+    last_collected_at: datetime | None = None
+    baseline_days: int
+    prediction_ready: bool
+    days_until_prediction: int
+    predicted_peak_hours: list[int]
+    summary: RouterPerformanceSummary | None = None
+    hourly_profile: list[RouterHourlyProfilePoint]
+    routers: list[RouterPerformanceSummary]
+
+
 class AdminAnalyticsResponse(BaseModel):
     generated_at: datetime
     router_id: str | None
@@ -135,6 +187,7 @@ class AdminAnalyticsResponse(BaseModel):
     daily: list[AnalyticsDailyPoint]
     plan_performance: list[AdminPlanRevenue]
     hostel_performance: list[AdminHostelAnalytics]
+    router_analytics: AdminRouterAnalytics
 
 
 class AdminTransactionListResponse(BaseModel):
