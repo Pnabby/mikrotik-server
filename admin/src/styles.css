@@ -1669,6 +1669,10 @@ a:focus-visible {
 .router-analysis-card > header p { margin: 0 0 0.18rem; color: #624ac4; font-size: 0.51rem; font-weight: 850; letter-spacing: 0.06em; text-transform: uppercase; }
 .router-analysis-card > header h2 { margin: 0; color: #292637; font-family: 'Manrope', sans-serif; font-size: 0.9rem; }
 .router-analysis-card > header > div:first-child > span { display: block; margin-top: 0.25rem; color: #918c9c; font-size: 0.56rem; }
+.router-analysis-header-actions { display: grid; flex: 0 1 auto; justify-items: end; gap: 0.45rem; }
+.router-period-filter { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.2rem; padding: 0.2rem; border-radius: 8px; background: #f0eef6; }
+.router-period-filter button { min-height: 28px; padding: 0 0.48rem; border: 0; border-radius: 6px; color: #7d7789; background: transparent; font-size: 0.48rem; font-weight: 800; cursor: pointer; }
+.router-period-filter button.active { color: #fff; background: #644bcd; box-shadow: 0 3px 8px rgba(79, 57, 178, 0.18); }
 .router-baseline-status { display: flex; flex: 0 0 auto; align-items: center; gap: 0.5rem; padding: 0.5rem 0.65rem; border-radius: 9px; color: #a46c18; background: #fff4df; }
 .router-baseline-status.ready { color: #16805a; background: #e8f7f1; }
 .router-baseline-status > svg { width: 16px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.9; }
@@ -1694,6 +1698,9 @@ a:focus-visible {
 .router-hour-bar > div { display: flex; height: 100%; align-items: end; justify-content: center; border-bottom: 1px solid #e9e6ef; }
 .router-hour-bar i { display: block; width: min(100%, 18px); min-height: 2px; border-radius: 4px 4px 1px 1px; background: linear-gradient(180deg, #967fe8, #6047c8); }
 .router-hour-bar.peak i { background: linear-gradient(180deg, #48bf90, #16815c); box-shadow: 0 3px 9px rgba(22, 129, 92, 0.18); }
+.router-hour-bar.no-data > div { border-bottom-style: dashed; background: repeating-linear-gradient(135deg, transparent 0 4px, rgba(105, 91, 137, 0.035) 4px 8px); }
+.router-hour-bar.no-data i { min-height: 0; background: transparent; box-shadow: none; }
+.router-hour-bar.no-data > strong { color: #b8b4bf; }
 .router-hour-bar > small { overflow: visible; color: #9994a3; font-size: 0.41rem; font-weight: 700; white-space: nowrap; }
 .router-traffic-summary { padding: 0.85rem; border: 1px solid #e6e3ec; border-radius: 11px; background: #fcfbfe; }
 .router-traffic-summary h3 { margin-bottom: 0.48rem; }
@@ -3296,6 +3303,8 @@ a:focus-visible {
   .router-analysis-card > header { align-items: flex-start; flex-direction: column; }
   .router-analysis-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .router-baseline-status { width: 100%; }
+  .router-analysis-header-actions { width: 100%; justify-items: stretch; }
+  .router-period-filter { justify-content: flex-start; }
 
   .dashboard-heading-actions { width: 100%; }
   .dashboard-heading-actions .hostel-selector { flex: 1; }

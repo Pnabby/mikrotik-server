@@ -59,6 +59,21 @@ def router() -> Router:
     )
 
 
+def hourly_metric(router_id: str, devices: float, download_bps: float) -> RouterHourlyMetric:
+    hour = datetime(2026, 9, 26, 23, tzinfo=UTC)
+    return RouterHourlyMetric(
+        router_id=router_id, hour=hour, sample_count=12, failed_samples=0,
+        interface_running_samples=12, active_devices_avg=devices,
+        active_devices_peak=int(devices + 2), cpu_usage_avg=20, cpu_usage_peak=30,
+        memory_usage_avg=40, memory_usage_peak=45, memory_free_bytes_avg=600,
+        memory_total_bytes=1000, download_bps_avg=download_bps,
+        download_bps_peak=int(download_bps * 1.5), upload_bps_avg=500_000,
+        upload_bps_peak=800_000, download_bytes=1_000_000, upload_bytes=100_000,
+        uptime_seconds=1000, restart_count=0, temperature_avg=None, voltage_avg=None,
+        interface_name="ether1", last_sample_at=hour + timedelta(minutes=55),
+    )
+
+
 def test_routeros_resource_normalization(monkeypatch) -> None:
     class Resource:
         def __init__(self, rows):
@@ -172,10 +187,35 @@ def test_router_analytics_finds_peak_hours_and_health_summary() -> None:
     )
 
     assert result.available is True
-    assert result.predicted_peak_hours[-1] == 18
-    assert result.hourly_profile[18].predicted_peak is True
+    assert result.prediction_ready is False
+    assert result.predicted_peak_hours == []
+    assert result.hourly_profile[18].predicted_peak is False
     assert result.summary is not None
     assert result.summary.peak_devices == 40
     assert result.summary.successful_samples == 20
     assert result.summary.failed_samples == 2
     assert result.summary.collection_success_percent == pytest.approx(90.9)
+
+
+def test_combined_router_analytics_sums_concurrent_devices_and_bandwidth() -> None:
+    first_router = router()
+    second_router = Router(
+        id="annex", name="Annex", vpn_host="annex.example", api_port=8728,
+        hotspot_network="192.168.89.0/24", is_active=True,
+    )
+    service = AdminDashboardService(MemorySession(rows=[
+        hourly_metric("hall", 10, 2_000_000),
+        hourly_metric("annex", 5, 1_000_000),
+    ]))
+
+    result = service._router_analytics(
+        [first_router, second_router],
+        current_start=datetime(2026, 9, 26, 22, tzinfo=UTC),
+        current_end=datetime(2026, 9, 27, tzinfo=UTC),
+    )
+
+    assert result.summary is not None
+    assert result.summary.average_devices == 15
+    assert result.summary.peak_devices == 19
+    assert result.summary.average_download_bps == 3_000_000
+    assert result.hourly_profile[23].average_devices == 15

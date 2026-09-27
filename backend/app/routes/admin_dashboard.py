@@ -87,6 +87,7 @@ def get_analytics(
     date_from: date | None = None,
     date_to: date | None = None,
     all_time: bool = False,
+    router_hours: int = Query(default=24, ge=24, le=8760),
 ) -> AdminAnalyticsResponse:
     if router_id is not None and session.get(Router, router_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
@@ -96,6 +97,7 @@ def get_analytics(
         date_from=date_from,
         date_to=date_to,
         all_time=all_time,
+        router_hours=router_hours,
     )
 
 

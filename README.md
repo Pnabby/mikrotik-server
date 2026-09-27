@@ -74,11 +74,17 @@ npm run dev --prefix public
 ```
 
 The public page is then at `http://localhost:5173`. Run the admin login at
-`http://localhost:5174` with:
+`http://localhost:5174/admin/` with:
 
 ```powershell
 npm run dev --prefix admin
 ```
+
+Admin sections use bookmarkable SPA routes such as `/admin/dashboard`,
+`/admin/hostels`, `/admin/network`, and `/admin/analysis`. FastAPI serves the admin build
+and falls back to its `index.html` for these paths. If a reverse proxy serves `admin/dist`
+directly instead, configure its `/admin/` location to fall back to `/admin/index.html` so
+refreshing a nested admin URL does not return 404.
 
 Create or reset an administrator from the backend directory. The command prompts for the
 password without putting it in shell history:
