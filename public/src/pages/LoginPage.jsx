@@ -5,6 +5,7 @@ import { AccountApiError, getAccount, login } from '../services/accountApi'
 
 const USERNAME_PATTERN = /^[a-z0-9]{3,64}$/
 const PIN_PATTERN = /^[0-9]{6}$/
+const PROMO_PROMPT_SESSION_KEY = 'vlad-wifi:show-eligible-promo'
 
 function LoginWifiIcon() {
   return (
@@ -114,6 +115,11 @@ export default function LoginPage() {
     setBusy(true)
     try {
       const result = await login(form.username, form.pin, form.rememberMe)
+      try {
+        window.sessionStorage.setItem(PROMO_PROMPT_SESSION_KEY, '1')
+      } catch {
+        // Session storage may be unavailable in privacy-restricted browsers.
+      }
       window.location.assign(result.redirect_to || '/account')
     } catch (error) {
       if (error instanceof AccountApiError && error.status === 401) {

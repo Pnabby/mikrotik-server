@@ -132,9 +132,16 @@ def create_app() -> FastAPI:
 
     @application.exception_handler(ServiceError)
     async def handle_service_error(_request: Request, exc: ServiceError) -> JSONResponse:
+        content: dict[str, object] = {
+            "detail": _public_error_detail(exc.status_code)
+        }
+        if exc.error_code:
+            content["code"] = exc.error_code
+        if exc.field_errors:
+            content["field_errors"] = exc.field_errors
         return JSONResponse(
             status_code=exc.status_code,
-            content={"detail": _public_error_detail(exc.status_code)},
+            content=content,
         )
 
     @application.exception_handler(StarletteHTTPException)

@@ -33,6 +33,45 @@ from app.schemas.registration import (
 logger = logging.getLogger(__name__)
 REGISTRATION_COMMENT_PREFIX = "flint-registration="
 SIGNUP_UNAVAILABLE_DETAIL = "Signup is currently unavailable. Please contact help and support."
+REGISTRATION_CONFLICT_CODE = "registration_details_in_use"
+
+
+def _registration_conflict_fields(
+    session: Session,
+    request: RegistrationStartRequest,
+) -> dict[str, str]:
+    field_errors: dict[str, str] = {}
+    matches = session.execute(
+        select(Customer.email, Customer.username, Customer.phone_number).where(
+            or_(
+                Customer.email == request.email,
+                Customer.username == request.username,
+                Customer.phone_number == request.phone_number,
+            )
+        )
+    )
+    for email, username, phone_number in matches:
+        if email == request.email:
+            field_errors["email"] = "This email address is already registered."
+        if username == request.username:
+            field_errors["username"] = "This username is already taken."
+        if phone_number == request.phone_number:
+            field_errors["phone_number"] = "This phone number is already registered."
+    return field_errors
+
+
+def _raise_for_registration_conflicts(
+    session: Session,
+    request: RegistrationStartRequest,
+) -> None:
+    field_errors = _registration_conflict_fields(session, request)
+    if field_errors:
+        raise ServiceError(
+            status.HTTP_409_CONFLICT,
+            "One or more account details are already registered.",
+            error_code=REGISTRATION_CONFLICT_CODE,
+            field_errors=field_errors,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,6 +192,10 @@ class RegistrationRouterReadinessService:
             raise ServiceError(
                 status.HTTP_409_CONFLICT,
                 "That username already exists on the selected router.",
+                error_code=REGISTRATION_CONFLICT_CODE,
+                field_errors={
+                    "username": "This username is already in use for the selected hostel."
+                },
             )
 
 
@@ -180,20 +223,7 @@ class RegistrationOtpService:
         except UnknownRouterError as exc:
             raise ServiceError(status.HTTP_404_NOT_FOUND, "Router is not configured.") from exc
 
-        existing_customer = self._session.scalar(
-            select(Customer.id).where(
-                or_(
-                    Customer.email == request.email,
-                    Customer.username == request.username,
-                    Customer.phone_number == request.phone_number,
-                )
-            )
-        )
-        if existing_customer is not None:
-            raise ServiceError(
-                status.HTTP_409_CONFLICT,
-                "An account already uses that email address or username.",
-            )
+        _raise_for_registration_conflicts(self._session, request)
 
         now = datetime.now(UTC)
         self._enforce_request_limits(request.email, now=now)
@@ -311,20 +341,7 @@ class RegistrationOtpService:
         except UnknownRouterError as exc:
             raise ServiceError(status.HTTP_404_NOT_FOUND, "Router is not configured.") from exc
 
-        existing_customer = self._session.scalar(
-            select(Customer).where(
-                or_(
-                    Customer.email == request.email,
-                    Customer.username == request.username,
-                    Customer.phone_number == request.phone_number,
-                )
-            )
-        )
-        if existing_customer is not None:
-            raise ServiceError(
-                status.HTTP_409_CONFLICT,
-                "An account already uses that email address or username.",
-            )
+        _raise_for_registration_conflicts(self._session, request)
 
         database_router = self._session.get(Router, request.router_id)
         if database_router is None or not database_router.is_active:
@@ -348,6 +365,10 @@ class RegistrationOtpService:
             raise ServiceError(
                 status.HTTP_409_CONFLICT,
                 "That username already exists on the selected router.",
+                error_code=REGISTRATION_CONFLICT_CODE,
+                field_errors={
+                    "username": "This username is already in use for the selected hostel."
+                },
             )
 
         if router_user is None:
@@ -383,6 +404,10 @@ class RegistrationOtpService:
             raise ServiceError(
                 status.HTTP_409_CONFLICT,
                 "That username already exists on the selected router.",
+                error_code=REGISTRATION_CONFLICT_CODE,
+                field_errors={
+                    "username": "This username is already in use for the selected hostel."
+                },
             )
         if not _router_user_matches(
             router_user,
@@ -429,9 +454,12 @@ class RegistrationOtpService:
         except IntegrityError as exc:
             self._session.rollback()
             self._compensate_router_user(router_client, request.username, marker)
+            field_errors = _registration_conflict_fields(self._session, request)
             raise ServiceError(
                 status.HTTP_409_CONFLICT,
                 "The account could not be created because it already exists.",
+                error_code=REGISTRATION_CONFLICT_CODE,
+                field_errors=field_errors,
             ) from exc
         except SQLAlchemyError as exc:
             self._session.rollback()

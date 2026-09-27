@@ -114,6 +114,7 @@ const AUTOMATIC_ACTIVATION_STATUSES = new Set([
   'retry_required',
   'reconciliation_required',
 ])
+const PROMO_PROMPT_SESSION_KEY = 'vlad-wifi:show-eligible-promo'
 
 const PAYMENT_NOTICE_COPY = {
   active: {
@@ -129,7 +130,7 @@ const PAYMENT_NOTICE_COPY = {
     detail: 'Check again shortly to see the latest status.',
   },
   promo_already_used: {
-    title: 'This promotional plan was already claimed.',
+    title: 'This special offer was already claimed.',
     detail: 'Only the first successful claim or purchase can activate this one-time offer. Please contact support if you need help.',
   },
   failed: {
@@ -169,7 +170,6 @@ function PlanCard({ plan, purchasingPlanId, onPurchase }) {
       <div>
         <div className="plan-card-labels">
           <span className="plan-duration">{formatDuration(plan.duration_seconds)}</span>
-          {plan.is_promotional && <span className="plan-promo-label">Promo &middot; once per customer</span>}
         </div>
         <h3>{plan.name}</h3>
         <p>{plan.description || 'Reliable WiFi access for your stay.'}</p>
@@ -182,7 +182,7 @@ function PlanCard({ plan, purchasingPlanId, onPurchase }) {
       <div className="plan-card-footer">
         <strong>{formatMoney(plan.amount, plan.currency)}</strong>
         <button type="button" disabled={!plan.purchase_available || Boolean(purchasingPlanId)} onClick={() => onPurchase(plan)}>
-          {purchasingPlanId === plan.id ? (isFreePromotion ? 'Activating...' : 'Opening checkout...') : plan.promo_claimed ? 'Promo already claimed' : plan.purchase_available ? (isFreePromotion ? 'Claim free plan' : 'Purchase plan') : 'Payments unavailable'}
+          {purchasingPlanId === plan.id ? (isFreePromotion ? 'Activating...' : 'Opening checkout...') : plan.promo_claimed ? 'Offer already claimed' : plan.purchase_available ? (isFreePromotion ? 'Claim special offer' : 'Purchase plan') : 'Payments unavailable'}
         </button>
       </div>
     </article>
@@ -199,6 +199,7 @@ export default function AccountPage() {
   const [disconnectError, setDisconnectError] = useState('')
   const [showAllPlans, setShowAllPlans] = useState(false)
   const [showAllPurchases, setShowAllPurchases] = useState(false)
+  const [showPromoPrompt, setShowPromoPrompt] = useState(false)
   const [activeSection, setActiveSection] = useState('overview')
   const [purchasingPlanId, setPurchasingPlanId] = useState('')
   const [purchaseError, setPurchaseError] = useState('')
@@ -226,6 +227,19 @@ export default function AccountPage() {
         if (!active) return
         setAccount(result)
         setAccountPhase('ready')
+        try {
+          const shouldShowPromo = window.sessionStorage.getItem(PROMO_PROMPT_SESSION_KEY) === '1'
+          window.sessionStorage.removeItem(PROMO_PROMPT_SESSION_KEY)
+          if (shouldShowPromo && result.available_plans?.some((plan) => (
+            plan.is_promotional
+            && Number(plan.amount) === 0
+            && plan.purchase_available
+          ))) {
+            setShowPromoPrompt(true)
+          }
+        } catch {
+          // The account remains usable when session storage is unavailable.
+        }
         if (!result.current_plan) {
           setNetworkPhase('ready')
           return
@@ -260,6 +274,20 @@ export default function AccountPage() {
       active = false
     }
   }, [])
+
+  useEffect(() => {
+    if (!showPromoPrompt) return undefined
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    function closeOnEscape(event) {
+      if (event.key === 'Escape') setShowPromoPrompt(false)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [showPromoPrompt])
 
   useEffect(() => {
     if (accountPhase !== 'ready') return undefined
@@ -405,7 +433,7 @@ export default function AccountPage() {
       }
       setPurchaseError(
         error instanceof AccountApiError && error.status === 409
-          ? error.detail || 'This promotional plan has already been claimed.'
+          ? error.detail || 'This special offer has already been claimed.'
           : error instanceof AccountApiError && error.status === 503
           ? 'The router is currently unreachable. Please contact support.'
           : 'Checkout could not be started. Please try again in a moment.',
@@ -446,6 +474,13 @@ export default function AccountPage() {
     } finally {
       setCheckingPayment(false)
     }
+  }
+
+  function openPromoCollection() {
+    setShowPromoPrompt(false)
+    window.requestAnimationFrame(() => {
+      document.getElementById('promo-plans')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
   }
 
   const loadingInitialDetails = accountPhase === 'loading'
@@ -496,16 +531,22 @@ export default function AccountPage() {
         : 'Starts after first login'
   const availablePlans = account.available_plans || []
   const hasPlanGroups = availablePlans.some((plan) => plan.group_id)
-  const visiblePlans = hasPlanGroups || showAllPlans ? availablePlans : availablePlans.slice(0, 3)
-  const planSections = hasPlanGroups
+  const hasPromotionalPlans = availablePlans.some((plan) => plan.is_promotional)
+  const usesPlanCollections = hasPlanGroups || hasPromotionalPlans
+  const visiblePlans = usesPlanCollections || showAllPlans ? availablePlans : availablePlans.slice(0, 3)
+  const planSections = usesPlanCollections
     ? Array.from(visiblePlans.reduce((sections, plan) => {
-      const key = plan.group_id || '__ungrouped__'
+      const isPromo = plan.is_promotional
+      const key = isPromo ? '__promo__' : plan.group_id || '__ungrouped__'
       if (!sections.has(key)) sections.set(key, {
         id: key,
-        name: plan.group_name || 'Other plans',
-        description: plan.group_description || '',
-        displayOrder: plan.group_display_order ?? Number.MAX_SAFE_INTEGER,
-        sortByPrice: plan.group_sort_by_price,
+        isPromo,
+        name: isPromo ? 'Special Offers' : plan.group_name || 'Available plans',
+        description: isPromo
+          ? 'Special offers available to eligible customers.'
+          : plan.group_description || '',
+        displayOrder: isPromo ? -1 : plan.group_display_order ?? Number.MAX_SAFE_INTEGER,
+        sortByPrice: isPromo || plan.group_sort_by_price,
         plans: [],
       })
       sections.get(key).plans.push(plan)
@@ -521,12 +562,16 @@ export default function AccountPage() {
         )),
       }))
       .sort((left, right) => (
-        Number(right.plans.some((plan) => plan.is_promotional))
-        - Number(left.plans.some((plan) => plan.is_promotional))
+        Number(right.isPromo) - Number(left.isPromo)
         || left.displayOrder - right.displayOrder
         || left.name.localeCompare(right.name)
       ))
     : [{ id: '__all__', name: '', description: '', plans: visiblePlans }]
+  const eligibleFreePromotions = availablePlans.filter((plan) => (
+    plan.is_promotional
+    && Number(plan.amount) === 0
+    && plan.purchase_available
+  ))
   const previousPlans = account.previous_plans || []
   const purchases = account.purchases || []
   const visiblePurchases = showAllPurchases ? purchases : purchases.slice(0, 5)
@@ -640,7 +685,7 @@ export default function AccountPage() {
           <div className="account-section-heading">
             <div><span className="account-eyebrow">Get connected</span><h2>Available plans</h2><p>Choose the plan that fits your needs.</p></div>
             <div className="plan-heading-actions">
-              {!hasPlanGroups && availablePlans.length > 3 && <button type="button" aria-expanded={showAllPlans} onClick={() => setShowAllPlans((current) => !current)}>{showAllPlans ? 'Show featured plans' : `View all ${availablePlans.length} plans`}</button>}
+              {!usesPlanCollections && availablePlans.length > 3 && <button type="button" aria-expanded={showAllPlans} onClick={() => setShowAllPlans((current) => !current)}>{showAllPlans ? 'Show featured plans' : `View all ${availablePlans.length} plans`}</button>}
               <VoucherIcon />
             </div>
           </div>
@@ -648,10 +693,10 @@ export default function AccountPage() {
           {availablePlans.length ? (
             <>
               {purchaseError && <div className="plan-purchase-error" role="alert">{purchaseError}</div>}
-              <div className={hasPlanGroups ? 'plan-group-sections' : ''}>
+              <div className={usesPlanCollections ? 'plan-group-sections' : ''}>
                 {planSections.map((section) => (
-                  <section className={hasPlanGroups ? 'customer-plan-group' : ''} key={section.id}>
-                    {hasPlanGroups && <header><span>Plan collection</span><h3>{section.name}</h3>{section.description && <p>{section.description}</p>}</header>}
+                  <section className={`${usesPlanCollections ? 'customer-plan-group' : ''}${section.isPromo ? ' promo-plan-group' : ''}`} id={section.isPromo ? 'promo-plans' : undefined} key={section.id}>
+                    {usesPlanCollections && <header><h3>{section.name}</h3>{section.description && <p>{section.description}</p>}</header>}
                     <div className="plans-grid">
                       {section.plans.map((plan) => <PlanCard key={plan.id} plan={plan} purchasingPlanId={purchasingPlanId} onPurchase={requestPlanPurchase} />)}
                     </div>
@@ -736,8 +781,23 @@ export default function AccountPage() {
           )}
         </section>
 
-        <footer className="account-footer"><ShieldIcon /><span>Need help with your account or a purchase? Contact help and support.</span></footer>
+        <footer className="account-footer"><ShieldIcon /><span>Need help with your account or a purchase? Contact <a href="#help-and-support" onClick={(event) => { event.preventDefault(); window.dispatchEvent(new Event('vlad:open-support')) }}>help and support</a>.</span></footer>
       </div>
+
+      {showPromoPrompt && eligibleFreePromotions.length > 0 && (
+        <div className="portal-modal-backdrop" role="presentation" onMouseDown={() => setShowPromoPrompt(false)}>
+          <section className="portal-modal promo-discovery-modal" role="dialog" aria-modal="true" aria-labelledby="promo-discovery-title" onMouseDown={(event) => event.stopPropagation()}>
+            <span className="portal-modal-icon promo-discovery-icon"><VoucherIcon /></span>
+            <span className="promo-discovery-label">Free special offer available</span>
+            <h2 id="promo-discovery-title">You have {eligibleFreePromotions.length === 1 ? 'a special offer' : `${eligibleFreePromotions.length} special offers`} to claim</h2>
+            <p>Visit the Special Offers collection to review the available {eligibleFreePromotions.length === 1 ? 'offer' : 'offers'} and select the one you want.</p>
+            <div className="portal-modal-actions">
+              <button type="button" onClick={() => setShowPromoPrompt(false)}>Maybe later</button>
+              <button autoFocus className="confirm" type="button" onClick={openPromoCollection}>Claim special offer</button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {disconnectTarget && (
         <div className="portal-modal-backdrop" role="presentation" onMouseDown={() => !disconnecting && setDisconnectTarget(null)}>
@@ -756,7 +816,7 @@ export default function AccountPage() {
 
       {purchaseTarget && (
         <div className="portal-modal-backdrop" role="presentation" onMouseDown={() => !purchasingPlanId && setPurchaseTarget(null)}>
-          <section className="portal-modal" role="dialog" aria-modal="true" aria-labelledby="replace-plan-title" onMouseDown={(event) => event.stopPropagation()}>
+          <section className={`portal-modal${purchaseTarget.is_promotional ? ' special-offer-modal' : ''}`} role="dialog" aria-modal="true" aria-labelledby="replace-plan-title" onMouseDown={(event) => event.stopPropagation()}>
             <span className="portal-modal-icon plan-replace-icon"><WarningIcon /></span>
             <h2 id="replace-plan-title">Replace your active plan?</h2>
             <p>

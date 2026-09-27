@@ -75,7 +75,7 @@ class FreePlanClaimService:
         if package.amount != Decimal(0) or not package.is_promotional:
             raise ServiceError(
                 status.HTTP_409_CONFLICT,
-                "Only free promotional plans can be claimed without payment.",
+                "Only free special offers can be claimed without payment.",
             )
 
         existing = self._session.scalar(
@@ -223,7 +223,7 @@ class PaymentVerificationService:
         ):
             raise ServiceError(
                 status.HTTP_409_CONFLICT,
-                "This promotional plan has already been used.",
+                "This special offer has already been used.",
             )
         callback_url = (self._settings.paystack_callback_url or "").strip()
         if not callback_url:
