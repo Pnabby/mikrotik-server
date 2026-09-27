@@ -39,6 +39,13 @@ export function startPinReset(email) {
   })
 }
 
+export function sendPinResetSms(challengeId, email) {
+  return request('/api/auth/pin-reset/sms', {
+    method: 'POST',
+    body: JSON.stringify({ challenge_id: challengeId, email }),
+  })
+}
+
 export function completePinReset(challengeId, email, code, newPin, confirmation) {
   return request('/api/auth/pin-reset/complete', {
     method: 'POST',

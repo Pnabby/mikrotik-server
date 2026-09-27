@@ -103,6 +103,16 @@ class PinResetStartResponse(BaseModel):
     resend_after_seconds: int
 
 
+class PinResetSmsRequest(BaseModel):
+    challenge_id: uuid.UUID
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        return normalize_customer_email(value)
+
+
 class UsernameRecoveryCompleteRequest(BaseModel):
     challenge_id: uuid.UUID
     email: str

@@ -18,6 +18,10 @@ class SmsSender(Protocol):
         self, *, recipient: str, code: str, expires_in_minutes: int
     ) -> None: ...
 
+    def send_pin_reset_otp(
+        self, *, recipient: str, code: str, expires_in_minutes: int
+    ) -> None: ...
+
 
 class MNotifySmsSender:
     def __init__(self, *, api_url: str, api_key: str, sender_id: str, timeout: float) -> None:
@@ -42,6 +46,15 @@ class MNotifySmsSender:
             recipient=recipient,
             message=(
                 f"Your Vlad WiFi verification code is {code}. "
+                f"It expires in {expires_in_minutes} minutes."
+            ),
+        )
+
+    def send_pin_reset_otp(self, *, recipient: str, code: str, expires_in_minutes: int) -> None:
+        self.send(
+            recipient=recipient,
+            message=(
+                f"Your Vlad WiFi PIN reset code is {code}. "
                 f"It expires in {expires_in_minutes} minutes."
             ),
         )

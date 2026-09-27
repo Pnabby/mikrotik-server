@@ -20,6 +20,7 @@ from app.core.exceptions import ServiceError
 from app.core.security import PinHasher, PinHashingError
 from app.integrations.brevo.client import EmailDeliveryError, OtpEmailSender
 from app.integrations.mikrotik.registry import UnknownRouterError
+from app.integrations.mnotify import SmsDeliveryError, SmsSender
 from app.models.audit_log import AuditLog
 from app.models.customer import Customer
 from app.models.customer_session import CustomerSession
@@ -30,6 +31,7 @@ from app.schemas.account import (
     AccountUnlockStartRequest,
     ChangePinRequest,
     PinResetCompleteRequest,
+    PinResetSmsRequest,
     PinResetStartRequest,
     UsernameRecoveryCompleteRequest,
 )
@@ -92,6 +94,74 @@ class PinManagementService:
             send_otp=sender.send_username_recovery_otp,
             router_client_factory=router_client_factory,
             requested_ip=requested_ip,
+        )
+
+    def send_reset_sms(
+        self,
+        request: PinResetSmsRequest,
+        sender: SmsSender,
+    ) -> StartedPinReset:
+        """Replace an email-first PIN reset code with a one-time SMS fallback code."""
+        challenge = self._session.scalar(
+            select(EmailOtpChallenge)
+            .where(EmailOtpChallenge.id == request.challenge_id)
+            .with_for_update()
+        )
+        now = datetime.now(UTC)
+        if (
+            challenge is None
+            or challenge.email != request.email
+            or challenge.purpose != OtpPurpose.PIN_RESET
+            or challenge.customer_id is None
+            or challenge.consumed_at is not None
+            or now >= _as_utc(challenge.expires_at)
+        ):
+            raise ServiceError(status.HTTP_400_BAD_REQUEST, "SMS fallback is not available.")
+        # phone_number is deliberately empty on an email challenge. Setting it here both
+        # records the channel switch and prevents callers from requesting SMS first/twice.
+        if challenge.phone_number is not None:
+            raise ServiceError(status.HTTP_409_CONFLICT, "SMS fallback was already used.")
+
+        customer = self._session.get(Customer, challenge.customer_id)
+        if (
+            customer is None
+            or customer.phone_number is None
+            or customer.phone_verified_at is None
+        ):
+            raise ServiceError(
+                status.HTTP_409_CONFLICT,
+                "No verified phone number is available for SMS recovery.",
+            )
+
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        challenge.phone_number = customer.phone_number
+        challenge.code_hash = self._hash_code(
+            self._hash_secret(), challenge.id, code, OtpPurpose.PIN_RESET
+        )
+        challenge.attempt_count = 0
+        challenge.expires_at = now + timedelta(seconds=self._settings.otp_code_ttl_seconds)
+        self._session.commit()
+        try:
+            sender.send_pin_reset_otp(
+                recipient=customer.phone_number,
+                code=code,
+                expires_in_minutes=max(
+                    1, (self._settings.otp_code_ttl_seconds + 59) // 60
+                ),
+            )
+        except SmsDeliveryError as exc:
+            challenge.consumed_at = datetime.now(UTC)
+            self._session.commit()
+            raise ServiceError(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "PIN reset SMS could not be sent.",
+            ) from exc
+
+        return StartedPinReset(
+            challenge_id=challenge.id,
+            destination=_mask_phone(customer.phone_number),
+            expires_in_seconds=self._settings.otp_code_ttl_seconds,
+            resend_after_seconds=self._settings.otp_resend_cooldown_seconds,
         )
 
     def start_account_unlock(
@@ -660,6 +730,10 @@ def _as_utc(value: datetime) -> datetime:
 def _mask_email(email: str) -> str:
     local, domain = email.split("@", 1)
     return f"{local[0]}{'*' * max(2, len(local) - 1)}@{domain}"
+
+
+def _mask_phone(phone: str) -> str:
+    return f"{phone[:4]}*****{phone[-3:]}"
 
 
 def _hash_session_token(token: str) -> str:
