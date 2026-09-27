@@ -219,3 +219,26 @@ def test_combined_router_analytics_sums_concurrent_devices_and_bandwidth() -> No
     assert result.summary.peak_devices == 19
     assert result.summary.average_download_bps == 3_000_000
     assert result.hourly_profile[23].average_devices == 15
+    assert result.timeline[-1].average_devices == 15
+    assert result.timeline[-1].average_download_bps == 3_000_000
+
+
+@pytest.mark.parametrize(
+    ("period_hours", "bucket_count"),
+    [(24, 24), (168, 7), (720, 30), (2160, 30), (8760, 12)],
+)
+def test_router_timeline_uses_readable_period_buckets(
+    period_hours: int,
+    bucket_count: int,
+) -> None:
+    end = datetime(2026, 9, 27, 1, tzinfo=UTC)
+    start = end - timedelta(hours=period_hours)
+
+    timeline = AdminDashboardService._router_timeline(
+        [],
+        current_start=start,
+        current_end=end,
+        period_hours=period_hours,
+    )
+
+    assert len(timeline) == bucket_count

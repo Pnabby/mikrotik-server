@@ -1452,6 +1452,56 @@ const NETWORK_PERIODS = [
   ['2160', '90 days'],
   ['8760', '12 months'],
 ]
+const ROUTER_GRAPH_METRICS = {
+  devices: {
+    label: 'Active devices',
+    field: 'average_devices',
+    summaryField: 'average_devices',
+    tone: 'purple',
+    format: (value) => `${Number(value).toFixed(1)} devices`,
+    short: (value) => Number(value).toFixed(1),
+  },
+  cpu: {
+    label: 'CPU usage',
+    field: 'average_cpu_percent',
+    summaryField: 'average_cpu_percent',
+    tone: 'amber',
+    format: (value) => `${Number(value).toFixed(1)}% CPU`,
+    short: (value) => `${Number(value).toFixed(1)}%`,
+  },
+  memory: {
+    label: 'Memory usage',
+    field: 'average_memory_percent',
+    summaryField: 'average_memory_percent',
+    tone: 'blue',
+    format: (value) => `${Number(value).toFixed(1)}% memory`,
+    short: (value) => `${Number(value).toFixed(1)}%`,
+  },
+  download: {
+    label: 'Download speed',
+    field: 'average_download_bps',
+    summaryField: 'average_download_bps',
+    tone: 'green',
+    format: formatNetworkRate,
+    short: (value) => formatNetworkRate(value).replace('bps', ''),
+  },
+  upload: {
+    label: 'Upload speed',
+    field: 'average_upload_bps',
+    summaryField: 'average_upload_bps',
+    tone: 'teal',
+    format: formatNetworkRate,
+    short: (value) => formatNetworkRate(value).replace('bps', ''),
+  },
+  availability: {
+    label: 'Interface availability',
+    field: 'interface_availability_percent',
+    summaryField: 'interface_availability_percent',
+    tone: 'green',
+    format: (value) => `${Number(value).toFixed(1)}% available`,
+    short: (value) => `${Number(value).toFixed(1)}%`,
+  },
+}
 
 function RouterPeriodFilter({ period, onChange }) {
   return <div className="router-period-filter" aria-label="Network analysis period">
@@ -1460,24 +1510,27 @@ function RouterPeriodFilter({ period, onChange }) {
 }
 
 function RouterAnalysisSection({ analytics, period, onPeriodChange }) {
+  const [graphMetric, setGraphMetric] = useState('devices')
   if (!analytics?.available) return <section className="router-analysis-card router-analysis-empty">
     <header><div><p>Network intelligence</p><h2>Router performance &amp; peak hours</h2><span>Five-minute readings are summarized into hourly averages.</span></div><RouterPeriodFilter period={period} onChange={onPeriodChange} /></header>
     <div><Icon name="clock" /><p><strong>No readings in this period</strong><span>Choose a longer period or wait for the next successful router sample.</span></p></div>
   </section>
 
   const summary = analytics.summary
-  const populatedPoints = analytics.hourly_profile.filter((point) => point.samples > 0)
-  const maximumDevices = Math.max(...populatedPoints.map((point) => point.average_devices), 1)
+  const metric = ROUTER_GRAPH_METRICS[graphMetric]
+  const timeline = analytics.timeline || []
+  const populatedPoints = timeline.filter((point) => point.samples > 0)
+  const periodAverage = Number(summary[metric.summaryField] || 0)
+  const maximumValue = Math.max(
+    ...populatedPoints.map((point) => Number(point[metric.field] || 0)),
+    periodAverage,
+    1,
+  )
+  const labelEvery = Math.max(1, Math.ceil(timeline.length / 8))
+  const averageLineTop = 20 + (1 - periodAverage / maximumValue) * 168
   const peakLabels = analytics.hourly_profile
     .filter((point) => analytics.predicted_peak_hours.includes(point.hour))
     .map((point) => point.label)
-  const lastCollectedHour = new Date(analytics.last_collected_at).getUTCHours()
-  const profilePoints = period === '24'
-    ? [...analytics.hourly_profile].sort((left, right) => (
-      (left.hour - lastCollectedHour - 1 + 24) % 24
-      - (right.hour - lastCollectedHour - 1 + 24) % 24
-    ))
-    : analytics.hourly_profile
   return <section className="router-analysis-card">
     <header>
       <div><p>Network intelligence</p><h2>Router performance &amp; peak hours</h2><span>Hourly behavior for the selected hostel and network period.</span></div>
@@ -1495,11 +1548,20 @@ function RouterAnalysisSection({ analytics, period, onPeriodChange }) {
 
     <div className="router-peak-layout">
       <div className="router-hourly-chart">
-        <div className="router-hourly-chart-heading"><div><h3>Active devices by hour</h3><p>{period === '24' ? 'Chronological readings from the last 24 hours (UTC).' : 'Typical active-device demand across a 24-hour day (UTC).'}</p></div><span>{peakLabels.length ? `Likely peaks: ${peakLabels.join(', ')}` : `${analytics.baseline_days} of 7 baseline days`}</span></div>
-        <div className="router-hour-bars" role="img" aria-label="Average active devices by hour">
-          {profilePoints.map((point, index) => <div className={`router-hour-bar${point.predicted_peak ? ' peak' : ''}${point.samples ? '' : ' no-data'}`} key={point.hour} title={point.samples ? `${point.label}: ${point.average_devices.toFixed(1)} average devices, ${point.average_cpu_percent.toFixed(1)}% CPU, ${point.average_memory_percent.toFixed(1)}% memory` : `${point.label}: no readings`}>
-            <strong>{point.samples ? point.average_devices.toFixed(1) : ''}</strong><div><i style={{ height: point.samples ? `${Math.max(6, point.average_devices / maximumDevices * 100)}%` : '0%' }} /></div><small>{index % 3 === 0 || index === profilePoints.length - 1 ? point.label : ''}</small>
-          </div>)}
+        <div className="router-hourly-chart-heading">
+          <div><h3>{metric.label} trend</h3><p>{period === '24' ? 'Hourly readings from the last 24 hours (UTC).' : `Averages divided into ${timeline.length} readable time periods (UTC).`}</p></div>
+          <div className="router-chart-heading-actions"><label className="router-metric-selector"><span>Graph</span><select value={graphMetric} onChange={(event) => setGraphMetric(event.target.value)}>{Object.entries(ROUTER_GRAPH_METRICS).map(([value, option]) => <option key={value} value={value}>{option.label}</option>)}</select></label><span>{peakLabels.length ? `Likely device peaks: ${peakLabels.join(', ')}` : `${analytics.baseline_days} of 7 baseline days`}</span></div>
+        </div>
+        <div className={`router-trend-chart ${metric.tone}`} role="img" aria-label={`${metric.label} over the selected network period`} style={{ '--point-count': timeline.length }}>
+          {populatedPoints.length > 0 && <div className="router-chart-average-line" style={{ top: `${averageLineTop}px` }}><span>Average {metric.format(periodAverage)}</span></div>}
+          {timeline.map((point, index) => {
+            const value = Number(point[metric.field] || 0)
+            const showValue = point.samples > 0 && (timeline.length <= 12 || index % labelEvery === 0 || index === timeline.length - 1)
+            const showLabel = index % labelEvery === 0 || index === timeline.length - 1
+            return <div className={`router-trend-column${point.samples ? '' : ' no-data'}`} key={point.start} title={point.samples ? `${point.label}: ${metric.format(value)} average from ${point.samples.toLocaleString()} readings` : `${point.label}: no readings`}>
+              <strong>{showValue ? metric.short(value) : ''}</strong><div><i style={{ height: point.samples ? `${Math.max(value ? 5 : 2, value / maximumValue * 100)}%` : '0%' }} /></div><small>{showLabel ? point.label : ''}</small>
+            </div>
+          })}
         </div>
       </div>
       <aside className="router-traffic-summary">

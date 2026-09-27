@@ -126,6 +126,20 @@ class RouterHourlyProfilePoint(BaseModel):
     predicted_peak: bool
 
 
+class RouterTimelinePoint(BaseModel):
+    start: datetime
+    end: datetime
+    label: str
+    samples: int
+    average_devices: float
+    peak_devices: int
+    average_cpu_percent: float
+    average_memory_percent: float
+    average_download_bps: float
+    average_upload_bps: float
+    interface_availability_percent: float
+
+
 class RouterPerformanceSummary(BaseModel):
     router_id: str | None = None
     router_name: str
@@ -163,6 +177,7 @@ class AdminRouterAnalytics(BaseModel):
     predicted_peak_hours: list[int]
     summary: RouterPerformanceSummary | None = None
     hourly_profile: list[RouterHourlyProfilePoint]
+    timeline: list[RouterTimelinePoint]
     routers: list[RouterPerformanceSummary]
 
 
