@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   AdminApiError,
@@ -1455,7 +1455,10 @@ const NETWORK_PERIODS = [
 const ROUTER_GRAPH_METRICS = {
   devices: {
     label: 'Active devices',
+    axisLabel: 'Devices',
+    lowField: 'lowest_devices',
     field: 'average_devices',
+    highField: 'highest_devices',
     summaryField: 'average_devices',
     tone: 'purple',
     format: (value) => `${Number(value).toFixed(1)} devices`,
@@ -1463,7 +1466,10 @@ const ROUTER_GRAPH_METRICS = {
   },
   cpu: {
     label: 'CPU usage',
+    axisLabel: 'CPU usage (%)',
+    lowField: 'lowest_cpu_percent',
     field: 'average_cpu_percent',
+    highField: 'highest_cpu_percent',
     summaryField: 'average_cpu_percent',
     tone: 'amber',
     format: (value) => `${Number(value).toFixed(1)}% CPU`,
@@ -1471,7 +1477,10 @@ const ROUTER_GRAPH_METRICS = {
   },
   memory: {
     label: 'Memory usage',
+    axisLabel: 'Memory usage (%)',
+    lowField: 'lowest_memory_percent',
     field: 'average_memory_percent',
+    highField: 'highest_memory_percent',
     summaryField: 'average_memory_percent',
     tone: 'blue',
     format: (value) => `${Number(value).toFixed(1)}% memory`,
@@ -1479,7 +1488,10 @@ const ROUTER_GRAPH_METRICS = {
   },
   download: {
     label: 'Download speed',
+    axisLabel: 'Download speed',
+    lowField: 'lowest_download_bps',
     field: 'average_download_bps',
+    highField: 'highest_download_bps',
     summaryField: 'average_download_bps',
     tone: 'green',
     format: formatNetworkRate,
@@ -1487,7 +1499,10 @@ const ROUTER_GRAPH_METRICS = {
   },
   upload: {
     label: 'Upload speed',
+    axisLabel: 'Upload speed',
+    lowField: 'lowest_upload_bps',
     field: 'average_upload_bps',
+    highField: 'highest_upload_bps',
     summaryField: 'average_upload_bps',
     tone: 'teal',
     format: formatNetworkRate,
@@ -1495,7 +1510,10 @@ const ROUTER_GRAPH_METRICS = {
   },
   availability: {
     label: 'Interface availability',
+    axisLabel: 'Availability (%)',
+    lowField: 'lowest_interface_availability_percent',
     field: 'interface_availability_percent',
+    highField: 'highest_interface_availability_percent',
     summaryField: 'interface_availability_percent',
     tone: 'green',
     format: (value) => `${Number(value).toFixed(1)}% available`,
@@ -1511,6 +1529,16 @@ function RouterPeriodFilter({ period, onChange }) {
 
 function RouterAnalysisSection({ analytics, period, onPeriodChange }) {
   const [graphMetric, setGraphMetric] = useState('devices')
+  const chartScrollRef = useRef(null)
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const chartScroll = chartScrollRef.current
+      if (chartScroll) chartScroll.scrollLeft = chartScroll.scrollWidth - chartScroll.clientWidth
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [analytics?.last_collected_at, analytics?.period_hours, graphMetric])
+
   if (!analytics?.available) return <section className="router-analysis-card router-analysis-empty">
     <header><div><p>Network intelligence</p><h2>Router performance &amp; peak hours</h2><span>Five-minute readings are summarized into hourly averages.</span></div><RouterPeriodFilter period={period} onChange={onPeriodChange} /></header>
     <div><Icon name="clock" /><p><strong>No readings in this period</strong><span>Choose a longer period or wait for the next successful router sample.</span></p></div>
@@ -1522,12 +1550,17 @@ function RouterAnalysisSection({ analytics, period, onPeriodChange }) {
   const populatedPoints = timeline.filter((point) => point.samples > 0)
   const periodAverage = Number(summary[metric.summaryField] || 0)
   const maximumValue = Math.max(
-    ...populatedPoints.map((point) => Number(point[metric.field] || 0)),
+    ...populatedPoints.flatMap((point) => [
+      Number(point[metric.field] || 0),
+      Number(point[metric.highField] ?? point[metric.field] ?? 0),
+    ]),
     periodAverage,
     1,
   )
+  const yAxisTicks = Array.from({ length: 5 }, (_, index) => maximumValue * (4 - index) / 4)
   const labelEvery = Math.max(1, Math.ceil(timeline.length / 8))
   const averageLineTop = 20 + (1 - periodAverage / maximumValue) * 168
+  const hasGroupedPoints = populatedPoints.some((point) => Number(point.observations || 0) > 1)
   const peakLabels = analytics.hourly_profile
     .filter((point) => analytics.predicted_peak_hours.includes(point.hour))
     .map((point) => point.label)
@@ -1552,16 +1585,43 @@ function RouterAnalysisSection({ analytics, period, onPeriodChange }) {
           <div><h3>{metric.label} trend</h3><p>{period === '24' ? 'Hourly readings from the last 24 hours (UTC).' : `Averages divided into ${timeline.length} readable time periods (UTC).`}</p></div>
           <div className="router-chart-heading-actions"><label className="router-metric-selector"><span>Graph</span><select value={graphMetric} onChange={(event) => setGraphMetric(event.target.value)}>{Object.entries(ROUTER_GRAPH_METRICS).map(([value, option]) => <option key={value} value={value}>{option.label}</option>)}</select></label><span>{peakLabels.length ? `Likely device peaks: ${peakLabels.join(', ')}` : `${analytics.baseline_days} of 7 baseline days`}</span></div>
         </div>
-        <div className={`router-trend-chart ${metric.tone}`} role="img" aria-label={`${metric.label} over the selected network period`} style={{ '--point-count': timeline.length }}>
-          {populatedPoints.length > 0 && <div className="router-chart-average-line" style={{ top: `${averageLineTop}px` }}><span>Average {metric.format(periodAverage)}</span></div>}
-          {timeline.map((point, index) => {
-            const value = Number(point[metric.field] || 0)
-            const showValue = point.samples > 0 && (timeline.length <= 12 || index % labelEvery === 0 || index === timeline.length - 1)
-            const showLabel = index % labelEvery === 0 || index === timeline.length - 1
-            return <div className={`router-trend-column${point.samples ? '' : ' no-data'}`} key={point.start} title={point.samples ? `${point.label}: ${metric.format(value)} average from ${point.samples.toLocaleString()} readings` : `${point.label}: no readings`}>
-              <strong>{showValue ? metric.short(value) : ''}</strong><div><i style={{ height: point.samples ? `${Math.max(value ? 5 : 2, value / maximumValue * 100)}%` : '0%' }} /></div><small>{showLabel ? point.label : ''}</small>
+        {hasGroupedPoints && <div className="router-chart-legend" aria-label="Bar legend"><span><i className="lowest" />Lowest</span><span><i className="average" />Average</span><span><i className="highest" />Highest</span></div>}
+        <div className="router-chart-body">
+          <div className="router-chart-y-axis" aria-hidden="true"><strong>{metric.axisLabel}</strong><div>{yAxisTicks.map((tick, index) => <span key={index}>{metric.short(tick)}</span>)}</div></div>
+          <div className="router-chart-scroll" ref={chartScrollRef}>
+            <div className={`router-trend-chart ${metric.tone}`} role="group" aria-label={`${metric.label} over the selected network period`} style={{ '--point-count': timeline.length }}>
+              {populatedPoints.length > 0 && <div className="router-chart-average-line" style={{ top: `${averageLineTop}px` }}><span>Period average {metric.format(periodAverage)}</span></div>}
+              {timeline.map((point, index) => {
+                const value = Number(point[metric.field] || 0)
+                const lowest = Number(point[metric.lowField] ?? value)
+                const highest = Number(point[metric.highField] ?? value)
+                const grouped = point.samples > 0 && Number(point.observations || 0) > 1
+                const showValue = point.samples > 0 && (timeline.length <= 12 || index % labelEvery === 0 || index === timeline.length - 1)
+                const showLabel = index % labelEvery === 0 || index === timeline.length - 1
+                const barHeight = (barValue) => point.samples ? `${Math.max(barValue ? 5 : 2, barValue / maximumValue * 100)}%` : '0%'
+                const detail = point.samples
+                  ? `${point.label}: ${metric.format(value)} average from ${Number(point.observations || 1).toLocaleString()} hourly observation${Number(point.observations || 1) === 1 ? '' : 's'} and ${point.samples.toLocaleString()} readings`
+                  : `${point.label}: no readings`
+                return <div
+                  aria-label={detail}
+                  className={`router-trend-column${point.samples ? '' : ' no-data'}${index === 0 ? ' first' : ''}${index === timeline.length - 1 ? ' last' : ''}`}
+                  key={point.start}
+                  tabIndex={point.samples ? 0 : -1}
+                >
+                  <strong>{showValue ? metric.short(value) : ''}</strong>
+                  <div className={`router-trend-bars ${grouped ? 'grouped' : 'single'}`}>
+                    {grouped
+                      ? <><i className="lowest" style={{ height: barHeight(lowest) }} /><i className="average" style={{ height: barHeight(value) }} /><i className="highest" style={{ height: barHeight(highest) }} /></>
+                      : <i style={{ height: barHeight(value) }} />}
+                  </div>
+                  <small>{showLabel ? point.label : ''}</small>
+                  {point.samples > 0 && <div className="router-chart-tooltip" role="tooltip"><strong>{point.label}</strong>{grouped
+                    ? <><span><i className="lowest" />Lowest <b>{metric.format(lowest)}</b></span><span><i className="average" />Average <b>{metric.format(value)}</b></span><span><i className="highest" />Highest <b>{metric.format(highest)}</b></span></>
+                    : <span><i />Value <b>{metric.format(value)}</b></span>}<small>{Number(point.observations || 1).toLocaleString()} hourly observation{Number(point.observations || 1) === 1 ? '' : 's'} · {point.samples.toLocaleString()} readings</small></div>}
+                </div>
+              })}
             </div>
-          })}
+          </div>
         </div>
       </div>
       <aside className="router-traffic-summary">
