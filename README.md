@@ -204,7 +204,10 @@ Migration `20260926_0013` adds hourly router analytics. Once it is applied and t
 is running, the collector records active HotSpot devices, CPU and memory use, WAN transfer
 rates and byte deltas, interface availability, uptime, failures, and temperature/voltage
 where the router exposes those sensors. The admin Analysis page builds a 24-hour demand
-profile and marks likely peak hours after accumulating at least seven distinct days.
+profile and marks likely peak hours after accumulating at least seven distinct days. Its
+network chart can switch between devices, CPU, memory, download/upload speed, and interface
+availability. The 24-hour, 7-day, 30-day, 90-day, and 12-month ranges use hourly, daily,
+three-day, or monthly-sized buckets so longer periods remain readable.
 
 Manage routers from the backend directory. These commands never store router credentials:
 

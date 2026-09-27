@@ -39,6 +39,7 @@ from app.schemas.admin_dashboard import (
     DashboardRouterStatus,
     RouterHourlyProfilePoint,
     RouterPerformanceSummary,
+    RouterTimelinePoint,
 )
 
 
@@ -445,6 +446,12 @@ class AdminDashboardService:
             for hostel in self._hostel_revenue(routers, current_conditions)
         ]
         primary_currency = max(revenue, key=lambda currency: revenue[currency], default="GHS")
+        router_period_end = (
+            now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+            if router_hours == 24
+            else datetime.combine(now.date() + timedelta(days=1), time.min, tzinfo=UTC)
+        )
+        router_period_start = router_period_end - timedelta(hours=router_hours)
 
         return AdminAnalyticsResponse(
             generated_at=now,
@@ -472,8 +479,8 @@ class AdminDashboardService:
             hostel_performance=hostel_performance,
             router_analytics=self._router_analytics(
                 routers,
-                current_start=now - timedelta(hours=router_hours),
-                current_end=now,
+                current_start=router_period_start,
+                current_end=router_period_end,
                 period_hours=router_hours,
             ),
         )
@@ -507,6 +514,7 @@ class AdminDashboardService:
                 days_until_prediction=7,
                 predicted_peak_hours=[],
                 hourly_profile=[],
+                timeline=[],
                 routers=[],
             )
 
@@ -712,8 +720,121 @@ class AdminDashboardService:
             predicted_peak_hours=sorted(peak_hours) if prediction_ready else [],
             summary=summarize(rows, name="All selected hostels", router_id=None),
             hourly_profile=profile,
+            timeline=self._router_timeline(
+                rows,
+                current_start=current_start,
+                current_end=current_end,
+                period_hours=period_hours,
+            ),
             routers=router_summaries,
         )
+
+    @staticmethod
+    def _router_timeline(
+        rows: list[RouterHourlyMetric],
+        *,
+        current_start: datetime,
+        current_end: datetime,
+        period_hours: int,
+    ) -> list[RouterTimelinePoint]:
+        if period_hours <= 24:
+            bucket_hours = 1
+        elif period_hours <= 720:
+            bucket_hours = 24
+        elif period_hours <= 2160:
+            bucket_hours = 72
+        else:
+            bucket_hours = 730
+
+        bucket_seconds = bucket_hours * 3600
+        span_seconds = max((current_end - current_start).total_seconds(), bucket_seconds)
+        bucket_count = max(1, round(span_seconds / bucket_seconds))
+        buckets: list[list[RouterHourlyMetric]] = [[] for _ in range(bucket_count)]
+        for row in rows:
+            index = int((row.hour - current_start).total_seconds() // bucket_seconds)
+            if 0 <= index < bucket_count:
+                buckets[index].append(row)
+
+        timeline = []
+        for index, bucket_rows in enumerate(buckets):
+            bucket_start = current_start + timedelta(hours=index * bucket_hours)
+            bucket_end = min(
+                bucket_start + timedelta(hours=bucket_hours),
+                current_end,
+            )
+            successful_rows = [
+                row for row in bucket_rows if row.sample_count > row.failed_samples
+            ]
+            successful_samples = sum(
+                row.sample_count - row.failed_samples for row in successful_rows
+            )
+            timestamp_groups: dict[datetime, list[RouterHourlyMetric]] = {}
+            for row in successful_rows:
+                timestamp_groups.setdefault(row.hour, []).append(row)
+
+            def totals(
+                attribute: str,
+                groups: dict[datetime, list[RouterHourlyMetric]] = timestamp_groups,
+            ) -> list[float]:
+                return [
+                    sum(float(getattr(row, attribute)) for row in timestamp_rows)
+                    for timestamp_rows in groups.values()
+                ]
+
+            def average_total(attribute: str) -> float:
+                values = totals(attribute)
+                return sum(values) / len(values) if values else 0
+
+            def weighted(
+                attribute: str,
+                metric_rows: list[RouterHourlyMetric] = successful_rows,
+                sample_count: int = successful_samples,
+            ) -> float:
+                if not sample_count:
+                    return 0
+                return sum(
+                    float(getattr(row, attribute))
+                    * (row.sample_count - row.failed_samples)
+                    for row in metric_rows
+                ) / sample_count
+
+            device_peaks = [
+                sum(row.active_devices_peak for row in timestamp_rows)
+                for timestamp_rows in timestamp_groups.values()
+            ]
+            running_samples = sum(row.interface_running_samples for row in successful_rows)
+            if bucket_hours == 1:
+                label = bucket_start.strftime("%I %p").lstrip("0")
+            elif bucket_hours == 24:
+                label = bucket_start.strftime("%b %d")
+            elif bucket_hours == 72:
+                label = (
+                    f"{bucket_start:%b %d}–"
+                    f"{bucket_end - timedelta(seconds=1):%b %d}"
+                )
+            else:
+                label = bucket_start.strftime("%b %Y")
+
+            timeline.append(
+                RouterTimelinePoint(
+                    start=bucket_start,
+                    end=bucket_end,
+                    label=label,
+                    samples=successful_samples,
+                    average_devices=round(average_total("active_devices_avg"), 1),
+                    peak_devices=max(device_peaks, default=0),
+                    average_cpu_percent=round(weighted("cpu_usage_avg"), 1),
+                    average_memory_percent=round(weighted("memory_usage_avg"), 1),
+                    average_download_bps=round(average_total("download_bps_avg"), 1),
+                    average_upload_bps=round(average_total("upload_bps_avg"), 1),
+                    interface_availability_percent=(
+                        round(running_samples / successful_samples * 100, 1)
+                        if successful_samples
+                        else 0
+                    ),
+                )
+            )
+        return timeline
 
     def _daily_analytics(
         self,
