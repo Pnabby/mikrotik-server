@@ -1692,10 +1692,14 @@ a:focus-visible {
 .router-comparison-table h3 { margin: 0; color: #3a3547; font-size: 0.64rem; }
 .router-hourly-chart-heading p { margin: 0.18rem 0 0; color: #9994a2; font-size: 0.49rem; }
 .router-chart-heading-actions { display: grid; flex: 0 0 auto; justify-items: end; gap: 0.4rem; }
+.router-chart-heading-actions > div { display: flex; align-items: center; gap: 0.45rem; }
 .router-chart-heading-actions > span { padding: 0.28rem 0.45rem; border-radius: 999px; color: #654cc4; background: #f0edfb; font-size: 0.48rem; font-weight: 800; }
 .router-metric-selector { display: flex; align-items: center; gap: 0.4rem; color: #817b8b; font-size: 0.49rem; font-weight: 800; }
 .router-metric-selector select { min-height: 31px; padding: 0 1.7rem 0 0.55rem; border: 1px solid #dcd7e8; border-radius: 7px; outline: 0; color: #40394e; background: #fff; font: inherit; font-size: 0.52rem; font-weight: 750; }
 .router-metric-selector select:focus { border-color: #735ada; box-shadow: 0 0 0 3px rgba(96, 71, 216, 0.09); }
+.router-chart-expand-button { display: inline-flex; min-height: 31px; align-items: center; gap: 0.3rem; padding: 0 0.55rem; border: 1px solid #d8d2e8; border-radius: 7px; color: #6048c2; background: #f8f6ff; font-size: 0.49rem; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.router-chart-expand-button:hover { border-color: #bfb4e8; background: #f0ecff; }
+.router-chart-expand-button svg { width: 12px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
 .router-chart-legend { display: flex; align-items: center; justify-content: flex-end; gap: 0.75rem; min-height: 20px; margin-top: 0.45rem; color: #837e8c; font-size: 0.45rem; font-weight: 750; }
 .router-chart-legend span { display: inline-flex; align-items: center; gap: 0.25rem; }
 .router-chart-legend i,
@@ -1742,6 +1746,26 @@ a:focus-visible {
 .router-chart-tooltip > span b { color: #4b4555; font-weight: 800; text-align: right; }
 .router-chart-tooltip > span > i:not([class]) { background: #735ada; }
 .router-chart-tooltip > small { padding-top: 0.25rem; border-top: 1px solid #ece8f1; color: #96909e; font-size: 0.42rem; line-height: 1.45; }
+.router-chart-backdrop { z-index: 1350; padding: 0.65rem; }
+.router-chart-fullscreen { display: grid; width: 100%; height: 100%; min-width: 0; grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden; border: 1px solid #dcd6ef; border-radius: 16px; background: #fff; box-shadow: 0 30px 90px rgba(30, 24, 53, 0.32); }
+.router-chart-fullscreen > header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.2rem; border-bottom: 1px solid #e9e5f1; background: linear-gradient(110deg, #faf9ff, #fff); }
+.router-chart-fullscreen > header > div:first-child > span { color: #624ac4; font-size: 0.5rem; font-weight: 850; letter-spacing: 0.07em; text-transform: uppercase; }
+.router-chart-fullscreen > header h2 { margin: 0.18rem 0 0; color: #292637; font-family: 'Manrope', sans-serif; font-size: 1rem; }
+.router-chart-fullscreen > header p { margin: 0.2rem 0 0; color: #918c9c; font-size: 0.56rem; }
+.router-chart-fullscreen > header > div:last-child { display: flex; align-items: center; justify-content: flex-end; gap: 0.55rem; }
+.router-chart-fullscreen > header > div:last-child > button { display: grid; width: 33px; height: 33px; flex: 0 0 auto; place-items: center; border: 1px solid #ddd8e8; border-radius: 8px; color: #6b6576; background: #fff; cursor: pointer; }
+.router-chart-fullscreen > header > div:last-child > button:hover { color: #5239bd; background: #f7f5ff; }
+.router-chart-fullscreen > header > div:last-child > button svg { width: 14px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-width: 1.9; }
+.router-chart-fullscreen-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.7rem 1.2rem; border-bottom: 1px solid #efecf3; background: #fcfbfe; }
+.router-chart-fullscreen-toolbar > span { padding: 0.3rem 0.5rem; border-radius: 999px; color: #654cc4; background: #f0edfb; font-size: 0.5rem; font-weight: 800; }
+.router-chart-fullscreen-content { display: flex; min-height: 0; flex-direction: column; padding: 0.8rem 1.2rem 1rem; }
+.router-chart-fullscreen-content > .router-chart-legend { flex: 0 0 auto; }
+.router-chart-fullscreen-content > .router-chart-body { flex: 1 1 auto; min-height: 0; }
+.router-chart-fullscreen .router-trend-chart { height: 100%; min-height: 330px; }
+.router-chart-fullscreen .router-trend-bar > b { font-size: 0.52rem; }
+.router-chart-fullscreen .router-trend-bars.grouped .router-trend-bar > b { font-size: 0.46rem; }
+.router-chart-fullscreen .router-trend-bars.grouped > .router-trend-bar { width: min(28%, 14px); }
+.router-chart-fullscreen .router-trend-bars.single > .router-trend-bar { width: min(70%, 30px); }
 .router-traffic-summary { padding: 0.85rem; border: 1px solid #e6e3ec; border-radius: 11px; background: #fcfbfe; }
 .router-traffic-summary h3 { margin-bottom: 0.48rem; }
 .router-traffic-summary p { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; margin: 0; padding: 0.43rem 0; border-bottom: 1px solid #ece9f1; font-size: 0.5rem; }
@@ -3345,6 +3369,10 @@ a:focus-visible {
   .router-baseline-status { width: 100%; }
   .router-analysis-header-actions { width: 100%; justify-items: stretch; }
   .router-period-filter { justify-content: flex-start; }
+  .router-chart-fullscreen > header { align-items: flex-start; flex-direction: column; }
+  .router-chart-fullscreen > header > div:last-child { width: 100%; justify-content: space-between; }
+  .router-chart-fullscreen > header .router-period-filter { flex: 1 1 auto; }
+  .router-chart-fullscreen-content { padding-inline: 0.75rem; }
 
   .dashboard-heading-actions { width: 100%; }
   .dashboard-heading-actions .hostel-selector { flex: 1; }
@@ -3433,6 +3461,12 @@ a:focus-visible {
   .analysis-insights > div { grid-template-columns: 1fr; }
   .router-analysis-metrics { grid-template-columns: 1fr; }
   .router-hourly-chart-heading { flex-direction: column; }
+  .router-chart-heading-actions { width: 100%; align-items: stretch; justify-items: stretch; }
+  .router-chart-heading-actions > div { justify-content: space-between; }
+  .router-chart-backdrop { padding: 0; }
+  .router-chart-fullscreen { border: 0; border-radius: 0; }
+  .router-chart-fullscreen-toolbar { align-items: stretch; flex-direction: column; }
+  .router-chart-fullscreen-toolbar > span { align-self: flex-start; }
   .payment-outcomes { grid-template-columns: 1fr; justify-items: center; }
   .payment-legend { width: min(100%, 230px); }
   .daily-bar-chart { height: 205px; --chart-axis-width: 51px; }
