@@ -10,6 +10,7 @@ import {
   startAccountUnlock,
   startPinReset,
   startUsernameRecovery,
+  sendPinResetSms,
 } from '../services/accountApi'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -34,6 +35,7 @@ export default function ForgotPinPage() {
   const [busy, setBusy] = useState(false)
   const [resendIn, setResendIn] = useState(0)
   const [recoveredUsername, setRecoveredUsername] = useState('')
+  const [deliveryMethod, setDeliveryMethod] = useState('email')
 
   useEffect(() => {
     document.title = 'Account recovery | Vlad WiFi'
@@ -69,6 +71,7 @@ export default function ForgotPinPage() {
       if (mode === 'unlock') setUsername(normalizedUsername)
       else setEmail(normalizedEmail)
       setChallenge(result)
+      setDeliveryMethod('email')
       setForm((current) => ({ ...current, code: '' }))
       setResendIn(result.resend_after_seconds)
       setStep('code')
@@ -83,6 +86,28 @@ export default function ForgotPinPage() {
         setError('This account is not locked. You can return to login.')
       } else {
         setError('We could not start account recovery. Please try again.')
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function useSmsFallback() {
+    setBusy(true)
+    setError('')
+    try {
+      const result = await sendPinResetSms(challenge.challenge_id, email)
+      setChallenge(result)
+      setForm((current) => ({ ...current, code: '' }))
+      setDeliveryMethod('sms')
+      setResendIn(result.resend_after_seconds)
+    } catch (requestError) {
+      if (requestError instanceof AccountApiError && requestError.status === 409) {
+        setError('SMS recovery requires a verified phone number and can only be used once.')
+      } else if (requestError instanceof AccountApiError && requestError.status === 503) {
+        setError('The SMS could not be sent. Please request a new email code and try again.')
+      } else {
+        setError('SMS recovery is not available for this request.')
       }
     } finally {
       setBusy(false)
@@ -151,6 +176,7 @@ export default function ForgotPinPage() {
     setStep('email')
     setChallenge(null)
     setForm({ code: '', newPin: '', confirmation: '' })
+    setDeliveryMethod('email')
     setError('')
   }
 
@@ -177,13 +203,13 @@ export default function ForgotPinPage() {
           </>}
 
           {step === 'code' && <>
-            <div className="signup-card-header"><h2>Enter your code</h2><p>A verification code was sent to <strong>{challenge.destination}</strong>.</p></div>
+            <div className="signup-card-header"><h2>Enter your code</h2><p>A verification code was sent by {deliveryMethod} to <strong>{challenge.destination}</strong>.</p></div>
             <form className="login-form" noValidate onSubmit={completeRecovery}>
               <div className="signup-field"><label htmlFor="reset-code">Verification code</label><OtpInput autoFocus id="reset-code" invalid={Boolean(error)} value={form.code} onChange={(value) => { setForm((current) => ({ ...current, code: value })); setError('') }} /></div>
               {mode === 'pin' && <><div className="signup-field"><label htmlFor="reset-new-pin">New PIN</label><input autoComplete="new-password" className="signup-input pin-masked" id="reset-new-pin" inputMode="numeric" maxLength="6" name="newPin" placeholder="6-digit PIN" type="text" value={form.newPin} onChange={updatePinField} /></div><div className="signup-field"><label htmlFor="reset-confirm-pin">Confirm new PIN</label><input autoComplete="new-password" className="signup-input pin-masked" id="reset-confirm-pin" inputMode="numeric" maxLength="6" name="confirmation" placeholder="Repeat new PIN" type="text" value={form.confirmation} onChange={updatePinField} /></div></>}
               {error && <div className="otp-api-error" role="alert">{error}</div>}
               <button className="signup-submit" disabled={busy} type="submit">{busy ? 'Checking router...' : mode === 'username' ? 'Recover username' : mode === 'unlock' ? 'Unlock account' : 'Reset PIN'}</button>
-              <div className="otp-actions"><button disabled={busy || resendIn > 0} type="button" onClick={requestCode}>{resendIn > 0 ? `Send another code in ${resendIn}s` : 'Send another code'}</button><button disabled={busy} type="button" onClick={restartRecovery}>Use another {mode === 'unlock' ? 'username' : 'email'}</button></div>
+              <div className="otp-actions"><button disabled={busy || resendIn > 0} type="button" onClick={requestCode}>{resendIn > 0 ? `Send another email in ${resendIn}s` : 'Send another email code'}</button>{mode === 'pin' && deliveryMethod === 'email' && <button disabled={busy} type="button" onClick={useSmsFallback}>I can’t access my email — send by SMS</button>}<button disabled={busy} type="button" onClick={restartRecovery}>Use another {mode === 'unlock' ? 'username' : 'email'}</button></div>
             </form>
           </>}
 

@@ -17,6 +17,7 @@ from app.integrations.brevo.client import (
 )
 from app.integrations.mikrotik.client import MikroTikClient, MikroTikConfig
 from app.integrations.mikrotik.registry import get_router
+from app.integrations.mnotify import MNotifySmsSender, SmsDeliveryError, SmsSender
 from app.models.customer import Customer
 from app.schemas.account import (
     AccountUnlockCompleteRequest,
@@ -27,6 +28,7 @@ from app.schemas.account import (
     CustomerLoginRequest,
     LogoutResponse,
     PinResetCompleteRequest,
+    PinResetSmsRequest,
     PinResetStartRequest,
     PinResetStartResponse,
     UsernameRecoveryCompleteRequest,
@@ -70,6 +72,31 @@ class _UnavailablePasswordEmailSender:
 
 
 PasswordEmailSenderDependency = Annotated[OtpEmailSender, Depends(get_password_email_sender)]
+
+
+def get_password_sms_sender(settings: SettingsDependency) -> SmsSender:
+    try:
+        return MNotifySmsSender.from_settings(settings)
+    except SmsDeliveryError:
+        return _UnavailablePasswordSmsSender()
+
+
+class _UnavailablePasswordSmsSender:
+    def send(self, *, recipient: str, message: str) -> None:
+        raise SmsDeliveryError("SMS delivery is not configured.")
+
+    def send_verification_otp(
+        self, *, recipient: str, code: str, expires_in_minutes: int
+    ) -> None:
+        raise SmsDeliveryError("SMS delivery is not configured.")
+
+    def send_pin_reset_otp(
+        self, *, recipient: str, code: str, expires_in_minutes: int
+    ) -> None:
+        raise SmsDeliveryError("SMS delivery is not configured.")
+
+
+PasswordSmsSenderDependency = Annotated[SmsSender, Depends(get_password_sms_sender)]
 
 
 def get_password_router_factory(
@@ -165,6 +192,22 @@ def start_pin_reset(
         router_factory,
         requested_ip=request.client.host if request.client else None,
     )
+    return PinResetStartResponse(
+        challenge_id=result.challenge_id,
+        destination=result.destination,
+        expires_in_seconds=result.expires_in_seconds,
+        resend_after_seconds=result.resend_after_seconds,
+    )
+
+
+@router.post("/pin-reset/sms", response_model=PinResetStartResponse)
+def send_pin_reset_sms(
+    payload: PinResetSmsRequest,
+    session: SessionDependency,
+    settings: SettingsDependency,
+    sender: PasswordSmsSenderDependency,
+) -> PinResetStartResponse:
+    result = PinManagementService(session, settings).send_reset_sms(payload, sender)
     return PinResetStartResponse(
         challenge_id=result.challenge_id,
         destination=result.destination,
