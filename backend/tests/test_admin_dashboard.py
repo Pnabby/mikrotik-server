@@ -1,5 +1,8 @@
 from contextlib import contextmanager
 
+from fastapi.testclient import TestClient
+
+from app.core.config import get_settings
 from app.integrations.mikrotik.client import MikroTikClient, MikroTikConfig
 from app.main import app
 from app.models.router import Router
@@ -21,6 +24,24 @@ def test_dashboard_route_is_registered() -> None:
     assert "/api/admin/dashboard/network-usage" in paths
     assert "/api/payments/claim-free" in paths
     assert "/api/payments/claim-free/{reference}/retry" in paths
+
+
+def test_admin_spa_deep_link_and_assets_are_served(tmp_path, monkeypatch) -> None:
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (tmp_path / "index.html").write_text("admin-spa", encoding="utf-8")
+    (assets / "app.js").write_text("admin-asset", encoding="utf-8")
+    settings = get_settings().model_copy(update={"admin_dist_dir": tmp_path})
+    monkeypatch.setattr("app.routes.pages.get_settings", lambda: settings)
+    client = TestClient(app)
+
+    deep_link = client.get("/admin/analysis", follow_redirects=False)
+    asset = client.get("/admin/assets/app.js", follow_redirects=False)
+
+    assert deep_link.status_code == 200
+    assert deep_link.text == "admin-spa"
+    assert asset.status_code == 200
+    assert asset.text == "admin-asset"
 
 
 def test_active_identity_sets_deduplicates_users_and_devices() -> None:

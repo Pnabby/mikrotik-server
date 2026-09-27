@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     api_cors_origins: str = "http://localhost:5173,http://localhost:5174"
     frontend_url: str = "http://localhost:5173"
     frontend_dist_dir: Path = PROJECT_ROOT / "public" / "dist"
+    admin_frontend_url: str = "http://localhost:5174"
+    admin_dist_dir: Path = PROJECT_ROOT / "admin" / "dist"
 
     database_url: str | None = None
 

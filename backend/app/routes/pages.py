@@ -65,6 +65,22 @@ def frontend_asset(asset_path: str) -> Response:
     return FileResponse(candidate)
 
 
+@router.get("/admin/assets/{asset_path:path}", include_in_schema=False)
+def admin_asset(asset_path: str) -> Response:
+    assets_root = (get_settings().admin_dist_dir / "assets").resolve()
+    candidate = (assets_root / asset_path).resolve()
+    if assets_root not in candidate.parents or not candidate.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    return FileResponse(candidate)
+
+
+@router.get("/admin", include_in_schema=False)
+@router.get("/admin/", include_in_schema=False)
+@router.get("/admin/{admin_path:path}", include_in_schema=False)
+def admin_page(request: Request, admin_path: str = "") -> Response:
+    return _admin_frontend_response(request)
+
+
 @router.get("/launch-status", include_in_schema=False)
 def launch_status_redirect(
     request: Request,
@@ -106,6 +122,17 @@ def _frontend_response(request: Request) -> Response:
         return FileResponse(index_path)
 
     frontend_url = get_settings().frontend_url.rstrip("/") + request.url.path
+    if request.query_params:
+        frontend_url = f"{frontend_url}?{urlencode(list(request.query_params.multi_items()))}"
+    return RedirectResponse(frontend_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
+
+def _admin_frontend_response(request: Request) -> Response:
+    index_path = get_settings().admin_dist_dir / "index.html"
+    if index_path.is_file():
+        return FileResponse(index_path)
+
+    frontend_url = get_settings().admin_frontend_url.rstrip("/") + request.url.path
     if request.query_params:
         frontend_url = f"{frontend_url}?{urlencode(list(request.query_params.multi_items()))}"
     return RedirectResponse(frontend_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)

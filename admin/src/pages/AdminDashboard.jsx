@@ -39,6 +39,29 @@ const DURATION_UNITS = {
   months: 30 * 24 * 60 * 60,
 }
 const ALL_HOSTELS_ID = '__all_hostels__'
+const ADMIN_VIEW_PATHS = {
+  dashboard: '/admin/dashboard',
+  hostels: '/admin/hostels',
+  profiles: '/admin/profiles',
+  customers: '/admin/customers',
+  network: '/admin/network',
+  transactions: '/admin/transactions',
+  analysis: '/admin/analysis',
+  support: '/admin/support',
+}
+const ADMIN_PATH_VIEWS = Object.fromEntries(
+  Object.entries(ADMIN_VIEW_PATHS).map(([view, path]) => [path, view]),
+)
+const ADMIN_VIEW_TITLES = {
+  dashboard: 'Dashboard',
+  hostels: 'Hostels',
+  profiles: 'Profile catalogue',
+  customers: 'Customers & devices',
+  network: 'Network & usage',
+  transactions: 'Transactions',
+  analysis: 'Revenue & analysis',
+  support: 'Help & support',
+}
 const BULK_PROFILE_FIELDS = [
   'display_name',
   'description',
@@ -52,6 +75,11 @@ const BULK_PROFILE_FIELDS = [
   'is_visible',
   'is_configured',
 ]
+
+function adminViewFromPath(pathname = window.location.pathname) {
+  const normalizedPath = pathname.replace(/\/+$/, '') || '/'
+  return ADMIN_PATH_VIEWS[normalizedPath] || 'dashboard'
+}
 
 function Icon({ name }) {
   const paths = {
@@ -130,6 +158,17 @@ function formatDuration(seconds) {
   if (Number.isInteger(days) && days >= 1) return `${days} ${days === 1 ? 'day' : 'days'}`
   const hours = seconds / DURATION_UNITS.hours
   return `${hours} ${hours === 1 ? 'hour' : 'hours'}`
+}
+
+function formatUptime(seconds) {
+  const value = Math.max(0, Math.floor(Number(seconds) || 0))
+  if (!value) return 'Unavailable'
+  const days = Math.floor(value / DURATION_UNITS.days)
+  const hours = Math.floor((value % DURATION_UNITS.days) / DURATION_UNITS.hours)
+  const minutes = Math.floor((value % DURATION_UNITS.hours) / 60)
+  if (days) return `${days}d ${hours}h`
+  if (hours) return `${hours}h ${minutes}m`
+  return `${minutes}m`
 }
 
 function durationParts(seconds, sessionTimeout) {
@@ -1406,21 +1445,43 @@ function ComparisonBadge({ current, previous }) {
   return <span className={`analysis-change ${direction}`}>{change > 0 ? '+' : ''}{change.toFixed(1)}% vs previous period</span>
 }
 
-function RouterAnalysisSection({ analytics }) {
+const NETWORK_PERIODS = [
+  ['24', '24 hours'],
+  ['168', '7 days'],
+  ['720', '30 days'],
+  ['2160', '90 days'],
+  ['8760', '12 months'],
+]
+
+function RouterPeriodFilter({ period, onChange }) {
+  return <div className="router-period-filter" aria-label="Network analysis period">
+    {NETWORK_PERIODS.map(([value, label]) => <button aria-pressed={period === value} className={period === value ? 'active' : ''} key={value} type="button" onClick={() => onChange(value)}>{label}</button>)}
+  </div>
+}
+
+function RouterAnalysisSection({ analytics, period, onPeriodChange }) {
   if (!analytics?.available) return <section className="router-analysis-card router-analysis-empty">
-    <header><div><p>Network intelligence</p><h2>Router performance &amp; peak hours</h2><span>Five-minute readings are summarized into hourly averages.</span></div><Icon name="network" /></header>
-    <div><Icon name="clock" /><p><strong>Collection has started</strong><span>Router trends will appear here after the first successful samples in this reporting period.</span></p></div>
+    <header><div><p>Network intelligence</p><h2>Router performance &amp; peak hours</h2><span>Five-minute readings are summarized into hourly averages.</span></div><RouterPeriodFilter period={period} onChange={onPeriodChange} /></header>
+    <div><Icon name="clock" /><p><strong>No readings in this period</strong><span>Choose a longer period or wait for the next successful router sample.</span></p></div>
   </section>
 
   const summary = analytics.summary
-  const maximumDevices = Math.max(...analytics.hourly_profile.map((point) => point.average_devices), 1)
+  const populatedPoints = analytics.hourly_profile.filter((point) => point.samples > 0)
+  const maximumDevices = Math.max(...populatedPoints.map((point) => point.average_devices), 1)
   const peakLabels = analytics.hourly_profile
     .filter((point) => analytics.predicted_peak_hours.includes(point.hour))
     .map((point) => point.label)
+  const lastCollectedHour = new Date(analytics.last_collected_at).getUTCHours()
+  const profilePoints = period === '24'
+    ? [...analytics.hourly_profile].sort((left, right) => (
+      (left.hour - lastCollectedHour - 1 + 24) % 24
+      - (right.hour - lastCollectedHour - 1 + 24) % 24
+    ))
+    : analytics.hourly_profile
   return <section className="router-analysis-card">
     <header>
-      <div><p>Network intelligence</p><h2>Router performance &amp; peak hours</h2><span>Hourly behavior for the selected hostel and reporting period.</span></div>
-      <div className={`router-baseline-status ${analytics.prediction_ready ? 'ready' : ''}`}><Icon name={analytics.prediction_ready ? 'check' : 'clock'} /><span><strong>{analytics.prediction_ready ? 'Forecast ready' : 'Learning usage patterns'}</strong><small>{analytics.prediction_ready ? `${analytics.baseline_days} days of history` : `${analytics.days_until_prediction} more day${analytics.days_until_prediction === 1 ? '' : 's'} for a reliable forecast`}</small></span></div>
+      <div><p>Network intelligence</p><h2>Router performance &amp; peak hours</h2><span>Hourly behavior for the selected hostel and network period.</span></div>
+      <div className="router-analysis-header-actions"><RouterPeriodFilter period={period} onChange={onPeriodChange} /><div className={`router-baseline-status ${analytics.prediction_ready ? 'ready' : ''}`}><Icon name={analytics.prediction_ready ? 'check' : 'clock'} /><span><strong>{analytics.prediction_ready ? 'Forecast ready' : 'Learning usage patterns'}</strong><small>{analytics.prediction_ready ? `${analytics.baseline_days} days of history` : `${analytics.days_until_prediction} more day${analytics.days_until_prediction === 1 ? '' : 's'} for a reliable forecast`}</small></span></div></div>
     </header>
 
     <div className="router-analysis-metrics">
@@ -1434,10 +1495,10 @@ function RouterAnalysisSection({ analytics }) {
 
     <div className="router-peak-layout">
       <div className="router-hourly-chart">
-        <div className="router-hourly-chart-heading"><div><h3>Expected devices by hour</h3><p>Typical active-device demand across a 24-hour day (UTC).</p></div><span>{peakLabels.length ? `Likely peaks: ${peakLabels.join(', ')}` : 'Building forecast'}</span></div>
+        <div className="router-hourly-chart-heading"><div><h3>Active devices by hour</h3><p>{period === '24' ? 'Chronological readings from the last 24 hours (UTC).' : 'Typical active-device demand across a 24-hour day (UTC).'}</p></div><span>{peakLabels.length ? `Likely peaks: ${peakLabels.join(', ')}` : `${analytics.baseline_days} of 7 baseline days`}</span></div>
         <div className="router-hour-bars" role="img" aria-label="Average active devices by hour">
-          {analytics.hourly_profile.map((point) => <div className={`router-hour-bar${point.predicted_peak ? ' peak' : ''}`} key={point.hour} title={`${point.label}: ${point.average_devices.toFixed(1)} average devices, ${point.average_cpu_percent.toFixed(1)}% CPU, ${point.average_memory_percent.toFixed(1)}% memory`}>
-            <strong>{point.average_devices ? point.average_devices.toFixed(1) : ''}</strong><div><i style={{ height: `${Math.max(point.average_devices ? 6 : 2, point.average_devices / maximumDevices * 100)}%` }} /></div><small>{point.hour % 3 === 0 ? point.label : ''}</small>
+          {profilePoints.map((point, index) => <div className={`router-hour-bar${point.predicted_peak ? ' peak' : ''}${point.samples ? '' : ' no-data'}`} key={point.hour} title={point.samples ? `${point.label}: ${point.average_devices.toFixed(1)} average devices, ${point.average_cpu_percent.toFixed(1)}% CPU, ${point.average_memory_percent.toFixed(1)}% memory` : `${point.label}: no readings`}>
+            <strong>{point.samples ? point.average_devices.toFixed(1) : ''}</strong><div><i style={{ height: point.samples ? `${Math.max(6, point.average_devices / maximumDevices * 100)}%` : '0%' }} /></div><small>{index % 3 === 0 || index === profilePoints.length - 1 ? point.label : ''}</small>
           </div>)}
         </div>
       </div>
@@ -1446,7 +1507,7 @@ function RouterAnalysisSection({ analytics }) {
         <p><span>Downloaded</span><strong>{formatDataSize(summary.downloaded_bytes)}</strong></p>
         <p><span>Uploaded</span><strong>{formatDataSize(summary.uploaded_bytes)}</strong></p>
         <p><span>Peak memory</span><strong>{summary.peak_memory_percent.toFixed(1)}%</strong></p>
-        <p><span>Current uptime</span><strong>{formatDuration(summary.current_uptime_seconds)}</strong></p>
+        <p><span>Current uptime</span><strong>{formatUptime(summary.current_uptime_seconds)}</strong></p>
         <p><span>Detected restarts</span><strong>{summary.restart_count.toLocaleString()}</strong></p>
         {summary.average_temperature !== null && <p><span>Average temperature</span><strong>{summary.average_temperature.toFixed(1)}°C</strong></p>}
         {summary.average_voltage !== null && <p><span>Average voltage</span><strong>{summary.average_voltage.toFixed(1)} V</strong></p>}
@@ -1470,12 +1531,13 @@ function AnalysisPanel({ hostels, onSessionExpired }) {
   const [error, setError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
   const [showAllPlans, setShowAllPlans] = useState(false)
+  const [networkPeriod, setNetworkPeriod] = useState('24')
 
   useEffect(() => {
     let active = true
     setLoading(true)
     setError('')
-    const analyticsFilters = { router_id: routerId }
+    const analyticsFilters = { router_id: routerId, router_hours: Number(networkPeriod) }
     if (period === 'all') analyticsFilters.all_time = true
     else if (period === 'custom') Object.assign(analyticsFilters, appliedCustomRange)
     else analyticsFilters.days = Number(period)
@@ -1492,7 +1554,7 @@ function AnalysisPanel({ hostels, onSessionExpired }) {
       })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [appliedCustomRange, period, routerId, refreshKey])
+  }, [appliedCustomRange, networkPeriod, period, routerId, refreshKey])
 
   useEffect(() => {
     if (!showAllPlans) return undefined
@@ -1620,7 +1682,7 @@ function AnalysisPanel({ hostels, onSessionExpired }) {
         </section>
       </div>
 
-      <RouterAnalysisSection analytics={result.router_analytics} />
+      <RouterAnalysisSection analytics={result.router_analytics} period={networkPeriod} onPeriodChange={setNetworkPeriod} />
 
       <section className="analysis-insights">
         <header><h2>Performance insights</h2><p>Important signals from the selected period.</p></header>
@@ -1827,7 +1889,7 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
 }
 
 export default function AdminDashboard({ admin, onSessionExpired }) {
-  const [view, setView] = useState('dashboard')
+  const [view, setView] = useState(() => adminViewFromPath())
   const [hostels, setHostels] = useState([])
   const [selectedId, setSelectedId] = useState('')
   const [profiles, setProfiles] = useState([])
@@ -1866,6 +1928,29 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
   }), [hostels])
 
   useEffect(() => {
+    const canonicalPath = ADMIN_VIEW_PATHS[view]
+    const currentPath = window.location.pathname.replace(/\/+$/, '') || '/'
+    if (currentPath !== canonicalPath) {
+      window.history.replaceState({ adminView: view }, '', canonicalPath)
+    }
+
+    function handleHistoryNavigation() {
+      setView(adminViewFromPath())
+      setEditingProfile(null)
+      setViewingHostel(false)
+      setMobileSidebarOpen(false)
+      setShowProfileMenu(false)
+    }
+
+    window.addEventListener('popstate', handleHistoryNavigation)
+    return () => window.removeEventListener('popstate', handleHistoryNavigation)
+  }, [view])
+
+  useEffect(() => {
+    document.title = `${ADMIN_VIEW_TITLES[view]} | Vlad WiFi Admin`
+  }, [view])
+
+  useEffect(() => {
     if (!mobileSidebarOpen && !showProfileMenu && !showLogoutConfirm) return undefined
 
     const previousOverflow = document.body.style.overflow
@@ -1900,7 +1985,13 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
   }
 
   function selectView(nextView) {
+    const nextPath = ADMIN_VIEW_PATHS[nextView] || ADMIN_VIEW_PATHS.dashboard
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({ adminView: nextView }, '', nextPath)
+    }
     setView(nextView)
+    setEditingProfile(null)
+    setViewingHostel(false)
     setMobileSidebarOpen(false)
   }
 
@@ -2259,7 +2350,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
 
   function openProfiles(routerId) {
     setSelectedId(routerId)
-    setView('profiles')
+    selectView('profiles')
   }
 
   return (
@@ -2309,7 +2400,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
         </header>
 
         <div className="dashboard-content">
-          {view === 'dashboard' ? <DashboardOverview hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onOpenAnalysis={() => setView('analysis')} onOpenCustomers={() => setView('customers')} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'customers' ? <CustomersDevicesPanel admin={admin} hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'network' ? <AccessPointsPanel hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'transactions' ? <TransactionsPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'analysis' ? <AnalysisPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'support' ? <SupportSettingsPanel canEdit={admin.role !== 'viewer'} onSessionExpired={onSessionExpired} /> : view === 'hostels' ? <>
+          {view === 'dashboard' ? <DashboardOverview hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onOpenAnalysis={() => selectView('analysis')} onOpenCustomers={() => selectView('customers')} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'customers' ? <CustomersDevicesPanel admin={admin} hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'network' ? <AccessPointsPanel hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'transactions' ? <TransactionsPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'analysis' ? <AnalysisPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'support' ? <SupportSettingsPanel canEdit={admin.role !== 'viewer'} onSessionExpired={onSessionExpired} /> : view === 'hostels' ? <>
             <header className="dashboard-page-heading">
               <div><p className="dashboard-kicker">Network management</p><h1>Hostels</h1><p>Add and manage the hostel routers stored in the database.</p></div>
             </header>

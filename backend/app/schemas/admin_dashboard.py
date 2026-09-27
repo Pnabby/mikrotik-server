@@ -154,6 +154,7 @@ class RouterPerformanceSummary(BaseModel):
 
 class AdminRouterAnalytics(BaseModel):
     available: bool
+    period_hours: int
     collection_started_at: datetime | None = None
     last_collected_at: datetime | None = None
     baseline_days: int
