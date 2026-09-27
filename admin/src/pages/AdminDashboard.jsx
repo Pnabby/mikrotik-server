@@ -104,6 +104,7 @@ function Icon({ name }) {
     activity: <path d="M3 12h4l2.2-6 4.1 12 2.2-6H21" />,
     network: <><rect x="9" y="2.5" width="6" height="5" rx="1" /><rect x="2.5" y="16.5" width="6" height="5" rx="1" /><rect x="15.5" y="16.5" width="6" height="5" rx="1" /><path d="M12 7.5v4M5.5 16.5v-2h13v2" /></>,
     clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+    expand: <><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" /><path d="m3 8 6-6M21 8l-6-6M3 16l6 6M21 16l-6 6" /></>,
   }
   return <svg aria-hidden="true" viewBox="0 0 24 24">{paths[name]}</svg>
 }
@@ -1515,8 +1516,61 @@ function RouterPeriodFilter({ period, onChange }) {
   </div>
 }
 
+function RouterTrendPlot({ hasGroupedPoints, labelEvery, maximumValue, metric, timeline }) {
+  return <>
+    {hasGroupedPoints && <div className="router-chart-legend" aria-label="Bar legend"><span><i className="lowest" />Lowest</span><span><i className="average" />Average</span><span><i className="highest" />Highest</span></div>}
+    <div className="router-chart-body">
+      <div className={`router-trend-chart ${metric.tone}`} role="group" aria-label={`${metric.label} over the selected network period`} style={{ '--point-count': timeline.length }}>
+        {timeline.map((point, index) => {
+          const value = Number(point[metric.field] || 0)
+          const lowest = Number(point[metric.lowField] ?? value)
+          const highest = Number(point[metric.highField] ?? value)
+          const grouped = point.samples > 0 && Number(point.observations || 0) > 1
+          const showLabel = index % labelEvery === 0 || index === timeline.length - 1
+          const barHeight = (barValue) => point.samples ? `${Math.max(barValue ? 5 : 2, barValue / maximumValue * 90)}%` : '0%'
+          const detail = point.samples
+            ? `${point.label}: ${metric.format(value)} average from ${Number(point.observations || 1).toLocaleString()} hourly observation${Number(point.observations || 1) === 1 ? '' : 's'} and ${point.samples.toLocaleString()} readings`
+            : `${point.label}: no readings`
+          return <div
+            aria-label={detail}
+            className={`router-trend-column${point.samples ? '' : ' no-data'}${index === 0 ? ' first' : ''}${index === timeline.length - 1 ? ' last' : ''}`}
+            key={point.start}
+            tabIndex={point.samples ? 0 : -1}
+          >
+            <span className="router-trend-value-space" aria-hidden="true" />
+            <div className={`router-trend-bars ${grouped ? 'grouped' : 'single'}`}>
+              {grouped
+                ? <><span className="router-trend-bar lowest" style={{ height: barHeight(lowest) }}><b>{metric.short(lowest)}</b><i /></span><span className="router-trend-bar average" style={{ height: barHeight(value) }}><b>{metric.short(value)}</b><i /></span><span className="router-trend-bar highest" style={{ height: barHeight(highest) }}><b>{metric.short(highest)}</b><i /></span></>
+                : <span className="router-trend-bar" style={{ height: barHeight(value) }}>{point.samples > 0 && <b>{metric.short(value)}</b>}<i /></span>}
+            </div>
+            <small>{showLabel ? point.label : ''}</small>
+            {point.samples > 0 && <div className="router-chart-tooltip" role="tooltip"><strong>{point.label}</strong>{grouped
+              ? <><span><i className="lowest" />Lowest <b>{metric.format(lowest)}</b></span><span><i className="average" />Average <b>{metric.format(value)}</b></span><span><i className="highest" />Highest <b>{metric.format(highest)}</b></span></>
+              : <span><i />Value <b>{metric.format(value)}</b></span>}<small>{Number(point.observations || 1).toLocaleString()} hourly observation{Number(point.observations || 1) === 1 ? '' : 's'} · {point.samples.toLocaleString()} readings</small></div>}
+          </div>
+        })}
+      </div>
+    </div>
+  </>
+}
+
 function RouterAnalysisSection({ analytics, period, onPeriodChange }) {
   const [graphMetric, setGraphMetric] = useState('devices')
+  const [chartExpanded, setChartExpanded] = useState(false)
+
+  useEffect(() => {
+    if (!chartExpanded || !analytics?.available) return undefined
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    function closeOnEscape(event) {
+      if (event.key === 'Escape') setChartExpanded(false)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [analytics?.available, chartExpanded])
 
   if (!analytics?.available) return <section className="router-analysis-card router-analysis-empty">
     <header><div><p>Network intelligence</p><h2>Router performance &amp; peak hours</h2><span>Five-minute readings are summarized into hourly averages.</span></div><RouterPeriodFilter period={period} onChange={onPeriodChange} /></header>
@@ -1558,46 +1612,15 @@ function RouterAnalysisSection({ analytics, period, onPeriodChange }) {
       <div className="router-hourly-chart">
         <div className="router-hourly-chart-heading">
           <div><h3>{metric.label} trend</h3><p>{period === '24' ? 'Hourly readings from the last 24 hours (UTC).' : `Averages divided into ${timeline.length} readable time periods (UTC).`}</p></div>
-          <div className="router-chart-heading-actions"><label className="router-metric-selector"><span>Graph</span><select value={graphMetric} onChange={(event) => setGraphMetric(event.target.value)}>{Object.entries(ROUTER_GRAPH_METRICS).map(([value, option]) => <option key={value} value={value}>{option.label}</option>)}</select></label><span>{peakLabels.length ? `Likely device peaks: ${peakLabels.join(', ')}` : `${analytics.baseline_days} of 7 baseline days`}</span></div>
+          <div className="router-chart-heading-actions"><div><label className="router-metric-selector"><span>Graph</span><select value={graphMetric} onChange={(event) => setGraphMetric(event.target.value)}>{Object.entries(ROUTER_GRAPH_METRICS).map(([value, option]) => <option key={value} value={value}>{option.label}</option>)}</select></label><button aria-expanded={chartExpanded} aria-haspopup="dialog" className="router-chart-expand-button" type="button" onClick={() => setChartExpanded(true)}><Icon name="expand" />Full screen</button></div><span>{peakLabels.length ? `Likely device peaks: ${peakLabels.join(', ')}` : `${analytics.baseline_days} of 7 baseline days`}</span></div>
         </div>
-        {hasGroupedPoints && <div className="router-chart-legend" aria-label="Bar legend"><span><i className="lowest" />Lowest</span><span><i className="average" />Average</span><span><i className="highest" />Highest</span></div>}
-        <div className="router-chart-body">
-          <div className={`router-trend-chart ${metric.tone}`} role="group" aria-label={`${metric.label} over the selected network period`} style={{ '--point-count': timeline.length }}>
-              {timeline.map((point, index) => {
-                const value = Number(point[metric.field] || 0)
-                const lowest = Number(point[metric.lowField] ?? value)
-                const highest = Number(point[metric.highField] ?? value)
-                const grouped = point.samples > 0 && Number(point.observations || 0) > 1
-                const showLabel = index % labelEvery === 0 || index === timeline.length - 1
-                const barHeight = (barValue) => point.samples ? `${Math.max(barValue ? 5 : 2, barValue / maximumValue * 90)}%` : '0%'
-                const detail = point.samples
-                  ? `${point.label}: ${metric.format(value)} average from ${Number(point.observations || 1).toLocaleString()} hourly observation${Number(point.observations || 1) === 1 ? '' : 's'} and ${point.samples.toLocaleString()} readings`
-                  : `${point.label}: no readings`
-                return <div
-                  aria-label={detail}
-                  className={`router-trend-column${point.samples ? '' : ' no-data'}${index === 0 ? ' first' : ''}${index === timeline.length - 1 ? ' last' : ''}`}
-                  key={point.start}
-                  tabIndex={point.samples ? 0 : -1}
-                >
-                  <span className="router-trend-value-space" aria-hidden="true" />
-                  <div className={`router-trend-bars ${grouped ? 'grouped' : 'single'}`}>
-                    {grouped
-                      ? <><span className="router-trend-bar lowest" style={{ height: barHeight(lowest) }}><b>{metric.short(lowest)}</b><i /></span><span className="router-trend-bar average" style={{ height: barHeight(value) }}><b>{metric.short(value)}</b><i /></span><span className="router-trend-bar highest" style={{ height: barHeight(highest) }}><b>{metric.short(highest)}</b><i /></span></>
-                      : <span className="router-trend-bar" style={{ height: barHeight(value) }}>{point.samples > 0 && <b>{metric.short(value)}</b>}<i /></span>}
-                  </div>
-                  <small>{showLabel ? point.label : ''}</small>
-                  {point.samples > 0 && <div className="router-chart-tooltip" role="tooltip"><strong>{point.label}</strong>{grouped
-                    ? <><span><i className="lowest" />Lowest <b>{metric.format(lowest)}</b></span><span><i className="average" />Average <b>{metric.format(value)}</b></span><span><i className="highest" />Highest <b>{metric.format(highest)}</b></span></>
-                    : <span><i />Value <b>{metric.format(value)}</b></span>}<small>{Number(point.observations || 1).toLocaleString()} hourly observation{Number(point.observations || 1) === 1 ? '' : 's'} · {point.samples.toLocaleString()} readings</small></div>}
-                </div>
-              })}
-          </div>
-        </div>
+        <RouterTrendPlot hasGroupedPoints={hasGroupedPoints} labelEvery={labelEvery} maximumValue={maximumValue} metric={metric} timeline={timeline} />
       </div>
       <aside className="router-traffic-summary">
         <h3>Traffic &amp; health</h3>
         <p><span>Downloaded</span><strong>{formatDataSize(summary.downloaded_bytes)}</strong></p>
         <p><span>Uploaded</span><strong>{formatDataSize(summary.uploaded_bytes)}</strong></p>
+        <p><span>Peak CPU</span><strong>{summary.peak_cpu_percent.toFixed(1)}%</strong></p>
         <p><span>Peak memory</span><strong>{summary.peak_memory_percent.toFixed(1)}%</strong></p>
         <p><span>Current uptime</span><strong>{formatUptime(summary.current_uptime_seconds)}</strong></p>
         <p><span>Detected restarts</span><strong>{summary.restart_count.toLocaleString()}</strong></p>
@@ -1609,6 +1632,14 @@ function RouterAnalysisSection({ analytics, period, onPeriodChange }) {
     </div>
 
     {analytics.routers.length > 1 && <div className="router-comparison-table"><h3>Hostel router comparison</h3><div><table><thead><tr><th>Router</th><th>Devices</th><th>CPU</th><th>Memory</th><th>Download</th><th>Availability</th></tr></thead><tbody>{analytics.routers.map((router) => <tr key={router.router_id}><td><strong>{router.router_name}</strong></td><td>{router.average_devices.toFixed(1)} avg / {router.peak_devices} peak</td><td>{router.average_cpu_percent.toFixed(1)}%</td><td>{router.average_memory_percent.toFixed(1)}%</td><td>{formatNetworkRate(router.average_download_bps)}</td><td>{router.interface_availability_percent.toFixed(1)}%</td></tr>)}</tbody></table></div></div>}
+
+    {chartExpanded && <div className="admin-modal-backdrop router-chart-backdrop" role="presentation" onMouseDown={() => setChartExpanded(false)}>
+      <section className="router-chart-fullscreen" role="dialog" aria-modal="true" aria-labelledby="router-chart-fullscreen-title" onMouseDown={(event) => event.stopPropagation()}>
+        <header><div><span>Network intelligence</span><h2 id="router-chart-fullscreen-title">{metric.label} trend</h2><p>{period === '24' ? 'Hourly readings from the last 24 hours (UTC).' : `Averages divided into ${timeline.length} readable time periods (UTC).`}</p></div><div><RouterPeriodFilter period={period} onChange={onPeriodChange} /><button autoFocus aria-label="Close full-screen router chart" type="button" onClick={() => setChartExpanded(false)}><Icon name="close" /></button></div></header>
+        <div className="router-chart-fullscreen-toolbar"><label className="router-metric-selector"><span>Graph</span><select value={graphMetric} onChange={(event) => setGraphMetric(event.target.value)}>{Object.entries(ROUTER_GRAPH_METRICS).map(([value, option]) => <option key={value} value={value}>{option.label}</option>)}</select></label><span>{peakLabels.length ? `Likely device peaks: ${peakLabels.join(', ')}` : `${analytics.baseline_days} of 7 baseline days`}</span></div>
+        <div className="router-chart-fullscreen-content"><RouterTrendPlot hasGroupedPoints={hasGroupedPoints} labelEvery={labelEvery} maximumValue={maximumValue} metric={metric} timeline={timeline} /></div>
+      </section>
+    </div>}
   </section>
 }
 
@@ -1774,8 +1805,6 @@ function AnalysisPanel({ hostels, onSessionExpired }) {
         </section>
       </div>
 
-      <RouterAnalysisSection analytics={result.router_analytics} period={networkPeriod} onPeriodChange={setNetworkPeriod} />
-
       <section className="analysis-insights">
         <header><h2>Performance insights</h2><p>Important signals from the selected period.</p></header>
         <div>
@@ -1784,6 +1813,8 @@ function AnalysisPanel({ hostels, onSessionExpired }) {
           <article><span className="amber"><Icon name="building" /></span><div><small>Leading hostel</small><strong>{topHostel?.hostel_name || 'No hostel revenue yet'}</strong><p>{topHostel ? formatMoney(topHostel.revenue?.[currency] || 0, currency) : 'Performance will appear here'}</p></div></article>
         </div>
       </section>
+
+      <RouterAnalysisSection analytics={result.router_analytics} period={networkPeriod} onPeriodChange={setNetworkPeriod} />
     </div>}
 
     {showAllPlans && <div className="admin-modal-backdrop" role="presentation" onMouseDown={() => setShowAllPlans(false)}>
