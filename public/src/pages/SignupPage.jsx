@@ -77,7 +77,7 @@ function SignupHeader() {
 
 function startErrorMessage(error) {
   if (!(error instanceof RegistrationApiError)) return 'Could not send the SMS code. Check your connection and try again.'
-  if (error.status === 409) return 'That email address or username is already registered.'
+  if (error.status === 409) return 'One or more account details are already registered.'
   if (error.status === 429) return 'Too many codes were requested. Please wait before trying again.'
   if ([404, 502, 503].includes(error.status)) {
     return 'Signup is currently unavailable. Please contact help and support.'
@@ -89,12 +89,22 @@ function verifyErrorMessage(error) {
   if (!(error instanceof RegistrationApiError)) return 'Could not verify the code. Check your connection and try again.'
   if (error.status === 400) return 'That code is invalid or has expired. Check it or request a new one.'
   if (error.status === 403) return 'This hostel is not currently accepting registrations.'
-  if (error.status === 409) return 'That username or email is already in use. Change your account details.'
+  if (error.status === 409) return 'One or more account details are already registered. Change the highlighted details.'
   if (error.status === 429) return 'Too many incorrect attempts. Request a new verification code.'
   if (error.status === 502 || error.status === 503) {
     return 'Signup is currently unavailable. Your account was not created. Please contact help and support.'
   }
   return 'Could not complete your registration. Your account was not created; please try again.'
+}
+
+function registrationFieldErrors(error) {
+  if (!(error instanceof RegistrationApiError) || error.status !== 409) return {}
+  const fieldErrors = error.fieldErrors || {}
+  return {
+    ...(fieldErrors.email ? { email: fieldErrors.email } : {}),
+    ...(fieldErrors.phone_number ? { phoneNumber: fieldErrors.phone_number } : {}),
+    ...(fieldErrors.username ? { username: fieldErrors.username } : {}),
+  }
 }
 
 export default function SignupPage() {
@@ -264,7 +274,15 @@ export default function SignupPage() {
       setResendSeconds(result.resend_after_seconds || 60)
       setStep('otp')
     } catch (error) {
-      setApiError(startErrorMessage(error))
+      const conflictErrors = registrationFieldErrors(error)
+      if (Object.keys(conflictErrors).length) {
+        setErrors((current) => ({ ...current, ...conflictErrors }))
+        setStep('details')
+        setChallenge(null)
+        setApiError('Please change the highlighted account details and try again.')
+      } else {
+        setApiError(startErrorMessage(error))
+      }
     } finally {
       setBusy(false)
     }
@@ -317,7 +335,16 @@ export default function SignupPage() {
       setOtpCode('')
       setStep('verified')
     } catch (error) {
-      setOtpError(verifyErrorMessage(error))
+      const conflictErrors = registrationFieldErrors(error)
+      if (Object.keys(conflictErrors).length) {
+        setErrors((current) => ({ ...current, ...conflictErrors }))
+        setStep('details')
+        setChallenge(null)
+        setOtpCode('')
+        setApiError('Please change the highlighted account details and request a new code.')
+      } else {
+        setOtpError(verifyErrorMessage(error))
+      }
     } finally {
       setBusy(false)
     }
@@ -478,7 +505,7 @@ export default function SignupPage() {
               {usernameAvailability.phase === 'checking' && (
                 <span className="username-availability checking" role="status">Checking availability...</span>
               )}
-              {usernameAvailability.phase === 'available' && routerReadiness.phase !== 'username-taken' && (
+              {usernameAvailability.phase === 'available' && routerReadiness.phase !== 'username-taken' && !errors.username && (
                 <span className="username-availability available" role="status">Username is available.</span>
               )}
               {usernameAvailability.phase === 'unavailable' && (

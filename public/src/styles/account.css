@@ -629,11 +629,25 @@ input {
 }
 
 .customer-plan-group {
+  scroll-margin-top: 6rem;
   overflow: hidden;
   padding: 1.15rem;
   border: 1px solid #e2e7f1;
   border-radius: 16px;
   background: linear-gradient(145deg, #fbfcff, #f6f8fd);
+}
+
+.customer-plan-group.promo-plan-group {
+  border-color: #ead27e;
+  background: linear-gradient(145deg, #fffdf7, #fff8df);
+}
+
+.promo-plan-group > header {
+  border-bottom-color: #efdfab;
+}
+
+.promo-plan-group > header h3 {
+  color: #80570b;
 }
 
 .customer-plan-group > header {
@@ -650,7 +664,7 @@ input {
 }
 
 .customer-plan-group > header h3 {
-  margin-top: 0.2rem;
+  margin-top: 0;
   font-family: 'Poppins', sans-serif;
   font-size: 1.05rem;
 }
@@ -687,6 +701,21 @@ input {
 
 .plan-card-promo {
   border-color: #e7c96d;
+  background: linear-gradient(145deg, #fffef9, #fff9e6);
+}
+
+.plan-card-promo .plan-duration,
+.plan-card-promo .plan-card-footer > strong {
+  color: #8a5c05;
+}
+
+.plan-card-promo .plan-card-footer button:not(:disabled) {
+  background: linear-gradient(135deg, #d9a514, #b77a00);
+  box-shadow: 0 8px 18px rgb(183 122 0 / 18%);
+}
+
+.plan-card-promo .plan-card-footer button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #c7930a, #986300);
 }
 
 .plan-card-labels {
@@ -695,16 +724,6 @@ input {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-}
-
-.plan-promo-label {
-  padding: 0.28rem 0.5rem;
-  border-radius: 999px;
-  color: #7a5208;
-  background: #fff4d6;
-  font-size: 0.6rem;
-  font-weight: 800;
-  white-space: nowrap;
 }
 
 .plan-duration {
@@ -751,6 +770,11 @@ input {
   fill: none;
   stroke: var(--account-primary);
   stroke-width: 1.9;
+}
+
+.plan-card.plan-card-promo li svg {
+  color: #bd8208;
+  stroke: #bd8208;
 }
 
 .plan-card-footer {
@@ -967,6 +991,16 @@ input {
   stroke-width: 1.8;
 }
 
+.account-footer a {
+  color: var(--account-primary);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.account-footer a:hover {
+  text-decoration: underline;
+}
+
 .account-state-page {
   display: grid;
   min-height: 100vh;
@@ -1149,6 +1183,12 @@ input {
 .account-profile-link.active {
   border-color: #dfe4f2;
   background: #f8f9fc;
+}
+
+.account-profile-link.active {
+  color: var(--account-primary);
+  border-color: #cfd7fb;
+  background: #eef1ff;
 }
 
 .account-profile-link > svg {
@@ -1611,6 +1651,34 @@ input {
   background: #fff5d6;
 }
 
+.portal-modal-icon.promo-discovery-icon {
+  color: #8a5c05;
+  background: #fff1bd;
+}
+
+.promo-discovery-modal {
+  width: min(460px, 100%);
+  border: 1px solid #edda96;
+  background: linear-gradient(155deg, #fffdf8, #fff);
+}
+
+.promo-discovery-label {
+  display: inline-flex;
+  margin-top: 0.85rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  color: #80570b;
+  background: #fff3ca;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.promo-discovery-modal h2 {
+  margin-top: 0.65rem;
+}
+
 .portal-modal h2 {
   margin-top: 1rem;
   font-family: 'Poppins', sans-serif;
@@ -1668,6 +1736,18 @@ input {
 
 .portal-modal-actions button.confirm:hover:not(:disabled) {
   background: var(--account-primary-dark);
+}
+
+.promo-discovery-modal .portal-modal-actions button.confirm,
+.special-offer-modal .portal-modal-actions button.confirm {
+  border-color: #bd8208;
+  background: linear-gradient(135deg, #d9a514, #b77a00);
+  box-shadow: 0 8px 18px rgb(183 122 0 / 18%);
+}
+
+.promo-discovery-modal .portal-modal-actions button.confirm:hover:not(:disabled),
+.special-offer-modal .portal-modal-actions button.confirm:hover:not(:disabled) {
+  background: linear-gradient(135deg, #c7930a, #986300);
 }
 
 .portal-modal-actions button:disabled {
@@ -2261,4 +2341,5 @@ input {
   .profile-pin-columns { grid-template-columns: 1fr; }
 
   .profile-pin-form > button { width: 100%; }
+
 }
