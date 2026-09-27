@@ -1685,7 +1685,7 @@ a:focus-visible {
 .router-analysis-metrics strong { display: block; overflow: hidden; margin-top: 0.2rem; color: #34303f; font-family: 'Manrope', sans-serif; font-size: 0.82rem; text-overflow: ellipsis; white-space: nowrap; }
 .router-analysis-metrics span { display: block; overflow: hidden; margin-top: 0.2rem; color: #9b96a4; font-size: 0.47rem; text-overflow: ellipsis; white-space: nowrap; }
 .router-peak-layout { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 0.8rem; padding: 0 1.15rem 1.1rem; }
-.router-hourly-chart { min-width: 0; overflow-x: auto; padding: 0.85rem 0.9rem 0.7rem; border: 1px solid #e6e3ec; border-radius: 11px; }
+.router-hourly-chart { min-width: 0; overflow: hidden; padding: 0.85rem 0.9rem 0.7rem; border: 1px solid #e6e3ec; border-radius: 11px; }
 .router-hourly-chart-heading { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
 .router-hourly-chart h3,
 .router-traffic-summary h3,
@@ -1696,21 +1696,59 @@ a:focus-visible {
 .router-metric-selector { display: flex; align-items: center; gap: 0.4rem; color: #817b8b; font-size: 0.49rem; font-weight: 800; }
 .router-metric-selector select { min-height: 31px; padding: 0 1.7rem 0 0.55rem; border: 1px solid #dcd7e8; border-radius: 7px; outline: 0; color: #40394e; background: #fff; font: inherit; font-size: 0.52rem; font-weight: 750; }
 .router-metric-selector select:focus { border-color: #735ada; box-shadow: 0 0 0 3px rgba(96, 71, 216, 0.09); }
-.router-trend-chart { position: relative; display: grid; min-width: min(720px, calc(var(--point-count) * 34px)); height: 206px; grid-template-columns: repeat(var(--point-count), minmax(12px, 1fr)); align-items: end; gap: 0.24rem; margin-top: 0.8rem; }
+.router-chart-legend { display: flex; align-items: center; justify-content: flex-end; gap: 0.75rem; min-height: 20px; margin-top: 0.45rem; color: #837e8c; font-size: 0.45rem; font-weight: 750; }
+.router-chart-legend span { display: inline-flex; align-items: center; gap: 0.25rem; }
+.router-chart-legend i,
+.router-chart-tooltip span > i { display: inline-block; width: 7px; height: 7px; flex: 0 0 auto; border-radius: 2px; }
+.router-chart-legend i.lowest,
+.router-chart-tooltip i.lowest { background: #4c8fd1; }
+.router-chart-legend i.average,
+.router-chart-tooltip i.average { background: #735ada; }
+.router-chart-legend i.highest,
+.router-chart-tooltip i.highest { background: #d6675d; }
+.router-chart-body { display: grid; min-width: 0; grid-template-columns: 72px minmax(0, 1fr); margin-top: 0.55rem; }
+.router-chart-y-axis { display: grid; height: 206px; grid-template-columns: 17px minmax(0, 1fr); padding: 20px 7px 18px 0; border-right: 1px solid #e5e1ea; box-sizing: border-box; }
+.router-chart-y-axis > strong { align-self: center; color: #6f6979; font-size: 0.42rem; font-weight: 800; letter-spacing: 0.01em; line-height: 1; text-align: center; transform: rotate(180deg); writing-mode: vertical-rl; }
+.router-chart-y-axis > div { display: flex; flex-direction: column; align-items: flex-end; justify-content: space-between; min-width: 0; }
+.router-chart-y-axis span { color: #9791a0; font-size: 0.4rem; font-weight: 700; white-space: nowrap; }
+.router-chart-scroll { min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-color: #aaa4b4 #f0eef3; scrollbar-gutter: stable; scrollbar-width: thin; }
+.router-chart-scroll::-webkit-scrollbar { height: 8px; }
+.router-chart-scroll::-webkit-scrollbar-track { border-radius: 999px; background: #f0eef3; }
+.router-chart-scroll::-webkit-scrollbar-thumb { border-radius: 999px; background: #aaa4b4; }
+.router-trend-chart { position: relative; display: grid; width: max(100%, calc(var(--point-count) * 42px)); min-width: 640px; height: 206px; grid-template-columns: repeat(var(--point-count), minmax(32px, 1fr)); align-items: end; gap: 0.24rem; }
+.router-trend-chart::before { position: absolute; z-index: 0; top: 20px; right: 0; bottom: 18px; left: 0; background: repeating-linear-gradient(to bottom, #ece9f1 0 1px, transparent 1px 42px); content: ''; pointer-events: none; }
 .router-trend-column { position: relative; z-index: 1; display: grid; height: 100%; min-width: 0; grid-template-rows: 20px minmax(0, 1fr) 18px; align-items: end; text-align: center; }
 .router-trend-column > strong { overflow: hidden; color: #777181; font-size: 0.41rem; font-weight: 800; white-space: nowrap; }
-.router-trend-column > div { display: flex; height: 100%; align-items: end; justify-content: center; border-bottom: 1px solid #ded9e9; }
-.router-trend-column i { display: block; width: min(100%, 20px); min-height: 2px; border-radius: 4px 4px 1px 1px; background: linear-gradient(180deg, #967fe8, #6047c8); transition: height 0.18s ease; }
-.router-trend-chart.amber .router-trend-column i { background: linear-gradient(180deg, #efb553, #c98521); }
-.router-trend-chart.blue .router-trend-column i { background: linear-gradient(180deg, #65a6df, #3375b6); }
-.router-trend-chart.green .router-trend-column i { background: linear-gradient(180deg, #49bd91, #16815c); }
-.router-trend-chart.teal .router-trend-column i { background: linear-gradient(180deg, #4bbbc0, #197f87); }
-.router-trend-column.no-data > div { border-bottom-style: dashed; background: repeating-linear-gradient(135deg, transparent 0 4px, rgba(105, 91, 137, 0.035) 4px 8px); }
-.router-trend-column.no-data i { min-height: 0; background: transparent; }
+.router-trend-bars { display: flex; height: 100%; align-items: end; justify-content: center; gap: 2px; border-bottom: 1px solid #ded9e9; }
+.router-trend-bars > i { display: block; width: min(100%, 20px); min-height: 2px; border-radius: 4px 4px 1px 1px; background: linear-gradient(180deg, #967fe8, #6047c8); transition: height 0.18s ease, filter 0.16s ease; }
+.router-trend-bars.grouped > i { width: min(28%, 9px); }
+.router-trend-chart.amber .router-trend-bars > i { background: linear-gradient(180deg, #efb553, #c98521); }
+.router-trend-chart.blue .router-trend-bars > i { background: linear-gradient(180deg, #65a6df, #3375b6); }
+.router-trend-chart.green .router-trend-bars > i { background: linear-gradient(180deg, #49bd91, #16815c); }
+.router-trend-chart.teal .router-trend-bars > i { background: linear-gradient(180deg, #4bbbc0, #197f87); }
+.router-trend-column .router-trend-bars.grouped > i.lowest { background: linear-gradient(180deg, #70abe1, #367abe); }
+.router-trend-column .router-trend-bars.grouped > i.average { background: linear-gradient(180deg, #987fe9, #654acb); }
+.router-trend-column .router-trend-bars.grouped > i.highest { background: linear-gradient(180deg, #ea8b81, #c65349); }
+.router-trend-column:hover .router-trend-bars > i,
+.router-trend-column:focus .router-trend-bars > i { filter: saturate(1.12) brightness(1.04); }
+.router-trend-column:focus { outline: 0; }
+.router-trend-column.no-data > .router-trend-bars { border-bottom-style: dashed; background: repeating-linear-gradient(135deg, transparent 0 4px, rgba(105, 91, 137, 0.035) 4px 8px); }
+.router-trend-column.no-data .router-trend-bars > i { min-height: 0; background: transparent; }
 .router-trend-column > small { overflow: visible; color: #9994a3; font-size: 0.41rem; font-weight: 700; white-space: nowrap; }
 .router-chart-average-line { position: absolute; z-index: 2; right: 0; left: 0; height: 0; border-top: 1px dashed #bd4e72; pointer-events: none; }
 .router-chart-average-line::before { position: absolute; top: -3px; left: 0; width: 6px; height: 6px; border-radius: 50%; background: #bd4e72; content: ''; }
 .router-chart-average-line > span { position: absolute; right: 0; bottom: 4px; padding: 0.18rem 0.35rem; border-radius: 5px; color: #a03d60; background: #fff1f5; box-shadow: 0 1px 4px rgba(100, 41, 64, 0.08); font-size: 0.43rem; font-weight: 850; white-space: nowrap; }
+.router-chart-tooltip { position: absolute; z-index: 6; top: 25px; left: 50%; display: none; width: 178px; padding: 0.55rem; border: 1px solid #dfd9ec; border-radius: 8px; color: #726c7b; background: rgba(255, 255, 255, 0.98); box-shadow: 0 10px 28px rgba(43, 35, 68, 0.16); text-align: left; transform: translateX(-50%); }
+.router-trend-column.first .router-chart-tooltip { left: 0; transform: none; }
+.router-trend-column.last .router-chart-tooltip { right: 0; left: auto; transform: none; }
+.router-trend-column:hover { z-index: 5; }
+.router-trend-column:hover .router-chart-tooltip,
+.router-trend-column:focus .router-chart-tooltip { display: grid; gap: 0.3rem; }
+.router-chart-tooltip > strong { color: #393443; font-size: 0.52rem; }
+.router-chart-tooltip > span { display: grid; grid-template-columns: 7px auto 1fr; align-items: center; gap: 0.28rem; font-size: 0.46rem; }
+.router-chart-tooltip > span b { color: #4b4555; font-weight: 800; text-align: right; }
+.router-chart-tooltip > span > i:not([class]) { background: #735ada; }
+.router-chart-tooltip > small { padding-top: 0.25rem; border-top: 1px solid #ece8f1; color: #96909e; font-size: 0.42rem; line-height: 1.45; }
 .router-traffic-summary { padding: 0.85rem; border: 1px solid #e6e3ec; border-radius: 11px; background: #fcfbfe; }
 .router-traffic-summary h3 { margin-bottom: 0.48rem; }
 .router-traffic-summary p { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; margin: 0; padding: 0.43rem 0; border-bottom: 1px solid #ece9f1; font-size: 0.5rem; }

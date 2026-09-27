@@ -221,6 +221,32 @@ def test_combined_router_analytics_sums_concurrent_devices_and_bandwidth() -> No
     assert result.hourly_profile[23].average_devices == 15
     assert result.timeline[-1].average_devices == 15
     assert result.timeline[-1].average_download_bps == 3_000_000
+    assert result.timeline[-1].observations == 1
+    assert result.timeline[-1].lowest_devices == 15
+    assert result.timeline[-1].highest_devices == 15
+
+
+def test_router_timeline_reports_true_low_average_and_high_observations() -> None:
+    earlier = hourly_metric("hall", 10, 2_000_000)
+    earlier.hour = datetime(2026, 9, 26, 22, tzinfo=UTC)
+    earlier.last_sample_at = earlier.hour + timedelta(minutes=55)
+    latest = hourly_metric("hall", 20, 6_000_000)
+
+    timeline = AdminDashboardService._router_timeline(
+        [earlier, latest],
+        current_start=datetime(2026, 9, 26, tzinfo=UTC),
+        current_end=datetime(2026, 9, 27, tzinfo=UTC),
+        period_hours=168,
+    )
+
+    assert len(timeline) == 1
+    assert timeline[0].observations == 2
+    assert timeline[0].lowest_devices == 10
+    assert timeline[0].average_devices == 15
+    assert timeline[0].highest_devices == 20
+    assert timeline[0].lowest_download_bps == 2_000_000
+    assert timeline[0].average_download_bps == 4_000_000
+    assert timeline[0].highest_download_bps == 6_000_000
 
 
 @pytest.mark.parametrize(

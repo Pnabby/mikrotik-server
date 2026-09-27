@@ -131,13 +131,26 @@ class RouterTimelinePoint(BaseModel):
     end: datetime
     label: str
     samples: int
+    observations: int
+    lowest_devices: float
     average_devices: float
+    highest_devices: float
     peak_devices: int
+    lowest_cpu_percent: float
     average_cpu_percent: float
+    highest_cpu_percent: float
+    lowest_memory_percent: float
     average_memory_percent: float
+    highest_memory_percent: float
+    lowest_download_bps: float
     average_download_bps: float
+    highest_download_bps: float
+    lowest_upload_bps: float
     average_upload_bps: float
+    highest_upload_bps: float
+    lowest_interface_availability_percent: float
     interface_availability_percent: float
+    highest_interface_availability_percent: float
 
 
 class RouterPerformanceSummary(BaseModel):

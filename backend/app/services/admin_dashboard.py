@@ -785,6 +785,29 @@ class AdminDashboardService:
                 values = totals(attribute)
                 return sum(values) / len(values) if values else 0
 
+            def timestamp_weighted(
+                attribute: str,
+                groups: dict[datetime, list[RouterHourlyMetric]] = timestamp_groups,
+            ) -> list[float]:
+                values = []
+                for timestamp_rows in groups.values():
+                    timestamp_samples = sum(
+                        row.sample_count - row.failed_samples for row in timestamp_rows
+                    )
+                    if timestamp_samples:
+                        values.append(
+                            sum(
+                                float(getattr(row, attribute))
+                                * (row.sample_count - row.failed_samples)
+                                for row in timestamp_rows
+                            )
+                            / timestamp_samples
+                        )
+                return values
+
+            def value_range(values: list[float]) -> tuple[float, float]:
+                return (min(values), max(values)) if values else (0, 0)
+
             def weighted(
                 attribute: str,
                 metric_rows: list[RouterHourlyMetric] = successful_rows,
@@ -802,6 +825,31 @@ class AdminDashboardService:
                 sum(row.active_devices_peak for row in timestamp_rows)
                 for timestamp_rows in timestamp_groups.values()
             ]
+            device_values = totals("active_devices_avg")
+            cpu_values = timestamp_weighted("cpu_usage_avg")
+            memory_values = timestamp_weighted("memory_usage_avg")
+            download_values = totals("download_bps_avg")
+            upload_values = totals("upload_bps_avg")
+            availability_values = []
+            for timestamp_rows in timestamp_groups.values():
+                timestamp_samples = sum(
+                    row.sample_count - row.failed_samples for row in timestamp_rows
+                )
+                if timestamp_samples:
+                    availability_values.append(
+                        sum(row.interface_running_samples for row in timestamp_rows)
+                        / timestamp_samples
+                        * 100
+                    )
+
+            lowest_devices, highest_devices = value_range(device_values)
+            lowest_cpu, highest_cpu = value_range(cpu_values)
+            lowest_memory, highest_memory = value_range(memory_values)
+            lowest_download, highest_download = value_range(download_values)
+            lowest_upload, highest_upload = value_range(upload_values)
+            lowest_availability, highest_availability = value_range(
+                availability_values
+            )
             running_samples = sum(row.interface_running_samples for row in successful_rows)
             if bucket_hours == 1:
                 label = bucket_start.strftime("%I %p").lstrip("0")
@@ -821,16 +869,33 @@ class AdminDashboardService:
                     end=bucket_end,
                     label=label,
                     samples=successful_samples,
+                    observations=len(timestamp_groups),
+                    lowest_devices=round(lowest_devices, 1),
                     average_devices=round(average_total("active_devices_avg"), 1),
+                    highest_devices=round(highest_devices, 1),
                     peak_devices=max(device_peaks, default=0),
+                    lowest_cpu_percent=round(lowest_cpu, 1),
                     average_cpu_percent=round(weighted("cpu_usage_avg"), 1),
+                    highest_cpu_percent=round(highest_cpu, 1),
+                    lowest_memory_percent=round(lowest_memory, 1),
                     average_memory_percent=round(weighted("memory_usage_avg"), 1),
+                    highest_memory_percent=round(highest_memory, 1),
+                    lowest_download_bps=round(lowest_download, 1),
                     average_download_bps=round(average_total("download_bps_avg"), 1),
+                    highest_download_bps=round(highest_download, 1),
+                    lowest_upload_bps=round(lowest_upload, 1),
                     average_upload_bps=round(average_total("upload_bps_avg"), 1),
+                    highest_upload_bps=round(highest_upload, 1),
+                    lowest_interface_availability_percent=round(
+                        lowest_availability, 1
+                    ),
                     interface_availability_percent=(
                         round(running_samples / successful_samples * 100, 1)
                         if successful_samples
                         else 0
+                    ),
+                    highest_interface_availability_percent=round(
+                        highest_availability, 1
                     ),
                 )
             )
