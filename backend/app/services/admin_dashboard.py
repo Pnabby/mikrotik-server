@@ -457,7 +457,7 @@ class AdminDashboardService:
 
         return AdminAnalyticsResponse(
             generated_at=now,
-            revenue_forecasts=self._revenue_forecasts(router_ids, now.date()),
+            revenue_forecasts=self._revenue_forecasts(router_ids, now),
             router_id=router_id,
             period_days=period_days,
             comparison_available=comparison_available,
@@ -488,20 +488,23 @@ class AdminDashboardService:
             ),
         )
 
-    def _revenue_forecasts(self, router_ids: list[str], today: date) -> dict:
+    def _revenue_forecasts(self, router_ids: list[str], now: datetime) -> dict:
+        today = now.date()
         occurred_at = func.coalesce(Transaction.paid_at, Transaction.created_at)
         scope = [Transaction.router_id.in_(router_ids),
                  Transaction.payment_status == PaymentStatus.SUCCESS]
         first_sales = dict(self.session.execute(
             select(Transaction.currency, func.min(occurred_at))
-            .where(*scope, Transaction.amount > 0).group_by(Transaction.currency)
+            .where(*scope, Transaction.amount > 0, occurred_at <= now)
+            .group_by(Transaction.currency)
         ).all())
-        start = datetime.combine(today - timedelta(days=28), time.min, tzinfo=UTC)
-        end = datetime.combine(today, time.min, tzinfo=UTC)
+        start = datetime.combine(
+            min(today - timedelta(days=28), today.replace(day=1)), time.min, tzinfo=UTC,
+        )
         revenue: dict[str, dict[date, Decimal]] = {}
         for day, currency, amount in self.session.execute(
             select(func.date(occurred_at), Transaction.currency, func.sum(Transaction.amount))
-            .where(*scope, occurred_at >= start, occurred_at < end)
+            .where(*scope, occurred_at >= start, occurred_at <= now)
             .group_by(func.date(occurred_at), Transaction.currency)
         ):
             day = day if isinstance(day, date) else date.fromisoformat(str(day))
