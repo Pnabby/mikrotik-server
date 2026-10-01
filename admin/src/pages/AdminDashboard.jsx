@@ -7,6 +7,7 @@ import {
   createPlanGroup,
   deleteAllHostelPlanGroup,
   deleteCustomer,
+  updateCustomer,
   deleteHostelProfileConfiguration,
   deletePlanGroup,
   forceHostelIpCloudUpdate,
@@ -83,6 +84,9 @@ function adminViewFromPath(pathname = window.location.pathname) {
 
 function Icon({ name }) {
   const paths = {
+    eye: <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></>,
+    edit: <><path d="m16 3 5 5-12 12-6 1 1-6L16 3ZM13 6l5 5" /></>,
+    trash: <><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7" /></>,
     grid: <><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><rect x="14" y="14" width="6" height="6" rx="1" /></>,
     building: <><path d="M5 21V6.7c0-.7.4-1.3 1.1-1.5l7-2.1c1-.3 1.9.4 1.9 1.5V21M9 8h2M9 12h2M9 16h2M15 10h4v11M3 21h18" /></>,
     tag: <><path d="M20.4 13.4 13.5 20.3a2.3 2.3 0 0 1-3.2 0l-6.6-6.6a2.3 2.3 0 0 1-.7-1.6V5a2 2 0 0 1 2-2h7.1a2.3 2.3 0 0 1 1.6.7l6.7 6.5a2.3 2.3 0 0 1 0 3.2Z" /><circle cx="8" cy="8" r="1.3" /></>,
@@ -1843,27 +1847,55 @@ const CUSTOMER_FILTER_DEFAULTS = {
   search: '',
 }
 
+function CustomerAllowance({ customer }) {
+  const items = [
+    [customer.data_limit_bytes, customer.data_remaining_bytes, 'Data', formatDataSize],
+    [customer.duration_seconds, customer.remaining_seconds, 'Time', (n) => `${(n / 86400).toLocaleString(undefined, { maximumFractionDigits: 1 })} days`],
+  ].filter(([total]) => total > 0)
+  if (!customer.current_plan) return <small>No active plan</small>
+  if (!items.length) return <small>Unlimited allowance</small>
+  return <div className="customer-allowances">{items.map(([total, left, label, format]) => {
+    const percent = left == null ? null : Math.max(0, Math.min(100, left / total * 100))
+    const tone = percent == null ? 'unknown' : percent <= 15 ? 'low' : percent <= 35 ? 'warning' : 'healthy'
+    return <div className={`customer-allowance ${tone}`} key={label}><span><strong>{left == null ? `${label} usage unavailable` : `${format(left)} left`}</strong><small>{format(total)} total</small></span><div className="customer-progress" role={percent == null ? undefined : 'progressbar'} aria-label={`${label} remaining`} aria-valuemin={percent == null ? undefined : 0} aria-valuemax={percent == null ? undefined : 100} aria-valuenow={percent == null ? undefined : Math.round(percent)}><i style={{ width: `${percent || 0}%` }} /></div></div>
+  })}</div>
+}
+
 function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
   const [mode, setMode] = useState('customers')
+  const [offset, setOffset] = useState(0)
   const [filters, setFilters] = useState(CUSTOMER_FILTER_DEFAULTS)
   const [appliedFilters, setAppliedFilters] = useState(CUSTOMER_FILTER_DEFAULTS)
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
+  const [viewCustomer, setViewCustomer] = useState(null)
   const [customerAction, setCustomerAction] = useState(null)
-  const [actionForm, setActionForm] = useState({ destinationRouterId: '', password: '' })
+  const [actionForm, setActionForm] = useState({ destinationRouterId: '', password: '', email: '', phone: '' })
   const [actionBusy, setActionBusy] = useState(false)
   const [actionError, setActionError] = useState('')
   const [actionSuccess, setActionSuccess] = useState('')
 
   useEffect(() => {
-    if (!customerAction) return undefined
+    if (!customerAction && !viewCustomer) return undefined
 
+    const previousFocus = document.activeElement
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     function closeOnEscape(event) {
+      if (event.key === 'Tab') {
+        const dialog = document.querySelector('.customer-action-panel')
+        const controls = dialog?.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled)')
+        if (controls?.length) {
+          const first = controls[0]
+          const last = controls[controls.length - 1]
+          if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+          else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+        }
+      }
       if (event.key === 'Escape' && !actionBusy) {
+        setViewCustomer(null)
         setCustomerAction(null)
         setActionForm({ destinationRouterId: '', password: '' })
         setActionError('')
@@ -1872,16 +1904,17 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
     window.addEventListener('keydown', closeOnEscape)
     return () => {
       document.body.style.overflow = previousOverflow
+      if (previousFocus?.isConnected) previousFocus.focus()
       window.removeEventListener('keydown', closeOnEscape)
     }
-  }, [customerAction, actionBusy])
+  }, [customerAction, viewCustomer, actionBusy])
 
   useEffect(() => {
     if (mode === 'message') return undefined
     let active = true
     setLoading(true)
     setError('')
-    getCustomersAndDevices({ ...appliedFilters, limit: 200 })
+    getCustomersAndDevices({ ...appliedFilters, limit: 200, offset })
       .then((data) => { if (active) setResult(data) })
       .catch((requestError) => {
         if (!active) return
@@ -1893,7 +1926,7 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
       })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [appliedFilters, mode, refreshKey])
+  }, [appliedFilters, mode, refreshKey, offset])
 
   function change(event) {
     setFilters((current) => ({ ...current, [event.target.name]: event.target.value }))
@@ -1901,12 +1934,14 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
 
   function apply(event) {
     event.preventDefault()
+    setOffset(0)
     setAppliedFilters({ ...filters })
   }
 
   function openCustomerAction(customer, action) {
+    setViewCustomer(null)
     setCustomerAction({ customer, action })
-    setActionForm({ destinationRouterId: '', password: '' })
+    setActionForm({ destinationRouterId: '', password: '', email: customer.email || '', phone: customer.phone_number || '' })
     setActionError('')
     setActionSuccess('')
   }
@@ -1921,7 +1956,7 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
   async function submitCustomerAction(event) {
     event.preventDefault()
     if (!customerAction || actionBusy) return
-    if (actionForm.password.length < 8) {
+    if (customerAction.action !== 'edit' && actionForm.password.length < 8) {
       setActionError('Enter your admin password to confirm this action.')
       return
     }
@@ -1932,7 +1967,10 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
     setActionBusy(true)
     setActionError('')
     try {
-      if (customerAction.action === 'delete') {
+      if (customerAction.action === 'edit') {
+        await updateCustomer(customerAction.customer.id, { email: actionForm.email, phone_number: actionForm.phone || null })
+        setActionSuccess(`${customerAction.customer.username}'s contact information was updated.`)
+      } else if (customerAction.action === 'delete') {
         await deleteCustomer(customerAction.customer.id, actionForm.password)
         setActionSuccess(`${customerAction.customer.username} was permanently deleted.`)
       } else {
@@ -1956,7 +1994,9 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
         }
         setActionError('The admin password is incorrect. No changes were made.')
       } else if (requestError instanceof AdminApiError && requestError.status === 409) {
-        setActionError('The action cannot be completed. For a transfer, confirm the plan exists at the new hostel and the username is available there.')
+        setActionError(customerAction.action === 'edit' ? 'That email or phone number belongs to another user.' : 'Confirm the plan exists at the new hostel and the username is available there.')
+      } else if (requestError instanceof AdminApiError && requestError.status === 422) {
+        setActionError('Enter a valid email and phone number, for example 024 123 4567.')
       } else if (requestError instanceof AdminApiError && [502, 503].includes(requestError.status)) {
         setActionError('A hostel router is unavailable. The action was not completed.')
       } else {
@@ -1973,7 +2013,7 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
       {mode !== 'message' && <button className="dashboard-refresh-button" disabled={loading} type="button" onClick={() => setRefreshKey((value) => value + 1)}><Icon name="refresh" />{loading ? 'Refreshing' : 'Refresh live data'}</button>}
     </header>
 
-    <div className="admin-section-tabs" role="tablist" aria-label="Customer information"><button className={mode === 'customers' ? 'active' : ''} role="tab" type="button" onClick={() => setMode('customers')}><Icon name="users" />Users</button><button className={mode === 'devices' ? 'active' : ''} role="tab" type="button" onClick={() => setMode('devices')}><Icon name="device" />Connected devices</button><button className={mode === 'message' ? 'active' : ''} role="tab" type="button" onClick={() => setMode('message')}><Icon name="activity" />Message users</button></div>
+    <div className="admin-section-tabs" role="tablist" aria-label="Customer information"><button className={mode === 'customers' ? 'active' : ''} role="tab" type="button" onClick={() => setMode('customers')}><Icon name="users" />Users</button><button className={mode === 'devices' ? 'active' : ''} role="tab" type="button" onClick={() => setMode('devices')}><Icon name="device" />Devices</button><button className={mode === 'message' ? 'active' : ''} role="tab" type="button" onClick={() => setMode('message')}><Icon name="activity" />Message users</button></div>
 
     {mode === 'message' ? <MessagingPanel embedded canEdit={admin.role !== 'viewer'} hostels={hostels} onSessionExpired={onSessionExpired} /> : <>
       <form className="admin-data-filters customer-filters" onSubmit={apply}>
@@ -1981,18 +2021,26 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
         <label><span>Account status</span><select name="account_status" value={filters.account_status} onChange={change}><option value="">All accounts</option><option value="active">Active</option><option value="inactive">Inactive</option><option value="suspended">Suspended</option><option value="closed">Closed</option></select></label>
         <label><span>Subscription</span><select name="subscription" value={filters.subscription} onChange={change}><option value="all">All users</option><option value="active">Active plan</option><option value="inactive">No active plan</option></select></label>
         <label className="admin-filter-search"><span>Search</span><input name="search" placeholder="Username, email or phone" type="search" value={filters.search} onChange={change} /></label>
-        <div><button type="button" onClick={() => { setFilters(CUSTOMER_FILTER_DEFAULTS); setAppliedFilters(CUSTOMER_FILTER_DEFAULTS) }}>Clear</button><button className="primary" type="submit">Apply filters</button></div>
+        <div><button type="button" onClick={() => { setOffset(0); setFilters(CUSTOMER_FILTER_DEFAULTS); setAppliedFilters(CUSTOMER_FILTER_DEFAULTS) }}>Clear</button><button className="primary" type="submit">Apply filters</button></div>
       </form>
 
+      {viewCustomer && <div className="admin-modal-backdrop" onMouseDown={() => setViewCustomer(null)}><section className="customer-action-panel customer-detail-panel" role="dialog" aria-modal="true" aria-labelledby="customer-detail-title" onMouseDown={(event) => event.stopPropagation()}>
+        <header><div><span className="customer-action-kicker">{viewCustomer.hostel_name}</span><h2 id="customer-detail-title">{viewCustomer.username}</h2><p>{formatStatus(viewCustomer.account_status)} account ? {viewCustomer.router_online ? 'Router online' : 'Router offline'}</p></div><button autoFocus aria-label="Close user details" type="button" onClick={() => setViewCustomer(null)}><Icon name="close" /></button></header>
+        <div className="customer-detail-plan"><strong>{viewCustomer.current_plan || 'No active plan'}</strong><CustomerAllowance customer={viewCustomer} />{viewCustomer.expires_at && <small>Expires {formatDashboardTime(viewCustomer.expires_at)}</small>}</div>
+        <dl className="customer-detail-fields">{[['Email', viewCustomer.email], ['Phone', `${viewCustomer.phone_number || 'Not provided'}${viewCustomer.phone_verified ? ' ? verified' : ''}`], ['Joined', formatDashboardTime(viewCustomer.joined_at)], ['Last login', formatDashboardTime(viewCustomer.last_login_at)], ['Last activity', formatDashboardTime(viewCustomer.last_activity_at)], ['Subscription', formatStatus(viewCustomer.subscription_status, 'No subscription')]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+        <h3>Active devices</h3><div className="customer-detail-devices">{!viewCustomer.router_online ? <p>Router offline. Live devices cannot be verified.</p> : <>{result.devices.filter((device) => device.hostel_id === viewCustomer.hostel_id && device.username.toLowerCase() === viewCustomer.username.toLowerCase()).map((device) => <article key={device.session_id}><strong>{device.ip_address || 'IP unavailable'}</strong><code>{device.mac_address || 'MAC unavailable'}</code><small>Uptime {device.uptime || '--'} ? {formatStatus(device.login_method, '--')}</small></article>)}{!viewCustomer.connected_devices && <p>No active devices.</p>}</>}</div>
+        <footer className="customer-detail-actions"><button type="button" onClick={() => setViewCustomer(null)}>Done</button>{admin.role !== 'viewer' && <><button type="button" onClick={() => openCustomerAction(viewCustomer, 'transfer')}>Move hostel</button><button className="danger" disabled={!viewCustomer.router_online} type="button" onClick={() => openCustomerAction(viewCustomer, 'delete')}>Delete user</button></>}</footer>{admin.role !== 'viewer' && !viewCustomer.router_online && <p className="customer-delete-help">Deletion requires an online router to remove the complete account.</p>}
+      </section></div>}
       {actionSuccess && <div className="customer-action-notice success" role="status"><Icon name="check" />{actionSuccess}</div>}
       {customerAction && <div className="admin-modal-backdrop" role="presentation" onMouseDown={closeCustomerAction}>
         <section className={`customer-action-panel ${customerAction.action === 'delete' ? 'danger' : ''}`} role="dialog" aria-modal="true" aria-labelledby="customer-action-title" onMouseDown={(event) => event.stopPropagation()}>
-          <header><div><span className="customer-action-kicker">Password confirmation required</span><h2 id="customer-action-title">{customerAction.action === 'delete' ? `Delete ${customerAction.customer.username}?` : `Move ${customerAction.customer.username}?`}</h2><p>{customerAction.action === 'delete' ? 'This permanently removes the account, history, web sessions, RouterOS user, active WiFi sessions, and remembered cookies. This cannot be undone.' : `The RouterOS account will move from ${customerAction.customer.hostel_name}. Active sessions and cookies will be removed, and used data will be deducted first.`}</p></div><button aria-label="Close customer action" disabled={actionBusy} type="button" onClick={closeCustomerAction}><Icon name="close" /></button></header>
-          <form noValidate onSubmit={submitCustomerAction}>
+          <header><div><span className="customer-action-kicker">{customerAction.action === 'edit' ? 'Contact information' : 'Password confirmation required'}</span><h2 id="customer-action-title">{customerAction.action === 'edit' ? `Edit ${customerAction.customer.username}` : customerAction.action === 'delete' ? `Delete ${customerAction.customer.username}?` : `Move ${customerAction.customer.username}?`}</h2><p>{customerAction.action === 'edit' ? 'Update the email and phone number for this user.' : customerAction.action === 'delete' ? 'This permanently removes the account, history, web sessions, RouterOS user, active WiFi sessions, and remembered cookies. This cannot be undone.' : `The RouterOS account will move from ${customerAction.customer.hostel_name}. Active sessions and cookies will be removed, and used data will be deducted first.`}</p></div><button aria-label="Close customer action" disabled={actionBusy} type="button" onClick={closeCustomerAction}><Icon name="close" /></button></header>
+          <form onSubmit={submitCustomerAction}>
+            {customerAction.action === 'edit' && <><label><span>Email</span><input autoFocus required type="email" maxLength={320} value={actionForm.email} onChange={(event) => setActionForm((current) => ({ ...current, email: event.target.value }))} /></label><label><span>Phone number</span><input type="tel" maxLength={32} value={actionForm.phone} onChange={(event) => setActionForm((current) => ({ ...current, phone: event.target.value }))} /></label><button type="button" onClick={() => openCustomerAction(customerAction.customer, 'transfer')}>Move to another hostel</button></>}
             {customerAction.action === 'transfer' && <label><span>New hostel</span><select autoFocus value={actionForm.destinationRouterId} onChange={(event) => { setActionForm((current) => ({ ...current, destinationRouterId: event.target.value })); setActionError('') }}><option value="">Select destination</option>{hostels.filter((hostel) => hostel.is_active && hostel.router_id !== customerAction.customer.hostel_id).map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></label>}
-            <label><span>Admin password</span><input autoFocus={customerAction.action === 'delete'} autoComplete="current-password" maxLength={128} minLength={8} placeholder="Enter your password" type="password" value={actionForm.password} onChange={(event) => { setActionForm((current) => ({ ...current, password: event.target.value })); setActionError('') }} /></label>
+            {customerAction.action !== 'edit' && <label><span>Admin password</span><input autoFocus={customerAction.action === 'delete'} autoComplete="current-password" maxLength={128} minLength={8} placeholder="Enter your password" type="password" value={actionForm.password} onChange={(event) => { setActionForm((current) => ({ ...current, password: event.target.value })); setActionError('') }} /></label>}
             {actionError && <p role="alert">{actionError}</p>}
-            <div><button disabled={actionBusy} type="button" onClick={closeCustomerAction}>Cancel</button><button className="primary" disabled={actionBusy} type="submit">{actionBusy ? 'Working...' : customerAction.action === 'delete' ? 'Delete permanently' : 'Confirm hostel move'}</button></div>
+            <div><button disabled={actionBusy} type="button" onClick={closeCustomerAction}>Cancel</button><button className="primary" disabled={actionBusy} type="submit">{actionBusy ? 'Working...' : customerAction.action === 'edit' ? 'Save changes' : customerAction.action === 'delete' ? 'Delete permanently' : 'Confirm hostel move'}</button></div>
           </form>
         </section>
       </div>}
@@ -2002,10 +2050,10 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
       {loading && !result ? <div className="dashboard-overview-loading"><span className="admin-page-spinner" /><p>Loading customers and checking connected devices...</p></div> : result && <>
         <section className="dashboard-metric-grid admin-data-metrics"><article><span className="stat-icon purple"><Icon name="users" /></span><div><small>Total users</small><strong>{result.total_users.toLocaleString()}</strong><p>{result.matched_users.toLocaleString()} match the filters</p></div></article><article><span className="stat-icon amber"><Icon name="clock" /></span><div><small>Active subscriptions</small><strong>{result.active_subscriptions.toLocaleString()}</strong><p>Enabled users on RouterOS</p></div></article><article><span className="stat-icon green"><Icon name="wifi" /></span><div><small>Online users</small><strong>{result.online_users.toLocaleString()}</strong><p>Currently visible on RouterOS</p></div></article><article><span className="stat-icon blue"><Icon name="device" /></span><div><small>Active devices</small><strong>{result.active_devices.toLocaleString()}</strong><p>Live HotSpot sessions</p></div></article></section>
 
-        <section className="admin-data-card"><header><div><h2>{mode === 'customers' ? 'User directory' : 'Connected devices'}</h2><p>{mode === 'customers' ? `Showing up to 200 of ${result.matched_users.toLocaleString()} matching users.` : 'Live sessions reported by reachable hostel routers.'}</p></div></header><div className="admin-data-table-wrap">
-          {mode === 'customers' ? <table className="admin-data-table"><thead><tr><th>User</th><th>Contact</th><th>Hostel</th><th>Account</th><th>Current plan</th><th>Connection</th><th>Last activity</th>{admin.role !== 'viewer' && <th>Actions</th>}</tr></thead><tbody>{result.customers.map((customer) => <tr key={customer.id}><td><strong>{customer.username}</strong><small>Joined {formatDashboardTime(customer.joined_at)}</small></td><td><strong>{customer.email}</strong><small>{customer.phone_number || 'No phone number'}{customer.phone_verified ? ' · verified' : ''}</small></td><td><strong>{customer.hostel_name}</strong></td><td><span className={`admin-status-pill ${customer.account_status}`}>{formatStatus(customer.account_status)}</span></td><td><strong>{customer.current_plan || 'No active plan'}</strong><small>{formatStatus(customer.subscription_status, 'No subscription')}</small></td><td><span className={`admin-status-pill ${customer.is_online ? 'success' : 'offline'}`}>{customer.is_online ? 'Online' : 'Offline'}</span><small>{customer.connected_devices} device{customer.connected_devices === 1 ? '' : 's'}</small></td><td><strong>{formatDashboardTime(customer.last_activity_at)}</strong><small>{customer.last_login_at ? `Last login ${formatDashboardTime(customer.last_login_at)}` : 'Never logged in'}</small></td>{admin.role !== 'viewer' && <td><div className="customer-row-actions"><button type="button" onClick={() => openCustomerAction(customer, 'transfer')}>Move</button><button className="danger" type="button" onClick={() => openCustomerAction(customer, 'delete')}>Delete</button></div></td>}</tr>)}</tbody></table> : <table className="admin-data-table"><thead><tr><th>User</th><th>Hostel</th><th>IP address</th><th>MAC address</th><th>Uptime</th><th>Login method</th></tr></thead><tbody>{result.devices.map((device) => <tr key={`${device.hostel_id}-${device.session_id}`}><td><strong>{device.username}</strong><small>{device.customer_email || 'Not linked to a customer record'}</small></td><td><strong>{device.hostel_name}</strong></td><td><code>{device.ip_address || '--'}</code></td><td><code>{device.mac_address || '--'}</code></td><td><strong>{device.uptime || '--'}</strong></td><td><strong>{formatStatus(device.login_method, '--')}</strong></td></tr>)}</tbody></table>}
+        <section className="admin-data-card"><header><div><h2>{mode === 'customers' ? 'User directory' : 'Connected devices'}</h2><p>{mode === 'customers' ? `Showing ${Math.min(offset + 1, result.matched_users)} to ${Math.min(offset + 200, result.matched_users)} of ${result.matched_users.toLocaleString()} users.` : 'Live sessions reported by reachable hostel routers.'}</p></div></header><div className="admin-data-table-wrap">
+          {mode === 'customers' ? <table className="admin-data-table customer-directory"><thead><tr><th>User / hostel</th><th>Contact</th><th>Status</th><th>Plan &amp; allowance</th><th>Connection</th><th>Last login</th><th>Actions</th></tr></thead><tbody>{result.customers.map((customer) => <tr key={customer.id}><td><strong>{customer.username}</strong><small>{customer.hostel_name}</small></td><td className="customer-contact"><strong>{customer.email || 'No email provided'}</strong><small>{customer.phone_number || 'No phone number'}</small></td><td><span className={`admin-status-pill ${customer.account_status}`}>{formatStatus(customer.account_status)}</span></td><td><strong>{customer.current_plan || 'No active plan'}</strong><CustomerAllowance customer={customer} /></td><td><span className={`admin-status-pill ${customer.is_online ? 'success' : 'offline'}`}>{!customer.router_online ? 'Unavailable' : customer.is_online ? 'Online' : 'Offline'}</span><small>{customer.router_online ? `${customer.connected_devices} active devices` : 'Router offline'}</small></td><td><strong>{customer.last_login_at ? formatDashboardTime(customer.last_login_at) : 'Never logged in'}</strong></td><td><div className="customer-row-actions"><button aria-label={`View ${customer.username}`} title="View user" type="button" onClick={() => setViewCustomer(customer)}><Icon name="eye" /></button>{admin.role !== 'viewer' && <><button aria-label={`Edit ${customer.username}`} title="Edit user" type="button" onClick={() => openCustomerAction(customer, 'edit')}><Icon name="edit" /></button><button className="danger" aria-label={`Delete ${customer.username}`} title={customer.router_online ? 'Delete user' : 'Router must be online to delete'} disabled={!customer.router_online} type="button" onClick={() => openCustomerAction(customer, 'delete')}><Icon name="trash" /></button></>}</div></td></tr>)}</tbody></table> : <table className="admin-data-table"><thead><tr><th>User</th><th>Hostel</th><th>IP address</th><th>MAC address</th><th>Uptime</th><th>Login method</th></tr></thead><tbody>{result.devices.map((device) => <tr key={`${device.hostel_id}-${device.session_id}`}><td><strong>{device.username}</strong><small>{device.customer_email || 'Not linked to a customer record'}</small></td><td><strong>{device.hostel_name}</strong></td><td><code>{device.ip_address || '--'}</code></td><td><code>{device.mac_address || '--'}</code></td><td><strong>{device.uptime || '--'}</strong></td><td><strong>{formatStatus(device.login_method, '--')}</strong></td></tr>)}</tbody></table>}
           {mode === 'customers' && !result.customers.length && <p className="dashboard-empty-copy">No users match these filters.</p>}{mode === 'devices' && !result.devices.length && <p className="dashboard-empty-copy">No connected devices match these filters.</p>}
-        </div></section>
+        </div>{mode === 'customers' && result.matched_users > 200 && <footer className="customer-detail-actions"><button disabled={loading || offset === 0} type="button" onClick={() => setOffset((value) => Math.max(0, value - 200))}>Previous</button><button disabled={loading || offset + 200 >= result.matched_users} type="button" onClick={() => setOffset((value) => value + 200)}>Next</button></footer>}</section>
       </>}
     </>}
   </>

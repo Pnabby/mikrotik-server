@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
@@ -28,6 +29,7 @@ from app.schemas.admin_dashboard import (
     AdminCustomerDirectoryResponse,
     AdminCustomerTransferRequest,
     AdminCustomerTransferResponse,
+    AdminCustomerUpdateRequest,
     AdminDashboardResponse,
     AdminNetworkUsageResponse,
     AdminTransactionListResponse,
@@ -135,6 +137,7 @@ def list_customers_and_devices(
     subscription: str = Query(default="all", pattern="^(all|active|inactive)$"),
     search: str | None = Query(default=None, max_length=120),
     limit: int = Query(default=200, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
 ) -> AdminCustomerDirectoryResponse:
     if router_id is not None and session.get(Router, router_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
@@ -144,6 +147,7 @@ def list_customers_and_devices(
         subscription=subscription,
         search=search,
         limit=limit,
+        offset=offset,
     )
 
 
@@ -160,6 +164,40 @@ def _editable_customer(
     if customer is None:
         raise ServiceError(status.HTTP_404_NOT_FOUND, "Customer was not found.")
     return customer
+
+
+@router.patch("/customers/{customer_id}", status_code=status.HTTP_204_NO_CONTENT)
+def update_customer(
+    customer_id: uuid.UUID,
+    payload: AdminCustomerUpdateRequest,
+    request: Request,
+    admin: AdminDependency,
+    session: SessionDependency,
+) -> None:
+    customer = _editable_customer(customer_id, admin, session)
+    changed = []
+    if customer.email != payload.email:
+        customer.email = payload.email
+        customer.email_verified_at = None
+        changed.append("email")
+    if customer.phone_number != payload.phone_number:
+        customer.phone_number = payload.phone_number
+        customer.phone_verified_at = None
+        changed.append("phone_number")
+    if changed:
+        session.add(AuditLog(
+            actor_type=AuditActorType.ADMIN, admin_user_id=admin.id,
+            customer_id=customer.id, action="customer.updated_by_admin",
+            entity_type="customer", entity_id=str(customer.id),
+            details={"fields": changed},
+            ip_address=(request.client.host if request.client else "")[:64] or None,
+        ))
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise ServiceError(status.HTTP_409_CONFLICT,
+                           "The email or phone number already belongs to another user.") from exc
 
 
 @router.post(

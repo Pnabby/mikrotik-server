@@ -1262,14 +1262,16 @@ class AdminDashboardService:
         subscription: str,
         search: str | None,
         limit: int,
+        offset: int = 0,
     ) -> AdminCustomerDirectoryResponse:
         now = datetime.now(UTC)
-        routers = self._routers(router_id)
+        routers = self._routers(router_id, include_inactive=True)
         router_ids = [router.id for router in routers]
+        usage_users: dict[str, list[dict[str, str]]] = {}
         live_results: list[tuple[DashboardRouterStatus, list[dict[str, str]]]] = []
         if routers:
             with ThreadPoolExecutor(max_workers=min(8, len(routers))) as executor:
-                live_results = list(executor.map(self._live_router_sessions, routers))
+                live_results = list(executor.map(lambda router: self._live_router_sessions(router, usage_users), routers))
 
         router_names = {router.id: router.name for router in routers}
         live_usernames: set[str] = set()
@@ -1318,6 +1320,7 @@ class AdminDashboardService:
             )
             .where(*conditions)
             .order_by(Customer.created_at.desc())
+            .offset(offset)
             .limit(limit)
         ).all()
         matched_users = int(
@@ -1332,15 +1335,25 @@ class AdminDashboardService:
             key = (device_router_id, username.casefold())
             device_counts[key] = device_counts.get(key, 0) + 1
 
+        device_customers = self.session.scalars(
+            select(Customer).options(selectinload(Customer.subscriptions)).where(scope)
+        ).all()
         customer_by_identity = {
-            (customer.router_id, customer.username.casefold()): customer for customer in customers
+            (customer.router_id, customer.username.casefold()): customer
+            for customer in device_customers
         }
         search_pattern = normalized_search
         devices = []
         for device_router_id, session_id, username, item in device_rows:
             customer = customer_by_identity.get((device_router_id, username.casefold()))
-            if (account_status is not None or subscription != "all") and customer is None:
+            if account_status is not None and (customer is None or customer.account_status != account_status):
                 continue
+            if subscription != "all":
+                has_active = customer is not None and any(
+                    item.status == SubscriptionStatus.ACTIVE for item in customer.subscriptions
+                )
+                if has_active != (subscription == "active"):
+                    continue
             searchable = " ".join(
                 [
                     username,
@@ -1377,7 +1390,7 @@ class AdminDashboardService:
                 live_status.name for live_status, _sessions in live_results if not live_status.reachable
             ],
             customers=[
-                self._customer_detail(customer, live_usernames, device_counts)
+                self._customer_detail(customer, live_usernames, device_counts, usage_users, device_rows)
                 for customer in customers
             ],
             devices=devices,
@@ -1388,6 +1401,8 @@ class AdminDashboardService:
         customer: Customer,
         live_usernames: set[str],
         device_counts: dict[tuple[str, str], int],
+        usage_users: dict[str, list[dict[str, str]]] | None = None,
+        device_rows: list | None = None,
     ) -> AdminCustomerDetail:
         current_subscription = next(
             (
@@ -1401,6 +1416,24 @@ class AdminDashboardService:
             ),
             None,
         )
+        router_users = (usage_users or {}).get(customer.router_id)
+        user = next((row for row in router_users or []
+                     if str(row.get("name", "")).strip().casefold() == customer.username.casefold()), None)
+        package = current_subscription.package if current_subscription else None
+        data_limit = int(user.get("limit-bytes-total") or 0) if user else 0
+        data_limit = data_limit or (package.data_limit_bytes if package else None)
+        remaining_data = None
+        if user is not None and data_limit:
+            used = sum(int(user.get(field) or 0) for field in ("bytes-in", "bytes-out"))
+            used += sum(int(row.get(field) or 0)
+                        for router_id, _, username, row in device_rows or []
+                        if router_id == customer.router_id and username.casefold() == customer.username.casefold()
+                        for field in ("bytes-in", "bytes-out"))
+            remaining_data = max(0, data_limit - used)
+        expiry = current_subscription.expires_at if current_subscription else None
+        remaining_seconds = None
+        if expiry is not None:
+            remaining_seconds = max(0, int((expiry.replace(tzinfo=UTC) - datetime.now(UTC)).total_seconds()))
         return AdminCustomerDetail(
             id=str(customer.id),
             username=customer.username,
@@ -1412,7 +1445,13 @@ class AdminDashboardService:
             account_status=customer.account_status,
             subscription_status=(current_subscription.status if current_subscription else None),
             current_plan=(current_subscription.package.name if current_subscription else None),
-            is_online=customer.username.casefold() in live_usernames,
+            router_online=router_users is not None,
+            data_limit_bytes=data_limit,
+            data_remaining_bytes=remaining_data,
+            duration_seconds=package.duration_seconds if package else None,
+            remaining_seconds=remaining_seconds,
+            expires_at=expiry,
+            is_online=device_counts.get((customer.router_id, customer.username.casefold()), 0) > 0,
             connected_devices=device_counts.get(
                 (customer.router_id, customer.username.casefold()), 0
             ),
@@ -1494,7 +1533,7 @@ class AdminDashboardService:
         )
 
     def _live_router_sessions(
-        self, router: Router
+        self, router: Router, usage_users: dict | None = None
     ) -> tuple[DashboardRouterStatus, list[dict[str, str]]]:
         if not router.is_active or not router.hotspot_network:
             return (
@@ -1526,6 +1565,8 @@ class AdminDashboardService:
                 ),
                 [],
             )
+        if usage_users is not None:
+            usage_users[router.id] = hotspot_users
         usernames, device_keys = active_identity_sets(router.id, sessions)
         enabled_usernames = enabled_hotspot_usernames(hotspot_users)
         return (

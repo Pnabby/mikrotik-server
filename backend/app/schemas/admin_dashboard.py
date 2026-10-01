@@ -6,6 +6,8 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, SecretStr, field_validator
 
 from app.models.enums import AccountStatus, ActivationStatus, PaymentStatus, SubscriptionStatus
+from app.schemas.account import normalize_customer_email
+from app.schemas.registration import normalize_phone_number
 
 
 class DashboardRevenue(BaseModel):
@@ -240,6 +242,12 @@ class AdminCustomerDetail(BaseModel):
     current_plan: str | None
     is_online: bool
     connected_devices: int
+    router_online: bool = False
+    data_limit_bytes: int | None = None
+    data_remaining_bytes: int | None = None
+    duration_seconds: int | None = None
+    remaining_seconds: int | None = None
+    expires_at: datetime | None = None
     joined_at: datetime
     last_login_at: datetime | None
     last_activity_at: datetime
@@ -267,6 +275,22 @@ class AdminCustomerDirectoryResponse(BaseModel):
     unavailable_routers: list[str]
     customers: list[AdminCustomerDetail]
     devices: list[AdminConnectedDevice]
+
+
+class AdminCustomerUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    email: str
+    phone_number: str | None = None
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        return normalize_customer_email(value)
+
+    @field_validator("phone_number")
+    @classmethod
+    def validate_phone(cls, value: str | None) -> str | None:
+        return normalize_phone_number(value) if value and value.strip() else None
 
 
 class AdminCustomerDeleteRequest(BaseModel):

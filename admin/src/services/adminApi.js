@@ -89,6 +89,13 @@ export function transferCustomerHostel(customerId, destinationRouterId, password
   })
 }
 
+export function updateCustomer(customerId, details) {
+  return request(`/api/admin/dashboard/customers/${encodeURIComponent(customerId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(details),
+  })
+}
+
 export function deleteCustomer(customerId, password) {
   return request(`/api/admin/dashboard/customers/${encodeURIComponent(customerId)}/delete`, {
     method: 'POST',
