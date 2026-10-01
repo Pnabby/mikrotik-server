@@ -9,6 +9,8 @@ class RevenueForecastPoint(BaseModel):
     revenue: Decimal
     lower: Decimal
     upper: Decimal
+    actual_revenue: Decimal | None = None
+    is_prediction: bool = True
 
 
 class RevenueForecastHistoryPoint(BaseModel):
@@ -16,13 +18,15 @@ class RevenueForecastHistoryPoint(BaseModel):
     revenue: Decimal
 
 
-class RevenueForecastHorizon(BaseModel):
+class RevenueForecastPeriod(BaseModel):
+    label: str
     days: int
     date_from: date
     date_to: date
     projected_revenue: Decimal
     lower_revenue: Decimal
     upper_revenue: Decimal
+    actual_revenue: Decimal | None
     daily: list[RevenueForecastPoint]
 
 
@@ -36,4 +40,4 @@ class RevenueForecast(BaseModel):
     recent_daily_average: Decimal = Decimal(0)
     weekly_change_percent: float | None = None
     history: list[RevenueForecastHistoryPoint] = Field(default_factory=list)
-    horizons: dict[int, RevenueForecastHorizon] = Field(default_factory=dict)
+    periods: dict[str, RevenueForecastPeriod] = Field(default_factory=dict)
