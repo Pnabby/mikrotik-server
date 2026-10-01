@@ -228,3 +228,107 @@ def test_access_points_only_include_leases_in_range_and_use_active_mac(monkeypat
     assert result.access_points[1].online is False
     assert result.online_count == 1
     assert result.offline_count == 1
+
+
+def test_customer_allowance_includes_live_usage_and_router_identity():
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+    from app.models.enums import AccountStatus, SubscriptionStatus
+
+    now = datetime.now(UTC)
+    package = SimpleNamespace(name="Weekly", data_limit_bytes=1000, duration_seconds=604800)
+    subscription = SimpleNamespace(created_at=now, status=SubscriptionStatus.ACTIVE,
+                                   package=package, expires_at=now + timedelta(days=2))
+    customer = SimpleNamespace(id="customer", username="alice", email="a@example.com",
+                               phone_number=None, phone_verified_at=None, router_id="one",
+                               router=SimpleNamespace(name="Hostel"),
+                               account_status=AccountStatus.ACTIVE, subscriptions=[subscription],
+                               created_at=now, last_login_at=None, last_activity_at=now)
+    users = {"one": [{"name": "alice", "limit-bytes-total": "1000",
+                      "bytes-in": "500", "bytes-out": "200"}]}
+    devices = [("one", "session", "alice", {"bytes-in": "50", "bytes-out": "100"})]
+    detail = AdminDashboardService._customer_detail(
+        customer, {"alice"}, {("one", "alice"): 1}, users, devices)
+    assert detail.data_remaining_bytes == 150
+    assert detail.router_online is True
+    assert detail.is_online is True
+    assert 172790 <= detail.remaining_seconds <= 172800
+
+    offline = AdminDashboardService._customer_detail(customer, {"alice"}, {}, {}, [])
+    assert offline.router_online is False
+    assert offline.is_online is False
+    assert offline.data_remaining_bytes is None
+
+
+def test_customer_edit_normalizes_contact_and_resets_verification():
+    import uuid
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+    from app.models.enums import AdminRole
+    from app.routes.admin_dashboard import update_customer
+    from app.schemas.admin_dashboard import AdminCustomerUpdateRequest
+
+    now = datetime.now(UTC)
+    customer = SimpleNamespace(id=uuid.uuid4(), email="old@example.com",
+                               phone_number="+233241234567", email_verified_at=now,
+                               phone_verified_at=now)
+    admin = SimpleNamespace(id=uuid.uuid4(), role=AdminRole.OPERATOR)
+
+    class Session:
+        def __init__(self):
+            self.audit = []
+            self.committed = False
+        def scalar(self, query):
+            return customer
+        def add(self, row):
+            self.audit.append(row)
+        def commit(self):
+            self.committed = True
+
+    session = Session()
+    update_customer(customer.id,
+                    AdminCustomerUpdateRequest(email=" NEW@EXAMPLE.COM ", phone_number="024 765 4321"),
+                    SimpleNamespace(client=None), admin, session)
+    assert customer.email == "new@example.com"
+    assert customer.phone_number == "+233247654321"
+    assert customer.email_verified_at is None
+    assert customer.phone_verified_at is None
+    assert session.committed
+    assert session.audit[0].details == {"fields": ["email", "phone_number"]}
+
+
+def test_customer_edit_rejects_viewer_and_duplicate_contact():
+    import uuid
+    import pytest
+    from types import SimpleNamespace
+    from sqlalchemy.exc import IntegrityError
+    from app.core.exceptions import ServiceError
+    from app.models.enums import AdminRole
+    from app.routes.admin_dashboard import update_customer
+    from app.schemas.admin_dashboard import AdminCustomerUpdateRequest
+
+    customer = SimpleNamespace(id=uuid.uuid4(), email="old@example.com",
+                               phone_number=None, email_verified_at=None, phone_verified_at=None)
+    payload = AdminCustomerUpdateRequest(email="new@example.com")
+
+    class Session:
+        rolled_back = False
+        def scalar(self, query):
+            return customer
+        def add(self, row):
+            pass
+        def commit(self):
+            raise IntegrityError("update", {}, Exception("duplicate"))
+        def rollback(self):
+            self.rolled_back = True
+
+    session = Session()
+    with pytest.raises(ServiceError) as forbidden:
+        update_customer(customer.id, payload, SimpleNamespace(client=None),
+                        SimpleNamespace(id=uuid.uuid4(), role=AdminRole.VIEWER), session)
+    assert forbidden.value.status_code == 403
+    with pytest.raises(ServiceError) as conflict:
+        update_customer(customer.id, payload, SimpleNamespace(client=None),
+                        SimpleNamespace(id=uuid.uuid4(), role=AdminRole.OPERATOR), session)
+    assert conflict.value.status_code == 409
+    assert session.rolled_back
