@@ -41,6 +41,8 @@ from app.schemas.admin_dashboard import (
     RouterPerformanceSummary,
     RouterTimelinePoint,
 )
+from app.services.hotspot import _parse_bool, _parse_int, _parse_login_datetime
+from app.services.revenue_forecast import forecast_revenue
 
 
 def active_identity_sets(
@@ -455,6 +457,7 @@ class AdminDashboardService:
 
         return AdminAnalyticsResponse(
             generated_at=now,
+            revenue_forecasts=self._revenue_forecasts(router_ids, now.date()),
             router_id=router_id,
             period_days=period_days,
             comparison_available=comparison_available,
@@ -484,6 +487,33 @@ class AdminDashboardService:
                 period_hours=router_hours,
             ),
         )
+
+    def _revenue_forecasts(self, router_ids: list[str], today: date) -> dict:
+        occurred_at = func.coalesce(Transaction.paid_at, Transaction.created_at)
+        scope = [Transaction.router_id.in_(router_ids),
+                 Transaction.payment_status == PaymentStatus.SUCCESS]
+        first_sales = dict(self.session.execute(
+            select(Transaction.currency, func.min(occurred_at))
+            .where(*scope, Transaction.amount > 0).group_by(Transaction.currency)
+        ).all())
+        start = datetime.combine(today - timedelta(days=28), time.min, tzinfo=UTC)
+        end = datetime.combine(today, time.min, tzinfo=UTC)
+        revenue: dict[str, dict[date, Decimal]] = {}
+        for day, currency, amount in self.session.execute(
+            select(func.date(occurred_at), Transaction.currency, func.sum(Transaction.amount))
+            .where(*scope, occurred_at >= start, occurred_at < end)
+            .group_by(func.date(occurred_at), Transaction.currency)
+        ):
+            day = day if isinstance(day, date) else date.fromisoformat(str(day))
+            revenue.setdefault(currency, {})[day] = amount or Decimal(0)
+        return {
+            currency: forecast_revenue(
+                currency=currency, today=today,
+                first_sale_date=date.fromisoformat(str(first_sale)[:10]),
+                daily_revenue=revenue.get(currency, {}),
+            )
+            for currency, first_sale in first_sales.items()
+        }
 
     def _router_analytics(
         self,
@@ -1290,10 +1320,24 @@ class AdminDashboardService:
                 )
                 device_rows.append((live_status.router_id, session_id, username, item))
 
+        # Account status comes from this live RouterOS snapshot, not the web account.
+        router_statuses = {
+            (router_id, str(user.get("name", "")).strip().casefold()): (
+                AccountStatus.INACTIVE if _parse_bool(user.get("disabled")) else AccountStatus.ACTIVE
+            )
+            for router_id, users in usage_users.items()
+            for user in users if str(user.get("name", "")).strip()
+        }
         scope = Customer.router_id.in_(router_ids)
         conditions = [scope]
         if account_status is not None:
-            conditions.append(Customer.account_status == account_status)
+            conditions.append(or_(*[
+                and_(Customer.router_id == router_id, func.lower(Customer.username).in_([
+                    username for (user_router_id, username), router_status in router_statuses.items()
+                    if user_router_id == router_id and router_status == account_status
+                ]))
+                for router_id in usage_users
+            ], False))
         active_subscription = Customer.subscriptions.any(
             Subscription.status == SubscriptionStatus.ACTIVE
         )
@@ -1346,7 +1390,7 @@ class AdminDashboardService:
         devices = []
         for device_router_id, session_id, username, item in device_rows:
             customer = customer_by_identity.get((device_router_id, username.casefold()))
-            if account_status is not None and (customer is None or customer.account_status != account_status):
+            if account_status is not None and router_statuses.get((device_router_id, username.casefold())) != account_status:
                 continue
             if subscription != "all":
                 has_active = customer is not None and any(
@@ -1379,6 +1423,15 @@ class AdminDashboardService:
                 )
             )
 
+        profile_mappings = self.session.scalars(
+            select(RouterPackageProfile)
+            .options(joinedload(RouterPackageProfile.package))
+            .where(RouterPackageProfile.router_id.in_(router_ids))
+        ).all()
+        plans = {
+            (mapping.router_id, mapping.mikrotik_profile.casefold()): mapping
+            for mapping in profile_mappings
+        }
         return AdminCustomerDirectoryResponse(
             generated_at=now,
             total_users=total_users,
@@ -1390,7 +1443,7 @@ class AdminDashboardService:
                 live_status.name for live_status, _sessions in live_results if not live_status.reachable
             ],
             customers=[
-                self._customer_detail(customer, live_usernames, device_counts, usage_users, device_rows)
+                self._customer_detail(customer, live_usernames, device_counts, usage_users, device_rows, plans, now)
                 for customer in customers
             ],
             devices=devices,
@@ -1403,6 +1456,8 @@ class AdminDashboardService:
         device_counts: dict[tuple[str, str], int],
         usage_users: dict[str, list[dict[str, str]]] | None = None,
         device_rows: list | None = None,
+        plans: dict | None = None,
+        now: datetime | None = None,
     ) -> AdminCustomerDetail:
         current_subscription = next(
             (
@@ -1419,21 +1474,45 @@ class AdminDashboardService:
         router_users = (usage_users or {}).get(customer.router_id)
         user = next((row for row in router_users or []
                      if str(row.get("name", "")).strip().casefold() == customer.username.casefold()), None)
-        package = current_subscription.package if current_subscription else None
-        data_limit = int(user.get("limit-bytes-total") or 0) if user else 0
+        profile = str(user.get("profile", "")).strip() if user else ""
+        mapping = (plans or {}).get((customer.router_id, profile.casefold()))
+        package = mapping.package if mapping else (
+            current_subscription.package if current_subscription else None
+        )
+        plan_name = (mapping.display_name or package.name) if mapping else (
+            profile or (package.name if package else None)
+        )
+        data_limit = _parse_int(user.get("limit-bytes-total")) if user else 0
         data_limit = data_limit or (package.data_limit_bytes if package else None)
         remaining_data = None
         if user is not None and data_limit:
-            used = sum(int(user.get(field) or 0) for field in ("bytes-in", "bytes-out"))
-            used += sum(int(row.get(field) or 0)
-                        for router_id, _, username, row in device_rows or []
-                        if router_id == customer.router_id and username.casefold() == customer.username.casefold()
-                        for field in ("bytes-in", "bytes-out"))
+            # Saved profile counters plus every current session's counters.
+            used = sum(_parse_int(user.get(field)) for field in ("bytes-in", "bytes-out"))
+            used += sum(
+                _parse_int(row.get(field))
+                for router_id, _, username, row in device_rows or []
+                if router_id == customer.router_id and username.casefold() == customer.username.casefold()
+                for field in ("bytes-in", "bytes-out")
+            )
             remaining_data = max(0, data_limit - used)
-        expiry = current_subscription.expires_at if current_subscription else None
+        duration = package.duration_seconds if package else None
+        expiry = None
         remaining_seconds = None
-        if expiry is not None:
-            remaining_seconds = max(0, int((expiry.replace(tzinfo=UTC) - datetime.now(UTC)).total_seconds()))
+        time_reason = None
+        if duration:
+            login_at = _parse_login_datetime(user.get("comment")) if user else None
+            if router_users is None:
+                time_reason = "Router offline; login timestamp cannot be read."
+            elif user is None:
+                time_reason = "User was not found on the router."
+            elif login_at is None:
+                time_reason = "Router comment has no valid login timestamp."
+            else:
+                expiry = login_at + timedelta(seconds=duration)
+                remaining_seconds = min(duration, max(0, int((expiry - (now or datetime.now(UTC))).total_seconds())))
+        router_status = None if user is None else (
+            AccountStatus.INACTIVE if _parse_bool(user.get("disabled")) else AccountStatus.ACTIVE
+        )
         return AdminCustomerDetail(
             id=str(customer.id),
             username=customer.username,
@@ -1442,14 +1521,15 @@ class AdminDashboardService:
             phone_verified=customer.phone_verified_at is not None,
             hostel_id=customer.router_id,
             hostel_name=customer.router.name,
-            account_status=customer.account_status,
+            account_status=router_status,
             subscription_status=(current_subscription.status if current_subscription else None),
-            current_plan=(current_subscription.package.name if current_subscription else None),
+            current_plan=plan_name,
             router_online=router_users is not None,
             data_limit_bytes=data_limit,
             data_remaining_bytes=remaining_data,
-            duration_seconds=package.duration_seconds if package else None,
+            duration_seconds=duration,
             remaining_seconds=remaining_seconds,
+            time_usage_unavailable_reason=time_reason,
             expires_at=expiry,
             is_online=device_counts.get((customer.router_id, customer.username.casefold()), 0) > 0,
             connected_devices=device_counts.get(

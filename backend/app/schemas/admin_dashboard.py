@@ -3,11 +3,12 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from app.models.enums import AccountStatus, ActivationStatus, PaymentStatus, SubscriptionStatus
 from app.schemas.account import normalize_customer_email
 from app.schemas.registration import normalize_phone_number
+from app.schemas.revenue_forecast import RevenueForecast
 
 
 class DashboardRevenue(BaseModel):
@@ -219,6 +220,7 @@ class AdminAnalyticsResponse(BaseModel):
     plan_performance: list[AdminPlanRevenue]
     hostel_performance: list[AdminHostelAnalytics]
     router_analytics: AdminRouterAnalytics
+    revenue_forecasts: dict[str, RevenueForecast] = Field(default_factory=dict)
 
 
 class AdminTransactionListResponse(BaseModel):
@@ -237,7 +239,7 @@ class AdminCustomerDetail(BaseModel):
     phone_verified: bool
     hostel_id: str
     hostel_name: str
-    account_status: AccountStatus
+    account_status: AccountStatus | None
     subscription_status: SubscriptionStatus | None
     current_plan: str | None
     is_online: bool
@@ -247,6 +249,7 @@ class AdminCustomerDetail(BaseModel):
     data_remaining_bytes: int | None = None
     duration_seconds: int | None = None
     remaining_seconds: int | None = None
+    time_usage_unavailable_reason: str | None = None
     expires_at: datetime | None = None
     joined_at: datetime
     last_login_at: datetime | None

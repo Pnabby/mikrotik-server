@@ -235,7 +235,7 @@ def test_customer_allowance_includes_live_usage_and_router_identity():
     from types import SimpleNamespace
     from app.models.enums import AccountStatus, SubscriptionStatus
 
-    now = datetime.now(UTC)
+    now = datetime(2026, 10, 1, 18, 56, 27, tzinfo=UTC)
     package = SimpleNamespace(name="Weekly", data_limit_bytes=1000, duration_seconds=604800)
     subscription = SimpleNamespace(created_at=now, status=SubscriptionStatus.ACTIVE,
                                    package=package, expires_at=now + timedelta(days=2))
@@ -245,10 +245,11 @@ def test_customer_allowance_includes_live_usage_and_router_identity():
                                account_status=AccountStatus.ACTIVE, subscriptions=[subscription],
                                created_at=now, last_login_at=None, last_activity_at=now)
     users = {"one": [{"name": "alice", "limit-bytes-total": "1000",
-                      "bytes-in": "500", "bytes-out": "200"}]}
+                      "bytes-in": "500", "bytes-out": "200",
+                      "comment": "login=2026-09-26 18:56:27;activation=ACT-TEST"}]}
     devices = [("one", "session", "alice", {"bytes-in": "50", "bytes-out": "100"})]
     detail = AdminDashboardService._customer_detail(
-        customer, {"alice"}, {("one", "alice"): 1}, users, devices)
+        customer, {"alice"}, {("one", "alice"): 1}, users, devices, now=now)
     assert detail.data_remaining_bytes == 150
     assert detail.router_online is True
     assert detail.is_online is True
@@ -332,3 +333,75 @@ def test_customer_edit_rejects_viewer_and_duplicate_contact():
                         SimpleNamespace(id=uuid.uuid4(), role=AdminRole.OPERATOR), session)
     assert conflict.value.status_code == 409
     assert session.rolled_back
+
+
+def _allowance_customer(now, *, duration=604800, data_limit=1000):
+    from types import SimpleNamespace
+    from app.models.enums import AccountStatus, SubscriptionStatus
+    package = SimpleNamespace(name="Weekly", data_limit_bytes=data_limit, duration_seconds=duration)
+    subscription = SimpleNamespace(created_at=now, status=SubscriptionStatus.ACTIVE,
+                                   package=package, expires_at=None)
+    return SimpleNamespace(id="customer", username="alice", email="a@example.com",
+                           phone_number=None, phone_verified_at=None, router_id="one",
+                           router=SimpleNamespace(name="Hostel"), account_status=AccountStatus.INACTIVE,
+                           subscriptions=[subscription], created_at=now, last_login_at=None,
+                           last_activity_at=now)
+
+
+def test_time_allowance_uses_router_comment_and_configured_profile():
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+    from app.models.enums import AccountStatus
+    now = datetime(2026, 10, 1, 6, 56, 27, tzinfo=UTC)
+    customer = _allowance_customer(now, duration=86400)
+    user = {"name": "alice", "profile": "weekly-standard", "disabled": "no",
+            "comment": "login=2026-09-28 18:56:27;activation=ACT-3515E9C20F964F9BB72EF96ED18A21A4"}
+    mapping = SimpleNamespace(display_name="7 days Standard",
+                              package=SimpleNamespace(name="Weekly", duration_seconds=604800,
+                                                      data_limit_bytes=None))
+    detail = AdminDashboardService._customer_detail(
+        customer, set(), {}, {"one": [user]}, [],
+        {("one", "weekly-standard"): mapping}, now)
+    assert detail.remaining_seconds == 4 * 86400 + 12 * 3600
+    assert detail.expires_at == datetime(2026, 10, 5, 18, 56, 27, tzinfo=UTC)
+    assert detail.current_plan == "7 days Standard"
+    assert detail.account_status == AccountStatus.ACTIVE  # Web account is inactive.
+    assert detail.time_usage_unavailable_reason is None
+
+    expired = AdminDashboardService._customer_detail(
+        customer, set(), {}, {"one": [dict(user, disabled="yes")]}, [],
+        {("one", "weekly-standard"): mapping}, now + timedelta(days=8))
+    assert expired.account_status == AccountStatus.INACTIVE
+    assert expired.remaining_seconds == 0
+
+
+def test_missing_time_comment_and_offline_router_have_explanations():
+    from datetime import UTC, datetime
+    now = datetime(2026, 10, 1, tzinfo=UTC)
+    customer = _allowance_customer(now)
+    for comment in ("activation=ACT-TEST", "login=invalid;activation=ACT-TEST"):
+        detail = AdminDashboardService._customer_detail(
+            customer, set(), {}, {"one": [{"name": "alice", "comment": comment}]}, [], now=now)
+        assert detail.remaining_seconds is None
+        assert detail.time_usage_unavailable_reason == "Router comment has no valid login timestamp."
+    offline = AdminDashboardService._customer_detail(customer, set(), {}, {}, [], now=now)
+    assert offline.account_status is None
+    assert offline.remaining_seconds is None
+    assert offline.time_usage_unavailable_reason == "Router offline; login timestamp cannot be read."
+
+
+def test_data_left_subtracts_saved_and_all_active_device_counters():
+    from datetime import UTC, datetime
+    now = datetime(2026, 10, 1, tzinfo=UTC)
+    customer = _allowance_customer(now, duration=None)
+    user = {"name": "alice", "disabled": "true", "limit-bytes-total": "1000",
+            "bytes-in": "500", "bytes-out": "100"}
+    rows = [("one", "first", "alice", {"bytes-in": "100", "bytes-out": "50"}),
+            ("one", "second", "ALICE", {"bytes-in": "30", "bytes-out": "20"}),
+            ("other-hostel", "third", "alice", {"bytes-in": "10000"}),
+            ("one", "fourth", "bob", {"bytes-in": "10000"})]
+    detail = AdminDashboardService._customer_detail(customer, set(), {}, {"one": [user]}, rows)
+    assert detail.data_remaining_bytes == 200  # 80% used; 20% remaining.
+    exhausted = AdminDashboardService._customer_detail(
+        customer, set(), {}, {"one": [dict(user, **{"bytes-in": "2000"})]}, rows)
+    assert exhausted.data_remaining_bytes == 0
