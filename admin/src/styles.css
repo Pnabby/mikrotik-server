@@ -3716,6 +3716,9 @@ a:focus-visible {
 .forecast-period-heading h3 { margin: 0; color: #4b3d66; font-size: .85rem; }
 .forecast-period-heading > span { margin: 0; text-align: right; }
 .forecast-period-metrics article > strong { font-size: 1.35rem; }
+.forecast-period-range { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: .35rem .75rem; margin-top: .65rem; padding-bottom: .65rem; border-bottom: 1px solid #e8e1f3; }
+.forecast-period-range > span { margin: 0; font-size: .6rem; }
+.forecast-period-range > b { color: #6753a3; font-family: 'Manrope', sans-serif; font-size: .72rem; overflow-wrap: anywhere; }
 .forecast-period-actual { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem; margin: .65rem 0 0; color: #168a7e; font-size: .62rem; }
 .forecast-period-actual i { width: 6px; height: 6px; border-radius: 50%; background: #159a8c; }
 .forecast-period-actual b { margin-left: auto; font-family: 'Manrope', sans-serif; font-size: .8rem; }

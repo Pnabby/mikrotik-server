@@ -69,6 +69,7 @@ export default function RevenueForecast({ forecasts = {}, primaryCurrency, forma
       <div className="forecast-metrics forecast-period-metrics">{[current, next].map((period, index) => <article className={index === 0 ? 'forecast-total' : ''} key={period.label}>
         <div className="forecast-period-heading"><h3>{period.label}</h3><span>{formatDate(period.date_from, true)}{period.days > 1 && <> &ndash; {formatDate(period.date_to, true)}</>}</span></div>
         <small>Predicted revenue</small><strong>{formatMoney(period.projected_revenue, currency)}</strong>
+        <div className="forecast-period-range"><span>Estimated range</span><b>{formatMoney(period.lower_revenue, currency)} &ndash; {formatMoney(period.upper_revenue, currency)}</b></div>
         {period.actual_revenue != null ? <p className="forecast-period-actual"><i />Actual so far <b>{formatMoney(period.actual_revenue, currency)}</b></p> : <p className="forecast-period-future">Forecast for the upcoming {mode}.</p>}
       </article>)}</div>
       <ForecastChart key={`${currency}-${mode}`} forecast={forecast} current={current} next={next} mode={mode} currency={currency} formatMoney={formatMoney} formatCompactMoney={formatCompactMoney} formatDate={formatDate} />
