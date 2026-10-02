@@ -90,6 +90,11 @@ class AdminDashboardService:
 
     def access_points(self, router: Router) -> AdminAccessPointListResponse:
         """Report the fixed AP address range (.2-.35) for one hostel."""
+        if not router.is_active:
+            return self._access_point_response(
+                router, router.hotspot_network or "", [], False,
+                "The hostel router is disabled.",
+            )
         network_text = router.hotspot_network or ""
         try:
             network = ip_network(network_text, strict=False)
@@ -308,7 +313,7 @@ class AdminDashboardService:
         router_hours: int = 24,
     ) -> AdminAnalyticsResponse:
         now = datetime.now(UTC)
-        routers = self._routers(router_id, include_inactive=True)
+        routers = self._routers(router_id)
         router_ids = [router.id for router in routers]
         occurred_at = func.coalesce(Transaction.paid_at, Transaction.created_at)
 
@@ -499,7 +504,7 @@ class AdminDashboardService:
             .group_by(Transaction.currency)
         ).all())
         start = datetime.combine(
-            min(today - timedelta(days=28), today.replace(day=1)), time.min, tzinfo=UTC,
+            today - timedelta(days=90), time.min, tzinfo=UTC,
         )
         revenue: dict[str, dict[date, Decimal]] = {}
         for day, currency, amount in self.session.execute(
@@ -1007,7 +1012,7 @@ class AdminDashboardService:
         if date_from is not None and date_to is not None and date_to < date_from:
             raise HTTPException(status_code=400, detail="End date cannot be before start date.")
 
-        routers = self._routers(router_id, include_inactive=True)
+        routers = self._routers(router_id)
         router_ids = [router.id for router in routers]
         conditions = [Transaction.router_id.in_(router_ids)]
         occurred_at = func.coalesce(Transaction.paid_at, Transaction.created_at)
@@ -1298,7 +1303,7 @@ class AdminDashboardService:
         offset: int = 0,
     ) -> AdminCustomerDirectoryResponse:
         now = datetime.now(UTC)
-        routers = self._routers(router_id, include_inactive=True)
+        routers = self._routers(router_id)
         router_ids = [router.id for router in routers]
         usage_users: dict[str, list[dict[str, str]]] = {}
         live_results: list[tuple[DashboardRouterStatus, list[dict[str, str]]]] = []
@@ -1549,7 +1554,7 @@ class AdminDashboardService:
         query = select(Router).order_by(Router.display_order, Router.name, Router.id)
         if router_id is not None:
             query = query.where(Router.id == router_id)
-        elif not include_inactive:
+        if not include_inactive:
             query = query.where(Router.is_active.is_(True))
         return list(self.session.scalars(query).all())
 

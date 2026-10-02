@@ -23,6 +23,7 @@ from app.models.enums import (
     SubscriptionStatus,
 )
 from app.models.package import Package
+from app.models.router import Router
 from app.models.subscription import Subscription
 from app.services.notifications import CustomerNotificationService
 
@@ -75,6 +76,10 @@ class PackageActivationService:
         if activation.status in {ActivationStatus.SUCCESS, ActivationStatus.SUPERSEDED}:
             if activation.status == ActivationStatus.SUCCESS:
                 self._notify_activation(activation)
+            return activation.status
+
+        router = self._session.get(Router, activation.router_id)
+        if router is not None and not router.is_active:
             return activation.status
 
         claim_time = datetime.now(UTC)

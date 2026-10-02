@@ -609,7 +609,7 @@ function HostelEditor({ hostel, canEdit, onClose, onSave }) {
 
           <section className="visibility-section">
             <label className={canEdit ? 'publish-toggle' : 'publish-toggle disabled'}>
-              <div><strong>Hostel active</strong><small>Allow customers to select and use this hostel.</small></div>
+              <div><strong>Hostel active</strong><small>Disable to pause server activity with this router and hide it from filters. Enable anytime to resume.</small></div>
               <input checked={form.isActive} disabled={!canEdit} name="isActive" type="checkbox" onChange={change} /><span aria-hidden="true" />
             </label>
           </section>
@@ -626,7 +626,7 @@ function HostelEditor({ hostel, canEdit, onClose, onSave }) {
   )
 }
 
-function HostelTable({ actionError, forcingRouterId, hostels, canEdit, loading, onAdd, onEdit, onForceUpdate, onProfiles }) {
+function HostelTable({ actionError, forcingRouterId, hostels, canEdit, loading, onAdd, onEdit, onForceUpdate, onProfiles, onToggle, togglingRouterId }) {
   return (
     <section className="hostels-card">
       <header className="hostels-card-heading">
@@ -647,7 +647,7 @@ function HostelTable({ actionError, forcingRouterId, hostels, canEdit, loading, 
               <td><div className="router-details"><span>{hostel.vpn_host}:{hostel.api_port}</span><small>{hostel.hotspot_network || 'Network not set'}</small></div></td>
               <td><div className="router-details"><span>{hostel.published_profiles} published</span><small>{hostel.configured_profiles} configured</small></div></td>
               <td><span className={`hostel-state ${hostel.is_active ? 'active' : ''}`}><i />{hostel.is_active ? 'Active' : 'Inactive'}</span></td>
-              <td><div className="hostel-row-actions">{canEdit && <button disabled={Boolean(forcingRouterId)} title="Run IP Cloud Force Update on this router" type="button" onClick={() => onForceUpdate(hostel)}>{forcingRouterId === hostel.router_id ? 'Updating...' : 'Force IP update'}</button>}<button disabled={Boolean(forcingRouterId)} type="button" onClick={() => onEdit(hostel.router_id)}>{canEdit ? 'Edit' : 'View'}</button><button disabled={Boolean(forcingRouterId)} type="button" onClick={() => onProfiles(hostel.router_id)}>Plans</button></div></td>
+              <td><div className="hostel-row-actions">{canEdit && <button disabled={Boolean(togglingRouterId)} type="button" onClick={() => onToggle(hostel)}>{togglingRouterId === hostel.router_id ? "Saving..." : hostel.is_active ? "Disable" : "Enable"}</button>}{canEdit && <button disabled={!hostel.is_active || Boolean(forcingRouterId)} title="Run IP Cloud Force Update on this router" type="button" onClick={() => onForceUpdate(hostel)}>{forcingRouterId === hostel.router_id ? 'Updating...' : 'Force IP update'}</button>}<button disabled={Boolean(forcingRouterId)} type="button" onClick={() => onEdit(hostel.router_id)}>{canEdit ? 'Edit' : 'View'}</button><button disabled={!hostel.is_active || Boolean(forcingRouterId)} type="button" onClick={() => onProfiles(hostel.router_id)}>Plans</button></div></td>
             </tr>)}</tbody>
           </table>
         </div>
@@ -900,7 +900,7 @@ function MessagingPanel({ canEdit, hostels, onSessionExpired, embedded = false }
     <section className="support-settings-card">
       <header><span><Icon name="users" /></span><div><h2>New broadcast</h2><p>Messages are delivered by SMS to verified phones and by email.</p></div></header>
       <form onSubmit={submit}>
-        <label><span>Recipients</span><select disabled={!canEdit || sending} name="routerId" value={form.routerId} onChange={change}><option value="">All users in all hostels</option>{hostels.map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>Only {hostel.name}</option>)}</select></label>
+        <label><span>Recipients</span><select disabled={!canEdit || sending} name="routerId" value={form.routerId} onChange={change}><option value="">All users in all hostels</option>{hostels.filter((hostel) => hostel.is_active).map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>Only {hostel.name}</option>)}</select></label>
         <label><span>Email subject</span><input disabled={!canEdit || sending} maxLength="120" name="subject" placeholder="Important Vlad WiFi update" value={form.subject} onChange={change} /></label>
         <label><span>Message</span><textarea disabled={!canEdit || sending} maxLength="1000" name="message" placeholder="Write your message here..." rows="7" value={form.message} onChange={change} /><small>{form.message.length}/1000 characters</small></label>
         {!canEdit && <div className="hostel-readonly-note"><Icon name="alert" />Your viewer role cannot send messages.</div>}
@@ -1080,7 +1080,7 @@ function DashboardOverview({ hostels, loadingHostels, selectedId, onOpenAnalysis
       <div className="dashboard-heading-actions">
         <div className="hostel-selector">
           <label htmlFor="dashboard-hostel-select">Hostel</label>
-          <div><Icon name="building" /><select disabled={loadingHostels || !hostels.length} id="dashboard-hostel-select" value={selectedId || ALL_HOSTELS_ID} onChange={(event) => onSelect(event.target.value)}><option value={ALL_HOSTELS_ID}>All hostels</option>{hostels.map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></div>
+          <div><Icon name="building" /><select disabled={loadingHostels || !hostels.length} id="dashboard-hostel-select" value={selectedId || ALL_HOSTELS_ID} onChange={(event) => onSelect(event.target.value)}><option value={ALL_HOSTELS_ID}>All hostels</option>{hostels.filter((hostel) => hostel.is_active).map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></div>
         </div>
         <button aria-label="Refresh dashboard" className="dashboard-refresh-button" disabled={loading} type="button" onClick={() => setRefreshKey((value) => value + 1)}><Icon name="refresh" />{loading ? 'Refreshing' : 'Refresh'}</button>
       </div>
@@ -1401,7 +1401,7 @@ function TransactionsPanel({ hostels, onSessionExpired }) {
     </div>
 
     <form className={`admin-data-filters ${filters.date_range === 'custom' ? '' : 'revenue-filters-compact'}`} onSubmit={apply}>
-      <label><span>Hostel</span><select name="router_id" value={filters.router_id} onChange={change}><option value="">All hostels</option>{hostels.map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></label>
+      <label><span>Hostel</span><select name="router_id" value={filters.router_id} onChange={change}><option value="">All hostels</option>{hostels.filter((hostel) => hostel.is_active).map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></label>
       <label><span>Payment status</span><select name="payment_status" value={filters.payment_status} onChange={change}><option value="">All statuses</option><option value="success">Successful</option><option value="pending">Pending</option><option value="failed">Failed</option></select></label>
       {filters.date_range === 'custom' && <><label><span>From</span><input name="date_from" type="date" value={filters.date_from} onChange={change} /></label><label><span>To</span><input name="date_to" type="date" value={filters.date_to} onChange={change} /></label></>}
       <label className="admin-filter-search"><span>Search</span><input name="search" placeholder="Reference, user, email or plan" type="search" value={filters.search} onChange={change} /></label>
@@ -1749,7 +1749,7 @@ function AnalysisPanel({ hostels, onSessionExpired }) {
     </header>
 
     <section className="analysis-controls" aria-label="Analysis scope">
-      <label><span>Hostel scope</span><select value={routerId} onChange={(event) => setRouterId(event.target.value)}><option value="">All hostels</option>{hostels.map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></label>
+      <label><span>Hostel scope</span><select value={routerId} onChange={(event) => setRouterId(event.target.value)}><option value="">All hostels</option>{hostels.filter((hostel) => hostel.is_active).map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></label>
       <div><span>Reporting period</span><div>{[['7', '7 days'], ['30', '30 days'], ['90', '90 days'], ['365', '12 months'], ['all', 'All time'], ['custom', 'Custom']].map(([value, label]) => <button aria-pressed={period === value} className={period === value ? 'active' : ''} key={value} type="button" onClick={() => { setCustomError(''); setPeriod(value) }}>{label}</button>)}</div></div>
     </section>
 
@@ -2029,7 +2029,7 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
 
     {mode === 'message' ? <MessagingPanel embedded canEdit={admin.role !== 'viewer'} hostels={hostels} onSessionExpired={onSessionExpired} /> : <>
       <form className="admin-data-filters customer-filters" onSubmit={apply}>
-        <label><span>Hostel</span><select name="router_id" value={filters.router_id} onChange={change}><option value="">All hostels</option>{hostels.map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></label>
+        <label><span>Hostel</span><select name="router_id" value={filters.router_id} onChange={change}><option value="">All hostels</option>{hostels.filter((hostel) => hostel.is_active).map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></label>
         <label><span>Account status</span><select name="account_status" value={filters.account_status} onChange={change}><option value="">All accounts</option><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
         <label><span>Subscription</span><select name="subscription" value={filters.subscription} onChange={change}><option value="all">All users</option><option value="active">Active plan</option><option value="inactive">No active plan</option></select></label>
         <label className="admin-filter-search"><span>Search</span><input name="search" placeholder="Username, email or phone" type="search" value={filters.search} onChange={change} /></label>
@@ -2087,6 +2087,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
   const [toast, setToast] = useState('')
   const [hostelActionError, setHostelActionError] = useState('')
   const [forcingRouterId, setForcingRouterId] = useState('')
+  const [togglingRouterId, setTogglingRouterId] = useState('')
   const [signingOut, setSigningOut] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
@@ -2466,6 +2467,22 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
     try { await logout() } finally { onSessionExpired() }
   }
 
+  async function toggleHostel(hostel) {
+    setTogglingRouterId(hostel.router_id)
+    setHostelActionError('')
+    try {
+      const saved = await updateHostel(hostel.router_id, { ...hostel, is_active: !hostel.is_active })
+      setHostels((current) => current.map((item) => item.router_id === saved.router_id ? saved : item))
+      if (!saved.is_active && selectedId === saved.router_id) setSelectedId(ALL_HOSTELS_ID)
+      setToast(`${saved.name} ${saved.is_active ? 'enabled' : 'disabled'}.`)
+    } catch (error) {
+      if (error.status === 401) onSessionExpired()
+      else setHostelActionError(error.message || 'Could not change hostel status.')
+    } finally {
+      setTogglingRouterId('')
+    }
+  }
+
   async function saveHostel(payload) {
     try {
       const saved = await updateHostel(selectedId, payload)
@@ -2473,6 +2490,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
         .map((hostel) => hostel.router_id === saved.router_id ? saved : hostel)
         .sort((left, right) => left.display_order - right.display_order || left.name.localeCompare(right.name)))
       setViewingHostel(false)
+      if (!saved.is_active) setSelectedId(ALL_HOSTELS_ID)
       setToast('Hostel details saved.')
       window.setTimeout(() => setToast(''), 3500)
     } catch (error) {
@@ -2587,13 +2605,13 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
             <header className="dashboard-page-heading">
               <div><p className="dashboard-kicker">Network management</p><h1>Hostels</h1><p>Add and manage the hostel routers stored in the database.</p></div>
             </header>
-            <HostelTable actionError={hostelActionError} canEdit={admin.role !== 'viewer'} forcingRouterId={forcingRouterId} hostels={hostels} loading={loadingHostels} onAdd={() => setViewingHostel('new')} onEdit={openHostel} onForceUpdate={forceIpCloudUpdate} onProfiles={openProfiles} />
+            <HostelTable onToggle={toggleHostel} togglingRouterId={togglingRouterId} actionError={hostelActionError} canEdit={admin.role !== 'viewer'} forcingRouterId={forcingRouterId} hostels={hostels} loading={loadingHostels} onAdd={() => setViewingHostel('new')} onEdit={openHostel} onForceUpdate={forceIpCloudUpdate} onProfiles={openProfiles} />
           </> : <>
           <header className="dashboard-page-heading">
             <div><p className="dashboard-kicker">Network catalogue</p><h1>Hostel profiles</h1><p>Turn MikroTik profiles into clear, customer-ready WiFi plans.</p></div>
             <div className="hostel-selector">
               <label htmlFor="hostel-select">Selected hostel</label>
-              <div><Icon name="building" /><select disabled={loadingHostels || !hostels.length} id="hostel-select" value={selectedId} onChange={(event) => setSelectedId(event.target.value)}><option disabled={!bulkHostels.length} value={ALL_HOSTELS_ID}>All hostels ({bulkHostels.length} active)</option>{hostels.map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></div>
+              <div><Icon name="building" /><select disabled={loadingHostels || !hostels.length} id="hostel-select" value={selectedId} onChange={(event) => setSelectedId(event.target.value)}><option disabled={!bulkHostels.length} value={ALL_HOSTELS_ID}>All hostels ({bulkHostels.length} active)</option>{hostels.filter((hostel) => hostel.is_active).map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></div>
             </div>
           </header>
 

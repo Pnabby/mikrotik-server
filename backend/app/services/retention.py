@@ -13,6 +13,7 @@ from app.dependencies import mikrotik_client_context
 from app.integrations.mikrotik.registry import UnknownRouterError, get_router
 from app.models.customer import Customer
 from app.models.enums import SubscriptionStatus
+from app.models.router import Router
 from app.models.subscription import Subscription
 from app.services.account_deletion import AccountDeletionService
 
@@ -41,7 +42,8 @@ def delete_inactive_accounts(settings: Settings, *, batch_size: int = 100) -> in
         candidate_ids = list(
             lookup_session.scalars(
                 select(Customer.id)
-                .where(*_inactive_customer_filter(cutoff))
+                .join(Router, Router.id == Customer.router_id)
+                .where(Router.is_active.is_(True), *_inactive_customer_filter(cutoff))
                 .order_by(Customer.last_activity_at)
                 .limit(batch_size)
             )

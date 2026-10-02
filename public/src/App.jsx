@@ -1,3 +1,4 @@
+import PriceNotice from './components/PriceNotice'
 import AccountPage from './pages/AccountPage'
 import LoginPage from './pages/LoginPage'
 import ForgotPinPage from './pages/ForgotPinPage'
@@ -17,5 +18,5 @@ export default function App() {
   else if (path === '/verify-phone') page = <VerifyPhonePage />
   else if (path === '/terms') page = <LegalPage legalDocument="terms" />
   else if (path === '/privacy') page = <LegalPage legalDocument="privacy" />
-  return <>{page}<SupportContact /></>
+  return <><PriceNotice />{page}<SupportContact /></>
 }

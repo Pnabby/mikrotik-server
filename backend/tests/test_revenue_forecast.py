@@ -142,7 +142,7 @@ def test_forecast_query_scopes_hostels_currencies_status_and_completed_days():
         assert all(point.revenue == Decimal(100) for point in results["GHS"].history)
 
         assert results["GHS"].periods["today"].actual_revenue == Decimal(999999)
-        assert results["GHS"].periods["today"].projected_revenue >= Decimal(999999)
+        assert results["GHS"].periods["today"].projected_revenue == Decimal(100)
         assert results["GHS"].periods["tomorrow"].actual_revenue is None
 
         # Late-month actuals must also include the first days outside the 28-day baseline.
@@ -156,7 +156,7 @@ def test_forecast_query_scopes_hostels_currencies_status_and_completed_days():
         assert october["EUR"].periods["next_month"].date_from == date(2026, 11, 1)
 
 
-def test_current_period_combines_earned_revenue_with_remaining_predictions():
+def test_current_period_prediction_is_independent_of_earned_revenue():
     today = date(2026, 10, 15)
     start = today - timedelta(days=28)
     revenue = {start + timedelta(days=index): Decimal(100) for index in range(28)}
@@ -165,13 +165,13 @@ def test_current_period_combines_earned_revenue_with_remaining_predictions():
                               daily_revenue=revenue)
     assert result.recent_daily_average == Decimal(100)
     assert result.periods["today"].actual_revenue == Decimal(250)
-    assert result.periods["today"].projected_revenue == Decimal(250)
+    assert result.periods["today"].projected_revenue == Decimal(100)
     assert result.periods["tomorrow"].projected_revenue == Decimal(100)
     current_month = result.periods["this_month"]
     assert current_month.actual_revenue == Decimal(1650)  # 14 completed days + today.
-    assert current_month.projected_revenue == Decimal(3250)  # Plus 16 future days.
-    assert current_month.lower_revenue >= current_month.actual_revenue
-    assert all(not point.is_prediction for point in current_month.daily if point.date < today)
+    assert current_month.projected_revenue == Decimal(3100)  # Fixed pre-period baseline.
+    assert current_month.lower_revenue <= current_month.projected_revenue
+    assert all(point.is_prediction for point in current_month.daily)
     assert all(point.actual_revenue is None for point in current_month.daily if point.date > today)
 
 
@@ -200,3 +200,19 @@ def test_week_forecast_runs_monday_to_sunday_across_month_boundary():
     assert result.periods["this_week"].date_to == date(2026, 11, 1)
     assert result.periods["next_week"].date_from == date(2026, 11, 2)
     assert result.periods["next_week"].date_to == date(2026, 11, 8)
+
+
+def test_week_and_month_predictions_do_not_follow_actual_sales():
+    start = date(2026, 8, 1)
+    first_day = date(2026, 10, 1)
+    revenue = {start + timedelta(days=i): Decimal(100)
+               for i in range((first_day - start).days)}
+    before = forecast_revenue(currency="GHS", today=first_day,
+                              first_sale_date=start, daily_revenue=revenue)
+    revenue[first_day] = Decimal(10000)
+    revenue[first_day + timedelta(days=1)] = Decimal(20000)
+    after = forecast_revenue(currency="GHS", today=first_day + timedelta(days=1),
+                             first_sale_date=start, daily_revenue=revenue)
+    for key in ("this_week", "this_month"):
+        assert before.periods[key].projected_revenue == after.periods[key].projected_revenue
+        assert after.periods[key].actual_revenue > after.periods[key].projected_revenue
