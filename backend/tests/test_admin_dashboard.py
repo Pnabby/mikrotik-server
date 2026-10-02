@@ -214,7 +214,7 @@ def test_access_points_only_include_leases_in_range_and_use_active_mac(monkeypat
     monkeypatch.setattr("app.services.admin_dashboard.mikrotik_client_context", fake_context)
     hostel = Router(
         id="hall", name="Hall", vpn_host="hall.example", api_port=8728,
-        hotspot_network="192.168.88.0/23",
+        hotspot_network="192.168.88.0/23", is_active=True,
     )
 
     result = AdminDashboardService(None).access_points(hostel)

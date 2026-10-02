@@ -24,17 +24,13 @@ def forecast_revenue(
     today: date,
     first_sale_date: date,
     daily_revenue: dict[date, Decimal],
+    _anchor_periods: bool = True,
 ) -> RevenueForecast:
-    """Nowcast current calendar periods and forecast their next counterparts.
+    """Predict independently of actuals using a fixed baseline for each period.
 
-    Weekday averages describe weekly demand. The latest seven days set the
-    current revenue level. Week-over-week movement is capped at +/-25% and
-    damped by 10% each day to avoid extrapolating a short-lived spike forever.
-    Bounds are illustrative scenarios from historical weekday residuals,
-    widened with the horizon. They are not calibrated confidence intervals.
-    Today's partial payments are excluded from model fitting, but included in
-    actuals and used as a floor for today's full-day prediction. Completed
-    dates use known actuals, never retroactively invented predictions.
+    Each period fits only revenue preceding its start. When the business is
+    new, use its first 14 completed days as the baseline instead. Historical
+    payment corrections can still change the baseline. Bounds are illustrative.
     """
     end = today - timedelta(days=1)
     start = max(first_sale_date, today - timedelta(days=28))
@@ -101,17 +97,34 @@ def forecast_revenue(
         level = recent * (weekday_means[target.weekday()] / mean)
         estimate = max(0, level * (1 + trend * damped_days / 7))
         width = spread * sqrt(1 + days_since_history / 7)
-        actual_floor = actual or Decimal(0)
         return RevenueForecastPoint(
-            date=target, revenue=max(actual_floor, _money(estimate)),
-            lower=max(actual_floor, _money(estimate - width)),
-            upper=max(actual_floor, _money(estimate + width)), actual_revenue=actual,
+            date=target, revenue=_money(estimate),
+            lower=_money(estimate - width),
+            upper=_money(estimate + width), actual_revenue=actual,
         )
 
     result.available = True
     for key, (label, period_start, period_end) in periods.items():
         days = (period_end - period_start).days + 1
         points = [point_for(period_start + timedelta(days=index)) for index in range(days)]
+        if _anchor_periods and period_start <= today:
+            anchor = max(period_start, first_sale_date + timedelta(days=14))
+            baseline = forecast_revenue(
+                currency=currency, today=anchor, first_sale_date=first_sale_date,
+                daily_revenue=daily_revenue, _anchor_periods=False,
+            )
+            if baseline.available:
+                baseline_points = {
+                    point.date: point for period in baseline.periods.values()
+                    for point in period.daily
+                }
+                for point in points:
+                    prediction = baseline_points.get(point.date)
+                    if prediction is not None:
+                        point.revenue = prediction.revenue
+                        point.lower = prediction.lower
+                        point.upper = prediction.upper
+                        point.is_prediction = prediction.is_prediction
         result.periods[key] = RevenueForecastPeriod(
             label=label, days=days, date_from=period_start, date_to=period_end,
             projected_revenue=sum((point.revenue for point in points), Decimal(0)),

@@ -183,25 +183,25 @@ def test_transactions_and_analytics_keep_reporting_concerns_separate() -> None:
         plan for plan in analytics.plan_performance if plan.profile == "monthly"
     )
     assert weekly_result.display_name == "Weekly Plus"
-    assert weekly_result.successful_revenue == Decimal("30.00")
-    assert weekly_result.successful_sales == 2
-    assert weekly_result.hostel_count == 2
+    assert weekly_result.successful_revenue == Decimal("10.00")
+    assert weekly_result.successful_sales == 1
+    assert weekly_result.hostel_count == 1
     assert weekly_result.revenue_share_percent == 100.0
     assert monthly_result.successful_sales == 0
     assert monthly_result.successful_revenue == Decimal(0)
-    assert result.total == 3
+    assert result.total == 2
     assert search_result.total == 0
     assert not hasattr(result, "revenue")
     hostel_revenue = {hostel.hostel_id: hostel for hostel in analytics.hostel_performance}
     assert hostel_revenue["hall"].revenue == {"GHS": Decimal("10.00")}
-    assert hostel_revenue["annex"].revenue == {"GHS": Decimal("20.00")}
-    assert analytics.revenue == {"GHS": Decimal("30.00")}
-    assert analytics.successful_sales == 2
+    assert "annex" not in hostel_revenue
+    assert analytics.revenue == {"GHS": Decimal("10.00")}
+    assert analytics.successful_sales == 1
     assert analytics.failed_payments == 1
-    assert analytics.success_rate == 66.7
-    assert analytics.new_customers == 2
-    assert sum(point.successful_sales for point in analytics.daily) == 2
-    assert {hostel.hostel_id for hostel in analytics.hostel_performance} == {"hall", "annex"}
+    assert analytics.success_rate == 50.0
+    assert analytics.new_customers == 1
+    assert sum(point.successful_sales for point in analytics.daily) == 1
+    assert {hostel.hostel_id for hostel in analytics.hostel_performance} == {"hall"}
     assert custom_analytics.period_days == 1
     assert custom_analytics.comparison_available is True
     assert all_time_analytics.comparison_available is False

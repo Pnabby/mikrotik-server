@@ -76,7 +76,7 @@ def upsert_router(session: Session, entry: RouterCatalogEntry) -> Router:
     validated = entry.validated()
     router = session.get(Router, validated.router_id)
     if router is None:
-        router = Router(id=validated.router_id)
+        router = Router(id=validated.router_id, is_active=True)
         session.add(router)
     router.name = validated.name
     router.vpn_host = validated.host
@@ -88,7 +88,6 @@ def upsert_router(session: Session, entry: RouterCatalogEntry) -> Router:
     # already configured through the hostel details screen in that case.
     if validated.paystack_split_code is not None:
         router.paystack_split_code = validated.paystack_split_code
-    router.is_active = True
     return router
 
 
