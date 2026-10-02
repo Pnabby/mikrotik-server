@@ -138,6 +138,8 @@ def list_customers_and_devices(
     search: str | None = Query(default=None, max_length=120),
     limit: int = Query(default=200, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    sort_by: str = Query(default="joined_at", pattern="^(username|current_plan|last_activity_at|hostel_name|account_status|is_online|joined_at)$"),
+    sort_direction: str = Query(default="desc", pattern="^(asc|desc)$"),
 ) -> AdminCustomerDirectoryResponse:
     if router_id is not None and session.get(Router, router_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
@@ -148,6 +150,8 @@ def list_customers_and_devices(
         search=search,
         limit=limit,
         offset=offset,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
 
 
