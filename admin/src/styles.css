@@ -3729,3 +3729,9 @@ a:focus-visible {
 .forecast-baseline strong.positive { color: #15956d; }
 .forecast-baseline strong.negative { color: #c24a4a; }
 @media (max-width: 600px) { .forecast-metrics.forecast-period-metrics { grid-template-columns: 1fr; } .forecast-chart-caption p small { text-align: left; } }
+
+.admin-data-card:has(.customer-directory-sort) > header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.customer-directory-sort { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+.customer-directory-sort label { display: grid; gap: 0.35rem; color: #696575; font-size: 0.75rem; }
+.customer-directory-sort select { padding: 0.5rem 0.65rem; border: 1px solid #dedce5; border-radius: 0.5rem; background: #fff; color: #302c3f; font: inherit; }
+.customer-directory td:nth-child(6) { min-width: 160px; }

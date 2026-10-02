@@ -1301,6 +1301,8 @@ class AdminDashboardService:
         search: str | None,
         limit: int,
         offset: int = 0,
+        sort_by: str = "joined_at",
+        sort_direction: str = "desc",
     ) -> AdminCustomerDirectoryResponse:
         now = datetime.now(UTC)
         routers = self._routers(router_id)
@@ -1372,8 +1374,6 @@ class AdminDashboardService:
             )
             .where(*conditions)
             .order_by(Customer.created_at.desc())
-            .offset(offset)
-            .limit(limit)
         ).all()
         matched_users = int(
             self.session.scalar(select(func.count(Customer.id)).where(*conditions)) or 0
@@ -1440,6 +1440,11 @@ class AdminDashboardService:
             (mapping.router_id, mapping.mikrotik_profile.casefold()): mapping
             for mapping in profile_mappings
         }
+        customer_details = [
+            self._customer_detail(customer, live_usernames, device_counts, usage_users, device_rows, plans, now)
+            for customer in customers
+        ]
+        customer_details = self._sort_customer_directory(customer_details, sort_by, sort_direction)
         return AdminCustomerDirectoryResponse(
             generated_at=now,
             total_users=total_users,
@@ -1450,12 +1455,25 @@ class AdminDashboardService:
             unavailable_routers=[
                 live_status.name for live_status, _sessions in live_results if not live_status.reachable
             ],
-            customers=[
-                self._customer_detail(customer, live_usernames, device_counts, usage_users, device_rows, plans, now)
-                for customer in customers
-            ],
+            customers=customer_details[offset:offset + limit],
             devices=devices,
         )
+
+    @staticmethod
+    def _sort_customer_directory(customers, sort_by: str, sort_direction: str):
+        def sort_value(customer):
+            value = getattr(customer, sort_by)
+            if isinstance(value, str):
+                return value.casefold()
+            if isinstance(value, datetime):
+                return value.replace(tzinfo=UTC).timestamp() if value.tzinfo is None else value.timestamp()
+            return value
+
+        # Keep missing plans/statuses last in either direction and ties stable across pages.
+        ordered = sorted(customers, key=lambda customer: (customer.username.casefold(), customer.id))
+        present = [customer for customer in ordered if getattr(customer, sort_by) is not None]
+        missing = [customer for customer in ordered if getattr(customer, sort_by) is None]
+        return sorted(present, key=sort_value, reverse=sort_direction == "desc") + missing
 
     @staticmethod
     def _customer_detail(

@@ -405,3 +405,22 @@ def test_data_left_subtracts_saved_and_all_active_device_counters():
     exhausted = AdminDashboardService._customer_detail(
         customer, set(), {}, {"one": [dict(user, **{"bytes-in": "2000"})]}, rows)
     assert exhausted.data_remaining_bytes == 0
+
+
+def test_customer_directory_sort_orders_all_rows_before_paging():
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+
+    now = datetime.now(UTC)
+    customers = [
+        SimpleNamespace(id="1", username="zoe", current_plan="Basic", last_activity_at=now),
+        SimpleNamespace(id="2", username="Alice", current_plan=None, last_activity_at=now - timedelta(days=1)),
+        SimpleNamespace(id="3", username="bob", current_plan="Premium", last_activity_at=now - timedelta(days=2)),
+        SimpleNamespace(id="4", username="amy", current_plan="basic", last_activity_at=now),
+    ]
+    sort = AdminDashboardService._sort_customer_directory
+    assert [row.username for row in sort(customers, "username", "asc")] == ["Alice", "amy", "bob", "zoe"]
+    assert [row.username for row in sort(customers, "current_plan", "asc")] == ["amy", "zoe", "bob", "Alice"]
+    assert [row.username for row in sort(customers, "current_plan", "desc")] == ["bob", "amy", "zoe", "Alice"]
+    assert [row.username for row in sort(customers, "last_activity_at", "desc")[1:3]] == ["zoe", "Alice"]
+    assert [row.username for row in sort(customers, "last_activity_at", "asc")] == ["bob", "Alice", "amy", "zoe"]
