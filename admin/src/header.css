@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+
+/* The redesigned header is scoped here; page and sidebar styles stay original. */
+.dashboard-topbar.admin-topbar { position: relative; z-index: 20; height: auto; min-height: 76px; gap: 24px; padding: 16px 40px; background: var(--card); backdrop-filter: none; font-family: 'Manrope', system-ui, sans-serif; font-size: 13px; line-height: 1.5; }
+.admin-topbar button, .admin-topbar input { font: inherit; }
+.admin-topbar button { cursor: pointer; }
+.admin-topbar button:disabled { cursor: not-allowed; opacity: .55; }
+.admin-topbar svg { width: 18px; height: 18px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.admin-topbar .dashboard-topbar-start { min-width: 0; flex: 1; gap: 12px; }
+.admin-topbar .header-search-form { position: relative; width: min(100%, 360px); margin: 0; }
+.admin-topbar .header-search { display: flex; align-items: center; gap: 12px; padding: 0 16px; border: 1px solid transparent; border-radius: 10px; color: var(--muted); background: var(--bg); }
+.admin-topbar .header-search:focus-within { border-color: var(--green-600); }
+.admin-topbar .header-search input { width: 100%; min-width: 0; min-height: 40px; padding: 0; border: 0; outline: none; color: var(--ink); background: transparent; font-size: 12px; box-shadow: none; }
+.admin-topbar .header-search input::placeholder { color: var(--muted); opacity: 1; }
+.admin-topbar .header-tools { display: flex; flex: 0 0 auto; align-items: center; gap: 12px; }
+.admin-topbar .header-icon-button { display: grid; width: 40px; height: 40px; padding: 0; place-items: center; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); background: var(--card); }
+.admin-topbar .header-icon-button:hover { color: var(--primary-text); background: var(--green-50); }
+.admin-topbar .notification-menu { position: relative; }
+.admin-topbar .admin-profile-trigger { z-index: 1; min-height: 44px; gap: 12px; padding: 0; border: 0; border-radius: 10px; background: transparent; font-weight: 700; }
+.admin-topbar .admin-profile-copy { min-width: 0; gap: 0; text-align: right; }
+.admin-topbar .admin-profile-copy strong { color: var(--ink); font-size: 13px; }
+.admin-topbar .admin-profile-copy small { color: var(--muted); font-size: 11px; font-weight: 500; text-transform: none; }
+.admin-topbar .admin-avatar { width: 40px; height: 40px; flex: 0 0 auto; border-radius: 50%; color: var(--sidebar-bg); background: var(--orange-500); font-size: 15px; }
+.admin-topbar .header-popover, .admin-topbar .admin-profile-dropdown { position: absolute; z-index: 40; top: calc(100% + 12px); right: 0; width: min(320px, calc(100vw - 32px)); padding: 16px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); background: var(--card); box-shadow: 0 12px 32px color-mix(in srgb, var(--shadow-ink) 10%, transparent); }
+.admin-topbar .search-results { right: auto; left: 0; width: min(400px, calc(100vw - 32px)); max-height: 65vh; overflow-y: auto; }
+.admin-topbar .search-results > small { display: block; margin-bottom: 8px; color: var(--muted); font-size: 11px; }
+.admin-topbar .search-results > button { display: flex; width: 100%; align-items: center; gap: 8px; padding: 12px; border: 0; border-radius: 8px; color: var(--ink); background: transparent; text-align: left; }
+.admin-topbar .search-results > button:hover, .admin-topbar .search-results > button:focus-visible { background: var(--green-50); }
+.admin-topbar .search-results > button > svg:last-child { margin-left: auto; color: var(--muted); }
+.admin-topbar .notification-popover > div { display: flex; gap: 12px; margin: 16px 0; }
+.admin-topbar .notification-popover p { margin: 0; }
+.admin-topbar .notification-popover small { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+.admin-topbar .header-notification-icon { display: grid; width: 40px; height: 40px; flex: 0 0 auto; place-items: center; border-radius: 10px; color: var(--primary-text); background: var(--green-50); }
+.admin-topbar .notification-popover > button { min-height: 44px; padding: 8px 16px; border: 1px solid var(--control-line); border-radius: 10px; color: var(--ink); background: var(--card); font-weight: 700; }
+.admin-topbar .admin-profile-dropdown-heading { padding: 0 0 16px; }
+.admin-topbar .admin-profile-dropdown-heading strong { font-size: 13px; }
+.admin-topbar .admin-profile-dropdown-heading small, .admin-topbar .admin-profile-session small { font-size: 11px; text-transform: none; }
+.admin-topbar .admin-profile-session { padding: 16px 0; }
+.admin-topbar .admin-profile-session strong { font-size: 12px; }
+.admin-topbar .admin-profile-dropdown > button { min-height: 44px; padding: 12px; border-radius: 10px; color: var(--red-600); background: var(--red-50); font-size: 13px; }
+
+@media (max-width: 1200px) { .dashboard-topbar.admin-topbar { padding: 16px 24px; } }
+@media (max-width: 760px) {
+  .dashboard-topbar.admin-topbar { gap: 12px; padding: 16px; }
+  .admin-topbar .dashboard-menu-button { display: grid; width: 40px; height: 40px; flex: 0 0 auto; padding: 0; border-radius: 10px; }
+  .admin-topbar .header-tools { gap: 8px; }
+  .admin-topbar .admin-profile-copy { display: none; }
+}
+@media (max-width: 560px) {
+  .admin-topbar .header-search-form { width: 100%; }
+  .admin-topbar .header-search { gap: 8px; padding-inline: 8px; }
+  .admin-topbar .header-search input::placeholder { color: transparent; }
+  .admin-topbar .header-tools { gap: 4px; }
+  .admin-topbar .header-icon-button { width: 32px; height: 32px; }
+  .admin-topbar .search-results { position: fixed; top: 76px; right: 16px; left: 16px; width: auto; }
+  .admin-topbar .notification-popover { position: fixed; top: 76px; right: 16px; }
+}
