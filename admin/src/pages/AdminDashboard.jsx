@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import RevenueForecast from '../components/RevenueForecast'
+import AdminHeader from '../components/AdminHeader'
 
 import {
   AdminApiError,
@@ -2093,7 +2094,6 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
   const [signingOut, setSigningOut] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
-  const [showProfileMenu, setShowProfileMenu] = useState(false)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
   const bulkHostels = hostels.filter((hostel) => hostel.is_active)
@@ -2125,7 +2125,6 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
       setEditingProfile(null)
       setViewingHostel(false)
       setMobileSidebarOpen(false)
-      setShowProfileMenu(false)
     }
 
     window.addEventListener('popstate', handleHistoryNavigation)
@@ -2137,14 +2136,13 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
   }, [view])
 
   useEffect(() => {
-    if (!mobileSidebarOpen && !showProfileMenu && !showLogoutConfirm) return undefined
+    if (!mobileSidebarOpen && !showLogoutConfirm) return undefined
 
     const previousOverflow = document.body.style.overflow
     if (mobileSidebarOpen || showLogoutConfirm) document.body.style.overflow = 'hidden'
     function closeOnEscape(event) {
       if (event.key !== 'Escape' || signingOut) return
       if (showLogoutConfirm) setShowLogoutConfirm(false)
-      else if (showProfileMenu) setShowProfileMenu(false)
       else setMobileSidebarOpen(false)
     }
     window.addEventListener('keydown', closeOnEscape)
@@ -2152,7 +2150,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', closeOnEscape)
     }
-  }, [mobileSidebarOpen, showProfileMenu, showLogoutConfirm, signingOut])
+  }, [mobileSidebarOpen, showLogoutConfirm, signingOut])
 
   function toggleSidebar() {
     if (window.matchMedia('(max-width: 760px)').matches) {
@@ -2580,27 +2578,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
       </aside>
 
       <main className="dashboard-main">
-        <header className="dashboard-topbar">
-          <div className="dashboard-topbar-start">
-            <button className="dashboard-menu-button" type="button" aria-label={mobileSidebarOpen ? 'Close navigation' : 'Open navigation'} aria-expanded={mobileSidebarOpen} onClick={toggleSidebar}><Icon name="menu" /></button>
-            <div className="mobile-dashboard-brand"><Brand /></div>
-          </div>
-          <div className="dashboard-admin-menu">
-            <button className="admin-profile-trigger" type="button" aria-haspopup="menu" aria-expanded={showProfileMenu} onClick={() => setShowProfileMenu((current) => !current)}>
-              <span className="admin-avatar">{admin.username.slice(0, 1).toUpperCase()}</span>
-              <span className="admin-profile-copy"><strong>{admin.username}</strong><small>{admin.role}</small></span>
-              <Icon name="chevron" />
-            </button>
-            {showProfileMenu && <>
-              <button className="admin-profile-menu-backdrop" type="button" aria-label="Close account menu" onClick={() => setShowProfileMenu(false)} />
-              <div className="admin-profile-dropdown" role="menu">
-                <div className="admin-profile-dropdown-heading"><span className="admin-avatar">{admin.username.slice(0, 1).toUpperCase()}</span><div><strong>{admin.username}</strong><small>{admin.role}</small></div></div>
-                <div className="admin-profile-session"><Icon name="check" /><span><strong>Secure session</strong><small>Protected admin access</small></span></div>
-                <button role="menuitem" disabled={signingOut} type="button" onClick={() => { setShowProfileMenu(false); setShowLogoutConfirm(true) }}><Icon name="logout" /><span>Log out</span></button>
-              </div>
-            </>}
-          </div>
-        </header>
+        <AdminHeader admin={admin} view={view} Icon={Icon} onNavigate={selectView} onRequestLogout={() => setShowLogoutConfirm(true)} signingOut={signingOut} mobileSidebarOpen={mobileSidebarOpen} onToggleSidebar={toggleSidebar} />
 
         <div className="dashboard-content">
           {view === 'dashboard' ? <DashboardOverview hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onOpenAnalysis={() => selectView('analysis')} onOpenCustomers={() => selectView('customers')} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'customers' ? <CustomersDevicesPanel admin={admin} hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'network' ? <AccessPointsPanel hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'transactions' ? <TransactionsPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'analysis' ? <AnalysisPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'support' ? <SupportSettingsPanel canEdit={admin.role !== 'viewer'} onSessionExpired={onSessionExpired} /> : view === 'hostels' ? <>

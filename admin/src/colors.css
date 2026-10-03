@@ -1,0 +1,101 @@
+/* Paint overrides only: preserve the original component geometry on every page. */
+.admin-dashboard {
+  --dashboard-purple: var(--green-600);
+  --dashboard-purple-dark: var(--green-700);
+  --dashboard-ink: var(--ink);
+  --dashboard-muted: var(--muted);
+  --dashboard-line: var(--line);
+}
+
+.dashboard-sidebar { background: var(--sidebar-bg); border-right-color: var(--sidebar-hover); }
+.dashboard-sidebar-toggle { color: var(--sidebar-text); background: var(--sidebar-bg); border-color: var(--sidebar-hover); }
+.dashboard-sidebar-toggle:hover { color: var(--on-primary); background: var(--sidebar-hover); border-color: var(--sidebar-hover); }
+.dashboard-brand strong { color: var(--on-primary); }
+.dashboard-brand small, .dashboard-sidebar nav > p { color: var(--sidebar-muted); }
+.dashboard-sidebar nav button { color: var(--sidebar-text); }
+.dashboard-sidebar nav button:hover:not(:disabled) { color: var(--on-primary); background: var(--green-600); }
+.dashboard-sidebar nav button.active, .dashboard-sidebar nav button.active:hover { color: var(--on-primary); background: var(--green-600); }
+.sidebar-security { background: var(--sidebar-hover); border-color: var(--sidebar-hover); }
+.sidebar-security strong { color: var(--on-primary); }
+.sidebar-security small { color: var(--sidebar-muted); }
+.sidebar-security > span { color: var(--primary-text); background: var(--green-50); }
+
+.admin-avatar { color: var(--sidebar-bg); background: var(--orange-500); }
+.dashboard-refresh-button { color: var(--on-primary); background: var(--sidebar-bg); border-color: var(--sidebar-bg); }
+.stat-icon.blue, .analysis-metrics article > span.blue { color: var(--on-primary); background: var(--sidebar-bg); }
+.admin-brand-panel { background: var(--sidebar-bg); }
+
+.forecast-estimate-line, .forecast-estimate-dot { stroke: var(--orange-500); }
+.forecast-estimate-dot { fill: var(--orange-500); }
+.forecast-band { fill: var(--orange-50); }
+.forecast-single-range { stroke: var(--orange-500); }
+.forecast-legend i.projected { background: var(--orange-500); }
+.forecast-legend i.range { background: var(--orange-50); }
+.router-trend-column .router-trend-bars.grouped > .lowest > i,
+.router-chart-legend i.lowest, .router-chart-tooltip i.lowest { background: color-mix(in srgb, var(--green-600) 45%, var(--card)); }
+.router-trend-column .router-trend-bars.grouped > .highest > i,
+.router-chart-legend i.highest, .router-chart-tooltip i.highest { background: var(--orange-500); }
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible { outline-color: var(--orange-500); }
+::selection { color: var(--on-primary); background: var(--green-600); }
+
+/* Keep control edges distinct from the quieter card and table separators. */
+:root[data-theme='dark'] :is(button, input, select, textarea) {
+  border-color: var(--control-line);
+}
+
+:root[data-theme='dark'] button:hover:not(:disabled) {
+  border-color: var(--focus-ring);
+}
+
+:root[data-theme='dark'] .dashboard-refresh-button {
+  color: var(--ink);
+  background: var(--card);
+}
+
+:root[data-theme='dark'] .header-search {
+  border-color: var(--control-line);
+}
+
+:root[data-theme='dark'] .header-search:focus-within {
+  border-color: var(--focus-ring);
+}
+
+:root[data-theme='dark'] :is(button, input:not([type='checkbox']), select, textarea):disabled {
+  color: var(--muted);
+  background: var(--disabled-bg);
+  border-color: var(--control-line);
+  opacity: 1;
+}
+
+:root[data-theme='dark'] :is(.wan-speed-copy, .ap-health-card, .dashboard-metric-primary, .revenue-primary, .analysis-metrics article.primary) :is(small, p, .analysis-change) {
+  color: var(--on-primary);
+}
+
+:root[data-theme='dark'] :is(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+:root[data-theme='dark'] .publish-toggle > span {
+  box-shadow: inset 0 0 0 1px var(--control-line);
+}
+
+:root[data-theme='dark'] .publish-toggle input:focus-visible + span {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+:root[data-theme='dark'] .ap-health-ring {
+  background: conic-gradient(var(--primary-text) var(--health), color-mix(in srgb, var(--on-primary) 24%, transparent) 0);
+}
+
+:root[data-theme='dark'] .router-trend-column .router-trend-bars.grouped > .lowest > i,
+:root[data-theme='dark'] .router-chart-legend i.lowest,
+:root[data-theme='dark'] .router-chart-tooltip i.lowest {
+  background: color-mix(in srgb, var(--primary-text) 65%, var(--card));
+}
+
+.forecast-legend i.recorded,
+.forecast-period-actual i {
+  background: var(--primary-text);
+}
