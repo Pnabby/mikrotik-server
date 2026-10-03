@@ -3664,7 +3664,7 @@ a:focus-visible {
 .forecast-controls > div { display: flex; gap: .2rem; padding: .2rem; border-radius: 9px; background: var(--green-50); }
 .forecast-controls button { min-height: 34px; border: 0; border-radius: 7px; padding: .4rem .7rem; color: var(--muted); background: transparent; font-size: .6rem; font-weight: 750; cursor: pointer; white-space: nowrap; }
 .forecast-controls button.active { color: var(--on-primary); background: var(--green-600); box-shadow: 0 3px 9px color-mix(in srgb, var(--shadow-ink) 20%, transparent); }
-.forecast-controls select { min-height: 38px; border: 1px solid var(--line); border-radius: 8px; padding: 0 .6rem; color: var(--muted); background: var(--card); }
+.forecast-controls select { min-height: 38px; border: 1px solid var(--control-line); border-radius: 8px; padding: 0 .6rem; color: var(--muted); background: var(--card); }
 .forecast-metrics { display: grid; grid-template-columns: 1fr 1.5fr 1fr 1fr; gap: .7rem; padding: 1rem 1.15rem .5rem; }
 .forecast-metrics article { min-width: 0; padding: .8rem; border: 1px solid var(--line); border-radius: 10px; background: var(--green-50); }
 .forecast-metrics article.forecast-total { border-color: var(--line); background: var(--green-50); }

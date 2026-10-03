@@ -9,11 +9,11 @@
   --orange-50: #FFEEDD;
   --warning-text: #A34706;
   --ink: #0D1210;
-  --muted: #6B7770;
+  --muted: #5E6A63;
   --bg: #F5F7F5;
   --card: #FFFFFF;
   --line: #E3E8E5;
-  --control-line: var(--line);
+  --control-line: #6B7770;
   --focus-ring: var(--orange-500);
   --overlay-ink: #0D1210;
   --on-primary: #FFFFFF;

@@ -16,6 +16,9 @@ class RevenueForecastPoint(BaseModel):
 class RevenueForecastHistoryPoint(BaseModel):
     date: date
     revenue: Decimal
+    predicted_revenue: Decimal | None = None
+    lower: Decimal | None = None
+    upper: Decimal | None = None
 
 
 class RevenueForecastPeriod(BaseModel):
