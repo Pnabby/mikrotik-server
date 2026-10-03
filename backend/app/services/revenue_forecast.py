@@ -104,6 +104,19 @@ def forecast_revenue(
         )
 
     result.available = True
+    if _anchor_periods:
+        for historical_point in history:
+            baseline = forecast_revenue(
+                currency=currency, today=historical_point.date,
+                first_sale_date=first_sale_date, daily_revenue=daily_revenue,
+                _anchor_periods=False,
+            )
+            if baseline.available:
+                prediction = baseline.periods["today"].daily[0]
+                historical_point.predicted_revenue = prediction.revenue
+                historical_point.lower = prediction.lower
+                historical_point.upper = prediction.upper
+
     for key, (label, period_start, period_end) in periods.items():
         days = (period_end - period_start).days + 1
         points = [point_for(period_start + timedelta(days=index)) for index in range(days)]

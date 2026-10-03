@@ -216,3 +216,33 @@ def test_week_and_month_predictions_do_not_follow_actual_sales():
     for key in ("this_week", "this_month"):
         assert before.periods[key].projected_revenue == after.periods[key].projected_revenue
         assert after.periods[key].actual_revenue > after.periods[key].projected_revenue
+
+
+def test_historical_predictions_and_ranges_use_only_preceding_revenue():
+    start = TODAY - timedelta(days=90)
+    target = TODAY - timedelta(days=7)
+    revenue = {start + timedelta(days=index): Decimal(100) for index in range(91)}
+    expected = forecast_revenue(
+        currency="GHS", today=target, first_sale_date=start, daily_revenue=revenue,
+    ).periods["today"].daily[0]
+    revenue[target] = Decimal(10000)
+    revenue[TODAY] = Decimal(20000)
+    result = forecast_revenue(
+        currency="GHS", today=TODAY, first_sale_date=start, daily_revenue=revenue,
+    )
+    assert len(result.history) == 28
+    assert all(point.predicted_revenue is not None for point in result.history)
+    point = next(point for point in result.history if point.date == target)
+    assert point.revenue == Decimal(10000)
+    assert point.predicted_revenue == expected.revenue == Decimal(100)
+    assert point.lower == expected.lower < point.predicted_revenue
+    assert point.upper == expected.upper > point.predicted_revenue
+
+
+def test_historical_predictions_are_absent_before_the_minimum_baseline():
+    result = _forecast([100] * 28)
+    assert all(point.predicted_revenue is None and point.lower is None and point.upper is None
+               for point in result.history[:14])
+    assert all(point.predicted_revenue == Decimal(100)
+               and point.lower <= point.predicted_revenue <= point.upper
+               for point in result.history[14:])

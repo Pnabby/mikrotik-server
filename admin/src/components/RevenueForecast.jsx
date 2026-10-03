@@ -1,39 +1,39 @@
 import { useState } from 'react'
 
+import { forecastChartPoints, forecastSeriesSegments } from '../utils/forecastChart'
+
 const PERIOD_OPTIONS = [
   ['day', 'Day', 'today', 'tomorrow'],
   ['week', 'Week', 'this_week', 'next_week'],
   ['month', 'Month', 'this_month', 'next_month'],
 ]
 
-function ForecastChart({ forecast, current, next, mode, currency, formatMoney, formatCompactMoney, formatDate }) {
+function ForecastChart({ forecast, current, next, currency, formatMoney, formatCompactMoney, formatDate }) {
   const [selectedDate, setSelectedDate] = useState('')
-  const context = mode === 'day' ? forecast.history.slice(-7).map((point) => ({
-    ...point, actual_revenue: point.revenue, is_prediction: false, upper: point.revenue,
-  })) : []
-  const points = [...context, ...current.daily, ...next.daily]
-  const actual = points.filter((point) => point.actual_revenue != null)
-  const predicted = points.filter((point) => point.is_prediction)
-  const selected = points.find((point) => point.date === selectedDate) || predicted[0]
+  const points = forecastChartPoints(forecast, current, next)
+  const actualSegments = forecastSeriesSegments(points, (point) => point.actual_revenue != null)
+  const predictedSegments = forecastSeriesSegments(points, (point) => point.is_prediction)
+  const selected = points.find((point) => point.date === selectedDate) || current.daily[0]
   const first = Date.parse(points[0].date)
   const last = Date.parse(points[points.length - 1].date)
   const maximum = Math.max(1, ...points.map((point) => Math.max(Number(point.upper), Number(point.actual_revenue || 0)))) * 1.12
-  const x = (date) => 80 + (Date.parse(date) - first) / (last - first) * 840
+  const x = (date) => 80 + (Date.parse(date) - first) / Math.max(1, last - first) * 840
   const y = (value) => 215 - Number(value) / maximum * 175
   const line = (rows, field) => rows.map((point) => `${x(point.date)},${y(point[field])}`).join(' ')
-  const band = `${line(predicted, 'upper')} ${line([...predicted].reverse(), 'lower')}`
-  const labels = [points[0], points[Math.floor(points.length / 3)], points[Math.floor(points.length * 2 / 3)], points[points.length - 1]]
+  const labels = [...new Set([points[0], points[Math.floor(points.length / 3)], points[Math.floor(points.length * 2 / 3)], points[points.length - 1]])]
   const nextX = x(next.date_from)
   const hitRadius = Math.min(9, 840 / points.length / 2)
   return <>
     <div className="forecast-chart-scroll">
-      <svg className="forecast-chart" viewBox="0 0 960 265" aria-label={`Actual and predicted daily revenue in ${currency}`}>
+      <svg className="forecast-chart" viewBox="0 0 960 265" aria-label={`Actual and predicted daily revenue in ${currency}`} style={{ minWidth: Math.max(540, points.length * 14) }}>
         {[0, 0.5, 1].map((fraction) => <g key={fraction}><line x1="80" x2="920" y1={y(maximum * fraction)} y2={y(maximum * fraction)} className="forecast-gridline" /><text x="68" y={y(maximum * fraction) + 4} textAnchor="end">{formatCompactMoney(maximum * fraction, currency)}</text></g>)}
-        <polygon points={band} className="forecast-band" />
+        {predictedSegments.map((segment) => segment.length > 1
+          ? <polygon key={segment[0].date} points={`${line(segment, 'upper')} ${line([...segment].reverse(), 'lower')}`} className="forecast-band" />
+          : <line key={segment[0].date} x1={x(segment[0].date)} x2={x(segment[0].date)} y1={y(segment[0].upper)} y2={y(segment[0].lower)} className="forecast-single-range" />)}
         <line x1={nextX} x2={nextX} y1="30" y2="215" className="forecast-boundary" />
         <text x={nextX - 8} y="23" textAnchor="end">{next.label}</text>
-        <polyline points={line(actual, 'actual_revenue')} className="forecast-actual-line" />
-        <polyline points={line(predicted, 'revenue')} className="forecast-estimate-line" />
+        {actualSegments.map((segment) => <polyline key={segment[0].date} points={line(segment, 'actual_revenue')} className="forecast-actual-line" />)}
+        {predictedSegments.map((segment) => <polyline key={segment[0].date} points={line(segment, 'revenue')} className="forecast-estimate-line" />)}
         {points.map((point) => {
           const description = `${formatDate(point.date, true)}${point.actual_revenue != null ? `, actual ${formatMoney(point.actual_revenue, currency)}` : ''}${point.is_prediction ? `, predicted ${formatMoney(point.revenue, currency)}, range ${formatMoney(point.lower, currency)} to ${formatMoney(point.upper, currency)}` : ''}`
           return <g key={point.date} tabIndex="0" role="button" aria-label={description} onFocus={() => setSelectedDate(point.date)} onPointerEnter={() => setSelectedDate(point.date)} onClick={() => setSelectedDate(point.date)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedDate(point.date) } }}>
@@ -72,8 +72,8 @@ export default function RevenueForecast({ forecasts = {}, primaryCurrency, forma
         <div className="forecast-period-range"><span>Estimated range</span><b>{formatMoney(period.lower_revenue, currency)} &ndash; {formatMoney(period.upper_revenue, currency)}</b></div>
         {period.actual_revenue != null ? <p className="forecast-period-actual"><i />Actual so far <b>{formatMoney(period.actual_revenue, currency)}</b><small>{Number(period.projected_revenue) > 0 ? `${(Number(period.actual_revenue) / Number(period.projected_revenue) * 100).toFixed(1)}% of prediction` : "No prediction to compare"}</small></p> : <p className="forecast-period-future">Forecast for the upcoming {mode}.</p>}
       </article>)}</div>
-      <ForecastChart key={`${currency}-${mode}`} forecast={forecast} current={current} next={next} mode={mode} currency={currency} formatMoney={formatMoney} formatCompactMoney={formatCompactMoney} formatDate={formatDate} />
-      <div className="forecast-explanation"><div className="forecast-baseline"><span>Recent daily average <strong>{formatMoney(forecast.recent_daily_average, currency)}</strong></span><span>Weekly trend <strong className={change == null || change === 0 ? '' : change > 0 ? 'positive' : 'negative'}>{change == null ? 'New revenue' : `${change > 0 ? '+' : ''}${change.toFixed(1)}%`}</strong></span></div><p>Predictions use revenue recorded before each period starts and stay independent of that period?s actual sales. The chart shows daily revenue; shaded areas show the estimated range. Weeks run Monday&ndash;Sunday, months follow the calendar, and dates use UTC.</p><details><summary>How the forecast works</summary><p>Uses up to 28 completed days before each period to estimate weekday patterns and recent growth. Actual revenue is shown separately and can exceed the prediction. Each period uses its own fixed baseline; new businesses use their first 14 completed days. Corrections to historical payments can change the baseline. Currencies are calculated separately. The range widens into the future and illustrates uncertainty; it is not a statistical confidence interval.</p></details><details><summary>Daily revenue details</summary><div className="admin-data-table-wrap"><table className="admin-data-table"><thead><tr><th>Date</th><th>Actual</th><th>Predicted</th><th>Estimated range</th></tr></thead><tbody>{[...current.daily, ...next.daily].map((point) => <tr key={point.date}><td>{formatDate(point.date, true)}</td><td>{point.actual_revenue == null ? '--' : formatMoney(point.actual_revenue, currency)}</td><td>{point.is_prediction ? formatMoney(point.revenue, currency) : '--'}</td><td>{point.is_prediction ? <>{formatMoney(point.lower, currency)} &ndash; {formatMoney(point.upper, currency)}</> : '--'}</td></tr>)}</tbody></table></div></details></div>
+      <ForecastChart key={`${currency}-${mode}`} forecast={forecast} current={current} next={next} currency={currency} formatMoney={formatMoney} formatCompactMoney={formatCompactMoney} formatDate={formatDate} />
+      <div className="forecast-explanation"><div className="forecast-baseline"><span>Recent daily average <strong>{formatMoney(forecast.recent_daily_average, currency)}</strong></span><span>Weekly trend <strong className={change == null || change === 0 ? '' : change > 0 ? 'positive' : 'negative'}>{change == null ? 'New revenue' : `${change > 0 ? '+' : ''}${change.toFixed(1)}%`}</strong></span></div><p>Predictions use revenue recorded before each period starts and stay independent of that period&apos;s actual sales. Earlier daily predictions and ranges are reconstructed from revenue available before each day, once 14 completed days of history exist. The chart shows daily revenue; shaded areas show the estimated range. Weeks run Monday&ndash;Sunday, months follow the calendar, and dates use UTC.</p><details><summary>How the forecast works</summary><p>Uses up to 28 completed days before each period to estimate weekday patterns and recent growth. Actual revenue is shown separately and can exceed the prediction. Each period uses its own fixed baseline; new businesses use their first 14 completed days. Corrections to historical payments can change the baseline. Currencies are calculated separately. The range widens into the future and illustrates uncertainty; it is not a statistical confidence interval.</p></details><details><summary>Daily revenue details</summary><div className="admin-data-table-wrap"><table className="admin-data-table"><thead><tr><th>Date</th><th>Actual</th><th>Predicted</th><th>Estimated range</th></tr></thead><tbody>{forecastChartPoints(forecast, current, next).map((point) => <tr key={point.date}><td>{formatDate(point.date, true)}</td><td>{point.actual_revenue == null ? '--' : formatMoney(point.actual_revenue, currency)}</td><td>{point.is_prediction ? formatMoney(point.revenue, currency) : '--'}</td><td>{point.is_prediction ? <>{formatMoney(point.lower, currency)} &ndash; {formatMoney(point.upper, currency)}</> : '--'}</td></tr>)}</tbody></table></div></details></div>
     </>}
   </section>
 }
