@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import RevenueForecast from '../components/RevenueForecast'
 import AdminHeader from '../components/AdminHeader'
+import WireGuardPanel from '../components/WireGuardPanel'
 
 import {
   AdminApiError,
@@ -49,6 +50,7 @@ const ADMIN_VIEW_PATHS = {
   profiles: '/admin/profiles',
   customers: '/admin/customers',
   network: '/admin/network',
+  wireguard: '/admin/wireguard',
   transactions: '/admin/transactions',
   analysis: '/admin/analysis',
   support: '/admin/support',
@@ -62,6 +64,7 @@ const ADMIN_VIEW_TITLES = {
   profiles: 'Profile catalogue',
   customers: 'Customers & devices',
   network: 'Network & usage',
+  wireguard: 'WireGuard & VPN',
   transactions: 'Transactions',
   analysis: 'Revenue & analysis',
   support: 'Help & support',
@@ -110,6 +113,7 @@ function Icon({ name }) {
     money: <><circle cx="12" cy="12" r="9" /><path d="M15 8.5c-.7-.7-1.7-1-3-1-1.7 0-3 .8-3 2s1.1 1.8 3 2.3 3 1 3 2.3-1.3 2.2-3 2.2c-1.2 0-2.4-.4-3.2-1.2M12 5.5v13" /></>,
     activity: <path d="M3 12h4l2.2-6 4.1 12 2.2-6H21" />,
     network: <><rect x="9" y="2.5" width="6" height="5" rx="1" /><rect x="2.5" y="16.5" width="6" height="5" rx="1" /><rect x="15.5" y="16.5" width="6" height="5" rx="1" /><path d="M12 7.5v4M5.5 16.5v-2h13v2" /></>,
+    shield: <><path d="M12 3 3 7v5c0 5 9 9 9 9s9-4 9-9V7l-9-4Z" /><path d="m8 12 3 3 5-6" /></>,
     clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
     expand: <><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" /><path d="m3 8 6-6M21 8l-6-6M3 16l6 6M21 16l-6 6" /></>,
   }
@@ -2570,6 +2574,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
           <p>Management</p>
           <button aria-label="Customers and devices" className={view === 'customers' ? 'active' : ''} title="Customers & devices" type="button" onClick={() => selectView('customers')}><Icon name="users" /><span className="sidebar-nav-label">Customers &amp; devices</span></button>
           <button aria-label="Network and usage" className={view === 'network' ? 'active' : ''} title="Network & usage" type="button" onClick={() => selectView('network')}><Icon name="network" /><span className="sidebar-nav-label">Network &amp; usage</span></button>
+          <button aria-label="WireGuard and VPN" className={view === 'wireguard' ? 'active' : ''} title="WireGuard & VPN" type="button" onClick={() => selectView('wireguard')}><Icon name="shield" /><span className="sidebar-nav-label">WireGuard &amp; VPN</span></button>
           <button aria-label="Transactions" className={view === 'transactions' ? 'active' : ''} title="Transactions" type="button" onClick={() => selectView('transactions')}><Icon name="receipt" /><span className="sidebar-nav-label">Transactions</span></button>
           <button aria-label="Revenue and analysis" className={view === 'analysis' ? 'active' : ''} title="Revenue & analysis" type="button" onClick={() => selectView('analysis')}><Icon name="activity" /><span className="sidebar-nav-label">Revenue &amp; analysis</span></button>
           <button aria-label="Help and support" className={view === 'support' ? 'active' : ''} title="Help & support" type="button" onClick={() => selectView('support')}><Icon name="settings" /><span className="sidebar-nav-label">Help &amp; support</span></button>
@@ -2581,7 +2586,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
         <AdminHeader admin={admin} view={view} Icon={Icon} onNavigate={selectView} onRequestLogout={() => setShowLogoutConfirm(true)} signingOut={signingOut} mobileSidebarOpen={mobileSidebarOpen} onToggleSidebar={toggleSidebar} />
 
         <div className="dashboard-content">
-          {view === 'dashboard' ? <DashboardOverview hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onOpenAnalysis={() => selectView('analysis')} onOpenCustomers={() => selectView('customers')} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'customers' ? <CustomersDevicesPanel admin={admin} hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'network' ? <AccessPointsPanel hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'transactions' ? <TransactionsPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'analysis' ? <AnalysisPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'support' ? <SupportSettingsPanel canEdit={admin.role !== 'viewer'} onSessionExpired={onSessionExpired} /> : view === 'hostels' ? <>
+          {view === 'dashboard' ? <DashboardOverview hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onOpenAnalysis={() => selectView('analysis')} onOpenCustomers={() => selectView('customers')} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'customers' ? <CustomersDevicesPanel admin={admin} hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'network' ? <AccessPointsPanel hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'wireguard' ? <WireGuardPanel hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onSelect={setSelectedId} canEdit={admin.role !== 'viewer'} onSessionExpired={onSessionExpired} /> : view === 'transactions' ? <TransactionsPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'analysis' ? <AnalysisPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'support' ? <SupportSettingsPanel canEdit={admin.role !== 'viewer'} onSessionExpired={onSessionExpired} /> : view === 'hostels' ? <>
             <header className="dashboard-page-heading">
               <div><p className="dashboard-kicker">Network management</p><h1>Hostels</h1><p>Add and manage the hostel routers stored in the database.</p></div>
             </header>

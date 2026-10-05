@@ -81,7 +81,7 @@ npm run dev --prefix admin
 ```
 
 Admin sections use bookmarkable SPA routes such as `/admin/dashboard`,
-`/admin/hostels`, `/admin/network`, and `/admin/analysis`. FastAPI serves the admin build
+`/admin/hostels`, `/admin/network`, `/admin/wireguard`, and `/admin/analysis`. FastAPI serves the admin build
 and falls back to its `index.html` for these paths. If a reverse proxy serves `admin/dist`
 directly instead, configure its `/admin/` location to fall back to `/admin/index.html` so
 refreshing a nested admin URL does not return 404.
@@ -116,12 +116,73 @@ GET  /api/admin/auth/session
 POST /api/admin/auth/logout
 GET  /api/admin/hostels
 POST /api/admin/hostels/{router_id}/ip-cloud/force-update
+GET  /api/admin/hostels/{router_id}/wireguard
+POST /api/admin/hostels/{router_id}/wireguard/peers
+POST /api/admin/hostels/{router_id}/wireguard/peers/{target}/action
+POST /api/admin/hostels/{router_id}/wireguard/peers/{target}/client-config
+POST /api/admin/hostels/{router_id}/restart
 GET  /api/admin/hostels/{router_id}/profiles
 PUT  /api/admin/hostels/{router_id}/profiles/{mikrotik_profile}
 DELETE /api/admin/hostels/{router_id}/profiles/{mikrotik_profile}
 POST /api/admin/dashboard/customers/{customer_id}/transfer-hostel
 POST /api/admin/dashboard/customers/{customer_id}/delete
 ```
+
+The **WireGuard & VPN** admin page reads each active hostel's WireGuard interfaces,
+peer public keys, endpoints, last handshake, traffic counters, keepalive, and IP Cloud
+VPN/relay status. It refreshes every 15 seconds. Back to Home users are matched to
+their dynamic peers by public key; disabled users remain visible even when RouterOS
+has removed their dynamic peer. BTH LAN access, active state, and expiry are shown.
+Viewers can inspect the page. Operators and administrators can reset, enable, or disable
+peers, change a static peer's router-side keepalive, change BTH LAN access, and request
+an IP Cloud refresh. The ordinary peer listing does not return private or preshared keys.
+
+**Create peer** adds a separate BTH user or a regular WireGuard peer on an existing
+enabled interface, generating its client keys on RouterOS. BTH must already be running;
+you can choose LAN access, expiry in days, client DNS, and the client AllowedIPs.
+Regular peers need an unused /32 IPv4 or /128 IPv6 tunnel address and a reachable router
+endpoint host; the interface's listen port is used. Creation rejects overlap with other
+peers on that interface and duplicate device names. Regular peer creation uses
+`client-allowed-address`, which requires RouterOS 7.21 or later, and preserves the existing
+interface, routes, and firewall. BTH is the default choice when its relay is needed.
+
+**View QR / config** reads RouterOS's native client export and generates the QR locally
+in the browser. Operators and administrators can view or copy the configuration and
+download its `.conf` file or QR image. These exports contain the client's private key;
+they are fetched only when requested, use `Cache-Control: no-store`, and are never stored
+in audit details or browser storage. The API account needs `sensitive` permission.
+Existing regular peers require their client private key, address, and endpoint to be
+stored on RouterOS. A public key alone cannot reconstruct the device's private key;
+the page reports an unavailable export instead of generating an unusable QR. Config
+views are audited without recording their contents. Closing the dialog discards the
+configuration from the page state.
+
+**Restart router** requires typing the selected hostel's exact name and queues a
+delayed `/system/reboot`. It interrupts the router's WiFi and VPN service while keeping
+its configuration. The request is audited before dispatch. The page continues checking
+connectivity and pauses changes for one minute, including when a restart reply is lost.
+The RouterOS account needs `reboot` and script execution permissions. An acknowledgement
+means the reboot was queued; it does not prove the router has restarted successfully.
+
+Peer resets queue a fixed RouterOS script that briefly disables and re-enables only
+the selected peer or BTH user, keeping its keys. Both steps run on the router so the
+reset can finish even if the server's management connection drops. The API confirms
+that the script was queued, not that a new handshake occurred; reconnect the client
+and refresh to verify. Reset also enables a previously disabled peer. Actions are
+audited before dispatch, and an interrupted request is recorded as unconfirmed.
+RouterOS API credentials need permission to read these menus, write peer settings,
+and execute scripts. Unsupported BTH menus leave regular WireGuard inspection usable.
+
+The server must already have a working route to the router API. If its only VPN path
+is down, recovery needs LAN access or another management tunnel. Disabling that path
+or restricting its LAN access may require an alternate connection to undo. A reset
+does not extend an expired BTH share or change the client's keys, AllowedIPs, routes,
+or firewall rules. Use a separate BTH user for each device. See the
+[MikroTik BTH guide](https://manual.mikrotik.com/docs/network-management/cloud/back-to-home/)
+and [WireGuard reference](https://manual.mikrotik.com/docs/cli-reference/interface/wireguard/peers/).
+Deploy the backend changes, install the updated admin dependencies with
+`npm ci --prefix admin`, and rebuild `admin` as usual. No database migration or new
+environment variable is needed for this page.
 
 To build both React applications:
 

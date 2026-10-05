@@ -1,0 +1,62 @@
+.vpn-panel { min-width: 0; }
+.vpn-panel button { padding: .55rem .8rem; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); font: inherit; font-size: .75rem; cursor: pointer; }
+.vpn-panel button:hover { border-color: var(--green-600); color: var(--primary-text); }
+.vpn-panel button:disabled { opacity: .5; cursor: default; }
+.vpn-panel input { min-width: 0; padding: .5rem .65rem; border: 1px solid var(--control-line); border-radius: 8px; background: var(--card); color: var(--ink); font: inherit; }
+.vpn-panel h2 { margin: 0; font: 800 .95rem 'Manrope', sans-serif; }
+.vpn-note { color: var(--muted); font-size: .75rem; line-height: 1.65; }
+.vpn-alert, .vpn-message { margin: 1rem 0; padding: .85rem 1rem; border-radius: 10px; font-size: .8rem; line-height: 1.6; }
+.vpn-alert { color: var(--red-600); background: var(--red-50); }
+.vpn-message { color: var(--primary-text); background: var(--green-50); }
+.vpn-cloud, .vpn-peer { border: 1px solid var(--line); border-radius: 14px; background: var(--card); padding: 1.1rem; }
+.vpn-cloud { margin: 1.25rem 0; }
+.vpn-cloud > header, .vpn-peer > header { display: flex; align-items: start; justify-content: space-between; gap: .75rem; }
+.vpn-cloud header p, .vpn-peer header p { color: var(--muted); font-size: .72rem; margin: .3rem 0 0; }
+.vpn-peer h3 { overflow-wrap: anywhere; margin: 0; font-size: .95rem; }
+.vpn-peer-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .85rem 1rem; margin: 1.1rem 0; }
+.vpn-peer-details dt { color: var(--muted); font-size: .65rem; margin-bottom: .25rem; }
+.vpn-peer-details dd { margin: 0; font-size: .78rem; overflow-wrap: anywhere; }
+.vpn-status { flex-shrink: 0; padding: .3rem .5rem; border-radius: 20px; color: var(--warning-text); background: var(--orange-50); font-size: .65rem; }
+.vpn-status.recent { color: var(--primary-text); background: var(--green-50); }
+.vpn-panel summary { cursor: pointer; font-size: .78rem; }
+.vpn-panel code { display: block; overflow-wrap: anywhere; margin-top: .6rem; padding: .6rem; border-radius: 6px; background: var(--bg); font-size: .72rem; user-select: all; }
+.vpn-key p { font-size: .7rem; color: var(--muted); line-height: 1.6; }
+.vpn-peer-actions { display: flex; flex-wrap: wrap; align-items: end; gap: .5rem; border-top: 1px solid var(--line); padding-top: .85rem; margin-top: .85rem; }
+.vpn-peer-actions form { display: flex; gap: .4rem; align-items: end; flex-wrap: wrap; }
+.vpn-peer-actions label { display: grid; gap: .25rem; font-size: .65rem; color: var(--muted); }
+.vpn-peer-actions input { width: 100px; font-size: .75rem; }
+.vpn-help { padding: 1rem; background: var(--green-50); border-radius: 12px; margin-bottom: 1rem; }
+.vpn-help li, .vpn-help p { font-size: .78rem; line-height: 1.75; }
+.vpn-help li + li { margin-top: .45rem; }
+.vpn-help a { color: var(--primary-text); }
+.vpn-interface-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .7rem; }
+.vpn-interface-list details { padding: .85rem; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+.vpn-interface-list summary span { display: block; color: var(--muted); margin-top: .3rem; font-size: .7rem; }
+.vpn-interface-list p { font-size: .75rem; }
+.vpn-list-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .75rem; margin: 1.5rem 0 1rem; }
+.vpn-list-heading input { font-size: .8rem; width: 260px; max-width: 100%; }
+.vpn-list-heading > div { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; max-width: 100%; }
+.vpn-panel .vpn-primary, .vpn-dialog .vpn-primary { color: var(--on-primary); background: var(--green-600); }
+.vpn-panel .vpn-danger, .vpn-dialog .vpn-danger { color: var(--red-600); border-color: var(--red-600); background: var(--red-50); }
+.vpn-dialog { width: min(600px, calc(100vw - 28px)); max-height: calc(100dvh - 40px); overflow: auto; margin: auto; padding: 1.2rem; border: 1px solid var(--line); border-radius: 16px; background: var(--card); color: var(--ink); box-shadow: 0 20px 80px color-mix(in srgb, var(--shadow-ink) 25%, transparent); }
+.vpn-dialog::backdrop { background: color-mix(in srgb, var(--overlay-ink) 60%, transparent); }
+.vpn-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: .7rem; margin-bottom: .75rem; }
+.vpn-dialog > header h2 { margin: 0; font: 800 1rem 'Manrope', sans-serif; overflow-wrap: anywhere; }
+.vpn-dialog button, .vpn-download-qr { padding: .55rem .8rem; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); font: inherit; font-size: .8rem; cursor: pointer; text-decoration: none; }
+.vpn-dialog button:disabled { opacity: .5; cursor: default; }
+.vpn-dialog footer { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: .6rem; margin-top: 1rem; }
+.vpn-create-form p { font-size: .8rem; line-height: 1.7; }
+.vpn-create-form fieldset { display: grid; gap: .85rem; border: 0; padding: 0; margin: 1rem 0; }
+.vpn-create-form label { display: grid; gap: .4rem; font-size: .78rem; }
+.vpn-create-form input, .vpn-create-form select, .vpn-config-text textarea { width: 100%; min-width: 0; padding: .65rem; border: 1px solid var(--control-line); border-radius: 8px; background: var(--card); color: var(--ink); font: inherit; }
+.vpn-create-form small { font-size: .7rem; line-height: 1.6; color: var(--muted); }
+.vpn-create-form .vpn-checkbox { display: flex; align-items: center; gap: .5rem; }
+.vpn-create-form .vpn-checkbox input { width: auto; }
+.vpn-qr { margin: 1rem 0; text-align: center; }
+.vpn-qr img { width: min(360px, 100%); height: auto; background: #fff; border-radius: 8px; }
+.vpn-qr figcaption { color: var(--muted); font-size: .75rem; line-height: 1.6; }
+.vpn-config-text summary { cursor: pointer; font-size: .8rem; }
+.vpn-config-text textarea { margin-top: .75rem; min-height: 200px; resize: vertical; font: .75rem/1.65 monospace; }
+.vpn-peer-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+@media (max-width: 1000px) { .vpn-peer-grid { grid-template-columns: 1fr; } }
+@media (max-width: 480px) { .vpn-peer-details { grid-template-columns: 1fr; } .vpn-peer > header, .vpn-cloud > header { flex-direction: column; } }

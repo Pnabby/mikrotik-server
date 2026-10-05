@@ -19,6 +19,7 @@ from app.routes import (
     admin_auth,
     admin_dashboard,
     admin_profiles,
+    admin_wireguard,
     auth,
     health,
     hotspot,
@@ -127,6 +128,7 @@ def create_app() -> FastAPI:
     application.include_router(admin_auth.router)
     application.include_router(admin_dashboard.router)
     application.include_router(admin_profiles.router)
+    application.include_router(admin_wireguard.router)
     application.include_router(support.router)
     application.include_router(pages.router)
 
