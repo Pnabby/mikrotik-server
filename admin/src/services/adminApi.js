@@ -1,11 +1,12 @@
 const API_URL = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
 
 export class AdminApiError extends Error {
-  constructor(status, detail = '') {
+  constructor(status, detail = '', code = '') {
     super(`Admin request failed with status ${status}`)
     this.name = 'AdminApiError'
     this.status = status
     this.detail = detail
+    this.code = code
   }
 }
 
@@ -20,7 +21,7 @@ async function request(path, options = {}) {
   })
   if (!response.ok) {
     const body = await response.json().catch(() => ({}))
-    throw new AdminApiError(response.status, body.detail || '')
+    throw new AdminApiError(response.status, body.detail || '', body.code || '')
   }
   if (response.status === 204) return null
   return response.json()
@@ -122,6 +123,38 @@ export function forceHostelIpCloudUpdate(routerId) {
     `/api/admin/hostels/${encodeURIComponent(routerId)}/ip-cloud/force-update`,
     { method: 'POST' },
   )
+}
+
+export function getWireGuard(routerId) {
+  return request(`/api/admin/hostels/${encodeURIComponent(routerId)}/wireguard`)
+}
+
+export function wireGuardPeerAction(routerId, target, payload) {
+  return request(`/api/admin/hostels/${encodeURIComponent(routerId)}/wireguard/peers/${encodeURIComponent(target)}/action`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function createWireGuardPeer(routerId, payload) {
+  return request(`/api/admin/hostels/${encodeURIComponent(routerId)}/wireguard/peers`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function getWireGuardClientConfig(routerId, target) {
+  return request(`/api/admin/hostels/${encodeURIComponent(routerId)}/wireguard/peers/${encodeURIComponent(target)}/client-config`, {
+    method: 'POST',
+    cache: 'no-store',
+  })
+}
+
+export function restartHostelRouter(routerId, confirmation) {
+  return request(`/api/admin/hostels/${encodeURIComponent(routerId)}/restart`, {
+    method: 'POST',
+    body: JSON.stringify({ confirmation }),
+  })
 }
 
 export function listHostelProfiles(routerId) {

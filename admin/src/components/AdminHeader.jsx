@@ -8,6 +8,7 @@ const PAGES = [
   ['profiles', 'Profile catalogue', 'tag', 'plans packages'],
   ['customers', 'Customers & devices', 'users', 'users accounts'],
   ['network', 'Network & usage', 'network', 'wifi routers connections traffic'],
+  ['wireguard', 'WireGuard & VPN', 'shield', 'peers back to home bth qr restart router'],
   ['transactions', 'Transactions', 'receipt', 'payments receipts sales'],
   ['analysis', 'Revenue & analysis', 'activity', 'reports charts forecasts'],
   ['support', 'Help & support', 'settings', 'contact phone whatsapp'],
