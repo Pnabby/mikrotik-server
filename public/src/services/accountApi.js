@@ -1,11 +1,12 @@
 const API_URL = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
 
 export class AccountApiError extends Error {
-  constructor(status, detail = '') {
+  constructor(status, detail = '', code = '') {
     super(`Account request failed with status ${status}`)
     this.name = 'AccountApiError'
     this.status = status
     this.detail = detail
+    this.code = code
   }
 }
 
@@ -20,7 +21,7 @@ async function request(path, options = {}) {
   })
   if (!response.ok) {
     const body = await response.json().catch(() => ({}))
-    throw new AccountApiError(response.status, body.detail || '')
+    throw new AccountApiError(response.status, body.detail || '', body.code || '')
   }
   return response.json()
 }
@@ -122,6 +123,14 @@ export function logout() {
 
 export function getAccount() {
   return request('/api/account')
+}
+
+export function createIssue(payload) {
+  return request('/api/account/issues', { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export function listIssues(offset = 0) {
+  return request(`/api/account/issues?offset=${offset}`)
 }
 
 export function startPhoneVerification(phoneNumber) {

@@ -1,6 +1,7 @@
 import uuid
 
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.exceptions import ServiceError
 from app.integrations.mikrotik.client import MikroTikClient, MikroTikConfig
@@ -284,3 +285,81 @@ def test_exhausted_finite_quota_does_not_become_unlimited() -> None:
     )
 
     assert api.users.added["limit-bytes-total"] == "1"
+
+
+def _move(source, destination, session=None):
+    customer = session.customer if session else _customer()
+    return HostelTransferService(session or FakeSession(customer)).transfer_with_pin(
+        customer, pin="123456", pin_hasher=AcceptingPinHasher(),
+        destination_router_id="new-hostel", destination_router_name="New Hostel",
+        source_client=source, destination_client=destination, ip_address=None,
+    )
+
+
+def _user(**fields):
+    return {"name": "ama", "password": "123456", "profile": "paid", "disabled": "no", **fields}
+
+
+def test_transfer_uses_destination_network_and_deducts_used_uptime():
+    source = FakeTransferClient(_user(server="main-hotspot", address="10.1.0.8",
+                                     routes="10.1.0.0/24", **{"limit-uptime": "2h", "uptime": "30m"}))
+    destination = FakeTransferClient()
+    _move(source, destination)
+    assert destination.user["server"] == "all"
+    assert "address" not in destination.user
+    assert "routes" not in destination.user
+    assert destination.user["limit-uptime"] == "5400s"
+
+
+@pytest.mark.parametrize("field,changed", [("rate-limit", "5M/5M"), ("shared-users", "2"),
+                                         ("session-timeout", "1h"), ("idle-timeout", "5m")])
+def test_mismatched_profiles_do_not_disconnect_source(field, changed):
+    source = FakeTransferClient(_user())
+    destination = FakeTransferClient()
+    source.get_hotspot_user_profile = lambda _: {"name": "paid", "rate-limit": "5M/10M"}
+    destination.get_hotspot_user_profile = lambda _: {"name": "paid", "rate-limit": "5M/10M", field: changed}
+    with pytest.raises(ServiceError) as error:
+        _move(source, destination)
+    assert error.value.error_code == "hostel_profile_mismatch"
+    assert "clear-auth" not in source.events
+
+
+def test_failed_destination_readback_retains_source_and_removes_copy():
+    source = FakeTransferClient(_user())
+    destination = FakeTransferClient()
+    copy = destination.create_hotspot_user_copy
+    def bad_copy(user, *, byte_limits):
+        return {**copy(user, byte_limits=byte_limits), "password": "incorrect"}
+    destination.create_hotspot_user_copy = bad_copy
+    with pytest.raises(ServiceError):
+        _move(source, destination)
+    assert source.user is not None
+    assert destination.user is None
+    assert "delete-user" not in source.events
+
+
+def test_exhausted_data_account_stays_disabled_after_transfer():
+    source = FakeTransferClient(_user(**{"limit-bytes-total": "100", "bytes-in": "100"}))
+    destination = FakeTransferClient()
+    result = _move(source, destination)
+    assert result.remaining_data_limit_bytes == 0
+    assert destination.user["disabled"] == "yes"
+
+
+def test_database_failure_restores_source_before_removing_destination():
+    customer = _customer()
+    class FailingSession(FakeSession):
+        def commit(self):
+            raise SQLAlchemyError("database unavailable")
+    source = FakeTransferClient(_user(**{"limit-bytes-total": "1000", "bytes-in": "400"}))
+    destination = FakeTransferClient()
+    destination_delete = destination.delete_hotspot_user
+    def verify_restore(username):
+        assert source.user is not None
+        assert source.user["limit-bytes-total"] == "600"
+        return destination_delete(username)
+    destination.delete_hotspot_user = verify_restore
+    with pytest.raises(ServiceError):
+        _move(source, destination, FailingSession(customer))
+    assert source.user is not None
+    assert destination.user is None

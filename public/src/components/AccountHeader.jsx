@@ -29,6 +29,7 @@ export default function AccountHeader({ activePage = 'account', activeSection = 
             </a>
           )
         })}
+        <a className={activePage === 'issues' ? 'active' : ''} href="/issues" aria-current={activePage === 'issues' ? 'page' : undefined}>Raise an issue</a>
       </nav>
 
       <a

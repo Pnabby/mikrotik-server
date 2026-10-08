@@ -92,6 +92,43 @@ class AdminRouterProfileResponse(BaseModel):
     session_timeout: str | None
     idle_timeout: str | None
     address_pool: str | None
+    keepalive_timeout: str | None = None
+
+
+class AdminRouterProfileSettings(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+
+    rate_limit: str = Field(default="", max_length=200)
+    shared_users: int = Field(default=1, ge=1, le=1000)
+    session_timeout: str = Field(default="0s", max_length=40)
+    idle_timeout: str = Field(default="none", max_length=40)
+    keepalive_timeout: str = Field(default="2m", max_length=40)
+
+    @field_validator("rate_limit")
+    @classmethod
+    def validate_rate_limit(cls, value: str) -> str:
+        parts = value.split()
+        if len(parts) > 6:
+            raise ValueError("Enter a RouterOS upload/download rate limit.")
+        for index, part in enumerate(parts):
+            if index == 4:
+                if not re.fullmatch(r"[1-8]", part):
+                    raise ValueError("Rate limit priority must be between 1 and 8.")
+            elif not re.fullmatch(r"\d+(?:\.\d+)?[kKmMgG]?(?:/\d+(?:\.\d+)?[kKmMgG]?)?", part):
+                raise ValueError("Use a RouterOS rate limit such as 5M/10M.")
+        return " ".join(parts)
+
+    @field_validator("session_timeout", "idle_timeout", "keepalive_timeout")
+    @classmethod
+    def validate_timeout(cls, value: str) -> str:
+        if value == "none" or re.fullmatch(
+            r"(?:\d+(?:\.\d+)?[wdhms])+|(?:\d+[wd])*\d{1,2}(?::[0-5]\d){2}|0", value
+        ):
+            return value
+        raise ValueError("Enter a timeout such as 30m, 1h, 00:30:00, or none.")
+
+    def router_values(self) -> dict[str, str]:
+        return {key.replace("_", "-"): str(value) for key, value in self.model_dump().items()}
 
 
 class AdminProfileUpdate(BaseModel):
@@ -103,11 +140,13 @@ class AdminProfileUpdate(BaseModel):
     currency: str = Field(default="GHS", min_length=3, max_length=3)
     duration_seconds: int | None = Field(default=None, gt=0, le=10 * 365 * 24 * 60 * 60)
     data_limit_bytes: int | None = Field(default=None, gt=0)
-    device_limit: int | None = Field(default=None, gt=0, le=100)
+    device_limit: int | None = Field(default=None, gt=0, le=1000)
     download_speed: str | None = Field(default=None, max_length=40)
     is_promotional: bool = False
     is_visible: bool = False
     group_id: uuid.UUID | None = None
+    router_settings: AdminRouterProfileSettings | None = None
+    source_router_id: str | None = Field(default=None, min_length=2, max_length=64)
 
     @field_validator("display_name")
     @classmethod

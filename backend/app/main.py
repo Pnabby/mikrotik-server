@@ -28,6 +28,7 @@ from app.routes import (
     registration,
     routers,
     support,
+    support_issues,
 )
 from app.services.retention import delete_inactive_accounts
 from app.services.router_metrics import collect_router_metrics
@@ -130,6 +131,7 @@ def create_app() -> FastAPI:
     application.include_router(admin_profiles.router)
     application.include_router(admin_wireguard.router)
     application.include_router(support.router)
+    application.include_router(support_issues.router)
     application.include_router(pages.router)
 
     @application.exception_handler(ServiceError)

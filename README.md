@@ -97,9 +97,15 @@ Admin passwords are stored only as Argon2id hashes. Successful login uses a sepa
 HTTP-only admin session cookie. The admin workspace lets an administrator select a hostel,
 read its current HotSpot user profiles directly from MikroTik, and configure the display
 name, description, price, optional validity, data allowance, device limit, download speed,
-and customer visibility for each profile. Selecting **All hostels** shows only profile
-names present on every active router and applies one configuration to all of them. Download
-speed is prefilled from the RouterOS rate limit when available and can be edited before saving.
+and customer visibility for each profile. Selecting **All hostels** shows profiles from
+every active router, including profiles missing at some hostels. Open a plan and choose
+**Use settings** beside a source hostel to match its plan across all hostels. With
+**Apply these settings to the routers** enabled, saving writes the actual upload/download
+rate limit, simultaneous-device limit, session timeout, idle timeout, and keepalive timeout.
+Missing profiles are created from the selected source, including its login/logout hooks;
+router-local address pools and queue references remain local. The displayed download speed
+and device allowance are derived from the applied router settings. Bulk saves report partial
+success and can be retried. Every active hostel must be reachable to compare all profiles.
 The Revenue & Transactions view ranks revenue by plan, breaks revenue down by hostel when
 all hostels are selected, and supports all-time, last-7-days, last-30-days, and custom ranges.
 Profile changes are written to the audit log. The registration-only profile cannot be
@@ -107,6 +113,24 @@ published for purchase. New configurations default to an unlimited device count.
 configuration removes only its customer-facing plan mapping; it never deletes the profile from
 the MikroTik router. Operators and administrators can also move or permanently delete customer
 accounts from the user directory after confirming their own admin password.
+
+Hostel moves check matching network settings before ending sessions, deduct settled data
+and uptime usage, retain the purchase and validity timestamps, and allow the new hostel to
+assign its own server and network address. Transfer errors identify missing profiles,
+settings mismatches, pending activations, and username conflicts. To fix a mismatch, use
+**Profile catalogue → All hostels → Configure all / Edit all → Use settings → Save**.
+
+Customers can submit complaints from **Raise an issue** (`/issues`) with an optional room
+number. The server records their account's hostel and keeps that original hostel on the
+issue after a move. Customers see only their own issues and admin replies. The admin
+**Issues & complaints** page filters by hostel and status; operators and administrators
+can reply, mark issues attended to, or reopen them. Viewers have read-only access. The
+notification bell displays the total issues awaiting attention and refreshes every 15
+seconds; attending to an issue updates the count immediately. Opening the bell does not
+clear outstanding issues.
+
+Apply migration `20261008_0014` before running the updated backend. Build both frontends
+and deploy them with the backend; no new environment variables are required.
 
 Admin API routes:
 
@@ -126,6 +150,11 @@ PUT  /api/admin/hostels/{router_id}/profiles/{mikrotik_profile}
 DELETE /api/admin/hostels/{router_id}/profiles/{mikrotik_profile}
 POST /api/admin/dashboard/customers/{customer_id}/transfer-hostel
 POST /api/admin/dashboard/customers/{customer_id}/delete
+GET  /api/admin/notifications
+GET  /api/admin/issues
+PUT  /api/admin/issues/{issue_id}
+GET  /api/account/issues
+POST /api/account/issues
 ```
 
 The **WireGuard & VPN** admin page reads each active hostel's WireGuard interfaces,

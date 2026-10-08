@@ -164,6 +164,7 @@ def _editable_customer(
         raise ServiceError(status.HTTP_403_FORBIDDEN, "Your role cannot manage customers.")
     customer = session.scalar(
         select(Customer).where(Customer.id == customer_id).with_for_update()
+        .execution_options(populate_existing=True)
     )
     if customer is None:
         raise ServiceError(status.HTTP_404_NOT_FOUND, "Customer was not found.")

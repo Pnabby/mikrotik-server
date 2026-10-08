@@ -12,6 +12,7 @@ from app.models.phone_otp_challenge import PhoneOtpChallenge
 from app.models.router import Router
 from app.models.router_hourly_metric import RouterHourlyMetric
 from app.models.subscription import Subscription
+from app.models.support_issue import SupportIssue, SupportIssueReply
 from app.models.support_settings import SupportSettings
 from app.models.transaction import Transaction
 
@@ -32,6 +33,8 @@ __all__ = [
     "RouterHourlyMetric",
     "RouterPackageProfile",
     "Subscription",
+    "SupportIssue",
+    "SupportIssueReply",
     "SupportSettings",
     "Transaction",
 ]

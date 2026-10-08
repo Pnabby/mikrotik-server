@@ -46,6 +46,20 @@ export function listHostels() {
   return request('/api/admin/hostels')
 }
 
+export function getNotifications() {
+  return request('/api/admin/notifications')
+}
+
+export function listIssues(filters = {}) {
+  const query = new URLSearchParams()
+  Object.entries(filters).forEach(([key, value]) => { if (value !== '' && value != null) query.set(key, value) })
+  return request(`/api/admin/issues?${query}`)
+}
+
+export function updateIssue(issueId, payload) {
+  return request(`/api/admin/issues/${encodeURIComponent(issueId)}`, { method: 'PUT', body: JSON.stringify(payload) })
+}
+
 export function getDashboard(routerId = null) {
   const query = routerId ? `?router_id=${encodeURIComponent(routerId)}` : ''
   return request(`/api/admin/dashboard${query}`)

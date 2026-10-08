@@ -7,6 +7,7 @@ import SignupPage from './pages/SignupPage'
 import LegalPage from './pages/LegalPage'
 import SupportContact from './components/SupportContact'
 import VerifyPhonePage from './pages/VerifyPhonePage'
+import IssuesPage from './pages/IssuesPage'
 
 export default function App() {
   const path = window.location.pathname.replace(/\/+$/, '')
@@ -15,6 +16,7 @@ export default function App() {
   else if (path === '/forgot-password') page = <ForgotPinPage />
   else if (path === '/account') page = <AccountPage />
   else if (path === '/profile') page = <ProfilePage />
+  else if (path === '/issues') page = <IssuesPage />
   else if (path === '/verify-phone') page = <VerifyPhonePage />
   else if (path === '/terms') page = <LegalPage legalDocument="terms" />
   else if (path === '/privacy') page = <LegalPage legalDocument="privacy" />

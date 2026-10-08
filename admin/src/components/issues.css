@@ -1,0 +1,31 @@
+.admin-issues-panel { max-width: 1100px; margin: auto; }
+.admin-issues-panel .dashboard-page-heading > button, .admin-issue-actions button, .admin-issue-pagination button { padding: 10px 16px; border: 1px solid var(--control-line); border-radius: 9px; background: var(--card); color: var(--ink); font: inherit; cursor: pointer; }
+.admin-issue-filters { display: flex; flex-wrap: wrap; gap: 20px; margin: 24px 0; }
+.admin-issue-filters label, .admin-issue-card form label { display: grid; gap: 8px; color: var(--ink); font-size: 13px; font-weight: 600; }
+.admin-issue-filters select, .admin-issue-card textarea { padding: 12px; border: 1px solid var(--control-line); border-radius: 9px; color: var(--ink); background: var(--card); font: inherit; }
+.admin-issue-card { padding: 24px; margin: 20px 0; border: 1px solid var(--control-line); border-radius: 14px; color: var(--ink); background: var(--card); }
+.admin-issue-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.admin-issue-heading h2 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
+.admin-issue-meta { display: flex; flex-wrap: wrap; gap: 14px; margin: 14px 0; color: var(--muted); font-size: 12px; }
+.admin-issue-status { padding: 5px 10px; border-radius: 20px; color: #875900; background: #fff2cf; font-size: 11px; white-space: nowrap; }
+.admin-issue-status.attended { color: #087f5b; background: #eafaf4; }
+.admin-issue-message { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; }
+.admin-issue-reply { padding: 14px; margin-bottom: 16px; border-left: 3px solid var(--green-600); background: var(--bg); border-radius: 6px; }
+.admin-issue-reply small { display: block; color: var(--muted); margin: 5px 0; }
+.admin-issue-reply p { margin-bottom: 0; }
+.admin-issue-card textarea { width: 100%; resize: vertical; box-sizing: border-box; }
+.admin-issue-actions, .admin-issue-pagination { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 14px; align-items: center; }
+.admin-issue-actions button:first-child { color: #fff; background: var(--green-600); }
+.admin-issue-actions button:disabled, .admin-issue-pagination button:disabled { opacity: .5; cursor: default; }
+.admin-issue-error { color: #b42318; padding: 12px; background: #fff1f0; border-radius: 9px; }
+.admin-topbar .header-icon-button.notification-trigger { position: relative; }
+.admin-topbar .notification-count { position: absolute; right: -5px; top: -5px; min-width: 18px; height: 18px; padding: 0 4px; display: grid; place-items: center; border: 2px solid var(--card); border-radius: 12px; color: #fff; background: #df3e4e; font-size: 10px; font-weight: 700; }
+.admin-topbar .notification-popover { max-height: min(540px, 75vh); overflow-y: auto; }
+.admin-topbar .notification-popover .issue-notification { display: grid; width: 100%; gap: 5px; margin: 8px 0; padding: 12px; text-align: left; }
+.admin-topbar .issue-notification strong { overflow-wrap: anywhere; }
+.admin-topbar .notification-error { color: #b42318; padding: 12px 0; font-size: 12px; }
+.profile-comparison { overflow-x: auto; margin: 16px 0; }
+.profile-comparison table { width: 100%; font-size: 11px; border-collapse: collapse; }
+.profile-comparison th, .profile-comparison td { padding: 8px; text-align: left; border-bottom: 1px solid var(--control-line); }
+.profile-comparison button { padding: 6px; border: 1px solid var(--control-line); border-radius: 6px; color: var(--ink); background: var(--card); cursor: pointer; }
+.router-settings-option { display: flex; align-items: center; gap: 8px; color: var(--ink); font-size: 13px; }

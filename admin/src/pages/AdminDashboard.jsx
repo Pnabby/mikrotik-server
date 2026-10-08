@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from 'react'
 import RevenueForecast from '../components/RevenueForecast'
 import AdminHeader from '../components/AdminHeader'
 import WireGuardPanel from '../components/WireGuardPanel'
+import IssuesPanel from '../components/IssuesPanel'
+import { profilesAcrossHostels } from '../utils/profileCatalogue'
 
 import {
   AdminApiError,
@@ -54,6 +56,7 @@ const ADMIN_VIEW_PATHS = {
   transactions: '/admin/transactions',
   analysis: '/admin/analysis',
   support: '/admin/support',
+  issues: '/admin/issues',
 }
 const ADMIN_PATH_VIEWS = Object.fromEntries(
   Object.entries(ADMIN_VIEW_PATHS).map(([view, path]) => [path, view]),
@@ -68,20 +71,8 @@ const ADMIN_VIEW_TITLES = {
   transactions: 'Transactions',
   analysis: 'Revenue & analysis',
   support: 'Help & support',
+  issues: 'Issues & complaints',
 }
-const BULK_PROFILE_FIELDS = [
-  'display_name',
-  'description',
-  'amount',
-  'currency',
-  'duration_seconds',
-  'data_limit_bytes',
-  'device_limit',
-  'download_speed',
-  'is_promotional',
-  'is_visible',
-  'is_configured',
-]
 
 function adminViewFromPath(pathname = window.location.pathname) {
   const normalizedPath = pathname.replace(/\/+$/, '') || '/'
@@ -211,64 +202,11 @@ function titleFromProfile(name) {
 function statusFor(profile) {
   if (profile.is_registration_profile) return { label: 'System', className: 'system' }
   if (!profile.available_on_router) return { label: 'Missing on router', className: 'missing' }
+  if (profile.bulk_mode && profile.available_hostels < profile.hostel_count) return { label: `Missing at ${profile.hostel_count - profile.available_hostels} hostel(s)`, className: 'missing' }
   if (profile.bulk_mode && !profile.configuration_consistent) return { label: 'Mixed settings', className: 'mixed' }
   if (profile.is_visible) return { label: 'Published', className: 'published' }
   if (profile.is_configured) return { label: 'Draft', className: 'draft' }
   return { label: 'Not configured', className: 'unconfigured' }
-}
-
-function profilesCommonToAll(profileLists) {
-  if (!profileLists.length) return []
-
-  return profileLists[0]
-    .filter((profile) => profile.available_on_router)
-    .map((firstProfile) => {
-      const profileName = firstProfile.mikrotik_profile.toLocaleLowerCase()
-      const matches = profileLists.map((profiles) => profiles.find((profile) => (
-        profile.available_on_router
-        && profile.mikrotik_profile.toLocaleLowerCase() === profileName
-      )))
-      if (matches.some((profile) => !profile)) return null
-
-      const sharedValue = (key, fallback = null) => (
-        matches.every((profile) => Object.is(profile[key], matches[0][key]))
-          ? matches[0][key]
-          : fallback
-      )
-      const mixedFields = BULK_PROFILE_FIELDS.filter((key) => (
-        !matches.every((profile) => Object.is(profile[key], matches[0][key]))
-      ))
-
-      return {
-        ...firstProfile,
-        package_id: null,
-        display_name: sharedValue('display_name'),
-        description: sharedValue('description'),
-        amount: sharedValue('amount'),
-        currency: sharedValue('currency', 'GHS'),
-        duration_seconds: sharedValue('duration_seconds'),
-        data_limit_bytes: sharedValue('data_limit_bytes'),
-        device_limit: sharedValue('device_limit'),
-        download_speed: sharedValue('download_speed'),
-        is_promotional: sharedValue('is_promotional', false),
-        is_configured: matches.every((profile) => profile.is_configured),
-        is_visible: matches.every((profile) => profile.is_visible),
-        is_registration_profile: matches.every((profile) => profile.is_registration_profile),
-        rate_limit: sharedValue('rate_limit'),
-        shared_users: sharedValue('shared_users'),
-        session_timeout: sharedValue('session_timeout'),
-        idle_timeout: sharedValue('idle_timeout'),
-        address_pool: sharedValue('address_pool'),
-        available_on_router: true,
-        bulk_mode: true,
-        configuration_consistent: mixedFields.length === 0,
-        configured_hostels: matches.filter((profile) => profile.is_configured).length,
-        published_hostels: matches.filter((profile) => profile.is_visible).length,
-        hostel_count: matches.length,
-        mixed_fields: mixedFields,
-      }
-    })
-    .filter(Boolean)
 }
 
 function withoutProfileConfiguration(profile) {
@@ -295,6 +233,7 @@ function withoutProfileConfiguration(profile) {
 
 function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
   const mixedFields = new Set(profile.mixed_fields || [])
+  const routerDefaults = profile.hostel_profiles?.find((entry) => entry.router_id === profile.source_router_id) || profile
   const startingDuration = mixedFields.has('duration_seconds')
     ? { value: '', unit: 'days' }
     : durationParts(
@@ -314,6 +253,13 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
     isPromotional: mixedFields.has('is_promotional') ? false : profile.is_promotional || false,
     isVisible: profile.is_registration_profile || mixedFields.has('is_visible') ? false : profile.is_visible,
     groupId: profile.group_id || '',
+    applyRouterSettings: Boolean(profile.bulk_mode),
+    sourceRouterId: profile.source_router_id || '',
+    rateLimit: routerDefaults.rate_limit || '',
+    sharedUsers: routerDefaults.shared_users || 1,
+    sessionTimeout: routerDefaults.session_timeout || '0s',
+    idleTimeout: routerDefaults.idle_timeout || 'none',
+    keepaliveTimeout: routerDefaults.keepalive_timeout || '2m',
   })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -324,6 +270,23 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
   function change(event) {
     const { name, value, checked, type } = event.target
     setForm((current) => ({ ...current, [name]: type === 'checkbox' ? checked : value }))
+    setError('')
+  }
+
+  function useHostelSettings(selected) {
+    const duration = durationParts(selected.duration_seconds)
+    setForm((current) => ({ ...current,
+      displayName: selected.display_name || titleFromProfile(profile.mikrotik_profile),
+      description: selected.description || '', amount: selected.amount ?? current.amount,
+      currency: selected.currency || 'GHS', durationValue: duration.value, durationUnit: duration.unit,
+      dataLimitGb: selected.data_limit_bytes ? selected.data_limit_bytes / 1024 ** 3 : '',
+      deviceLimit: selected.device_limit || '', downloadSpeed: selected.download_speed || '',
+      isPromotional: Boolean(selected.is_promotional), isVisible: Boolean(selected.is_visible),
+      applyRouterSettings: true, sourceRouterId: selected.router_id,
+      rateLimit: selected.rate_limit || '', sharedUsers: selected.shared_users || 1,
+      sessionTimeout: selected.session_timeout || '0s', idleTimeout: selected.idle_timeout || 'none',
+      keepaliveTimeout: selected.keepalive_timeout || '2m',
+    }))
     setError('')
   }
 
@@ -345,6 +308,10 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
       setError('Enter a valid plan duration.')
       return
     }
+    if (profile.bulk_mode && profile.available_hostels < profile.hostel_count && !form.applyRouterSettings) {
+      setError('Enable router settings and choose a source hostel to create the missing profiles.')
+      return
+    }
 
     setSaving(true)
     try {
@@ -359,11 +326,19 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
         data_limit_bytes: form.dataLimitGb === ''
           ? null
           : Math.round(Number(form.dataLimitGb) * 1024 ** 3),
-        device_limit: form.deviceLimit === '' ? null : Number(form.deviceLimit),
+        device_limit: form.applyRouterSettings ? Number(form.sharedUsers) : form.deviceLimit === '' ? null : Number(form.deviceLimit),
         download_speed: form.downloadSpeed.trim() || null,
         is_promotional: profile.is_registration_profile ? false : form.isPromotional,
         is_visible: profile.is_registration_profile ? false : form.isVisible,
         ...(!profile.bulk_mode ? { group_id: form.groupId || null } : {}),
+        ...(form.applyRouterSettings ? {
+          source_router_id: form.sourceRouterId || null,
+          router_settings: {
+            rate_limit: form.rateLimit.trim(), shared_users: Number(form.sharedUsers),
+            session_timeout: form.sessionTimeout.trim(), idle_timeout: form.idleTimeout.trim(),
+            keepalive_timeout: form.keepaliveTimeout.trim(),
+          },
+        } : {}),
       })
     } catch (saveError) {
       setError(saveError.message || 'The profile could not be saved.')
@@ -419,8 +394,9 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
 
         {profile.bulk_mode && <div className={`bulk-profile-notice ${profile.configuration_consistent ? '' : 'mixed'}`}>
           <Icon name={profile.configuration_consistent ? 'check' : 'alert'} />
-          <div><strong>Configure {profile.hostel_count} hostels together</strong><p>{profile.configuration_consistent ? 'Saving will apply these settings to every hostel where this profile exists.' : `${profile.configured_hostels} of ${profile.hostel_count} hostels are configured, with differing settings. Mixed fields are blank; saving will replace the settings on every hostel.`}</p></div>
+          <div><strong>Match plans across {profile.hostel_count} hostels</strong><p>{profile.available_hostels} of {profile.hostel_count} routers have this profile. Choose a hostel below to use its plan settings, then save to apply them across all active hostels. Missing profiles will be created from that source.</p></div>
         </div>}
+        {profile.hostel_profiles && <div className="profile-comparison"><table><thead><tr><th>Hostel</th><th>Upload / download</th><th>Devices</th><th>Session timeout</th><th>Match from</th></tr></thead><tbody>{profile.hostel_profiles.map((entry) => <tr key={entry.router_id}><td>{entry.hostel_name}</td><td>{entry.available_on_router ? entry.rate_limit || 'Unlimited' : 'Missing profile'}</td><td>{entry.shared_users ?? '—'}</td><td>{entry.session_timeout || 'No limit'}</td><td>{entry.available_on_router && <button type="button" disabled={saving} onClick={() => useHostelSettings(entry)}>Use settings</button>}</td></tr>)}</tbody></table></div>}
 
         <form className="profile-editor-form" onSubmit={submit}>
           <section>
@@ -487,14 +463,27 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
               </label>
               <label className="editor-field">
                 <span>Device limit <em>Optional</em></span>
-                <input max="100" min="1" name="deviceLimit" placeholder="Unlimited" step="1" type="number" value={form.deviceLimit} onChange={change} />
+                <input disabled={form.applyRouterSettings} max="1000" min="1" name="deviceLimit" placeholder="Unlimited" step="1" type="number" value={form.applyRouterSettings ? form.sharedUsers : form.deviceLimit} onChange={change} />
+                {form.applyRouterSettings && <small>Uses the simultaneous device limit configured below.</small>}
               </label>
             </div>
             <label className="editor-field">
               <span>Download speed <em>Optional</em></span>
-              <input maxLength="40" name="downloadSpeed" placeholder="e.g. 10 Mbps" value={form.downloadSpeed} onChange={change} />
-              <small>Prefilled from the router rate limit when available. Customers only see this download speed.</small>
+              <input disabled={form.applyRouterSettings} maxLength="40" name="downloadSpeed" placeholder="e.g. 10 Mbps" value={form.downloadSpeed} onChange={change} />
+              <small>{form.applyRouterSettings ? 'Updates automatically from the download rate configured below.' : 'Prefilled from the router rate limit when available. Customers only see this download speed.'}</small>
             </label>
+          </section>
+
+          <section>
+            <div className="editor-section-heading"><span>4</span><div><h3>Router network settings</h3><p>Control the actual speed, simultaneous devices, and timeouts on MikroTik.</p></div></div>
+            <label className="router-settings-option"><input checked={form.applyRouterSettings} name="applyRouterSettings" type="checkbox" onChange={change} />Apply these settings to the router{profile.bulk_mode ? 's at all active hostels' : ''}</label>
+            {form.applyRouterSettings && <>
+              <label className="editor-field"><span>Upload / download rate limit</span><input maxLength={200} name="rateLimit" placeholder="e.g. 5M/10M" value={form.rateLimit} onChange={change} /><small>Upload first, download second. Leave blank for unlimited speed. The customer download speed updates from this value.</small></label>
+              <label className="editor-field"><span>Simultaneous devices on the router</span><input required min={1} max={1000} type="number" name="sharedUsers" value={form.sharedUsers} onChange={change} /><small>This is the router&apos;s shared-users limit.</small></label>
+              <label className="editor-field"><span>Session timeout</span><input required maxLength={40} name="sessionTimeout" value={form.sessionTimeout} onChange={change} /><small>Use 0s for no session limit, or a duration such as 1h.</small></label>
+              <div className="editor-two-columns"><label className="editor-field"><span>Idle timeout</span><input required maxLength={40} name="idleTimeout" value={form.idleTimeout} onChange={change} /></label><label className="editor-field"><span>Keepalive timeout</span><input required maxLength={40} name="keepaliveTimeout" value={form.keepaliveTimeout} onChange={change} /></label></div>
+              <p className="customer-delete-help">These settings apply to every user of this router profile when they reconnect.</p>
+            </>}
           </section>
 
           <section className="visibility-section">
@@ -928,7 +917,7 @@ function ProfileTable({ bulkMode, profiles, query, filter, onEdit }) {
   })
 
   if (!visibleProfiles.length) {
-    return <div className="profiles-empty"><Icon name="search" /><h3>{bulkMode && !query && filter === 'all' ? 'No shared profiles' : 'No matching profiles'}</h3><p>{bulkMode && !query && filter === 'all' ? 'Only profiles available on every hostel are shown here.' : 'Try another search or filter.'}</p></div>
+    return <div className="profiles-empty"><Icon name="search" /><h3>{bulkMode && !query && filter === 'all' ? 'No router profiles' : 'No matching profiles'}</h3><p>{bulkMode && !query && filter === 'all' ? 'Profiles from all active hostels appear here so you can match their settings.' : 'Try another search or filter.'}</p></div>
   }
 
   return (
@@ -952,7 +941,7 @@ function ProfileTable({ bulkMode, profiles, query, filter, onEdit }) {
                     </div>
                   </div>
                 </td>
-                <td><div className="router-details"><span>{profile.rate_limit || 'No rate limit'}</span><small>{profile.download_speed ? `${profile.download_speed} download` : 'Download speed not set'}</small></div></td>
+                <td><div className="router-details"><span>{profile.mixed_fields?.includes('rate_limit') ? 'Mixed rate limits' : profile.rate_limit || 'No rate limit'}</span><small>{profile.download_speed ? `${profile.download_speed} download` : 'Download speed not set'}</small></div></td>
                 <td><div className="router-details"><span>{formatMoney(profile.amount, profile.currency)}</span><small>{formatDuration(profile.duration_seconds)}</small></div></td>
                 <td><span className={`profile-status ${status.className}`}><i />{status.label}</span></td>
                 <td><button className="profile-edit-button" disabled={!profile.available_on_router} type="button" onClick={() => onEdit(profile)}>{profile.bulk_mode ? (profile.is_configured ? 'Edit all' : 'Configure all') : (profile.is_configured ? 'Edit' : 'Configure')}<Icon name="chevron" /></button></td>
@@ -2013,9 +2002,19 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
         }
         setActionError('The admin password is incorrect. No changes were made.')
       } else if (requestError instanceof AdminApiError && requestError.status === 409) {
-        setActionError(customerAction.action === 'edit' ? 'That email or phone number belongs to another user.' : 'Confirm the plan exists at the new hostel and the username is available there.')
+        const reasons = {
+          hostel_profile_missing: 'The router profile is missing. Open Profile catalogue, select All hostels, choose a source with Use settings, and save to create matching profiles.',
+          hostel_profile_mismatch: 'The speed, device, or timeout settings differ. Open Profile catalogue → All hostels and use one hostel’s settings to match the plan.',
+          hostel_activation_pending: 'Finish the pending plan activation before moving this account.',
+          hostel_username_conflict: 'This username already exists on the destination router.',
+          hostel_source_user_missing: 'The customer’s account is missing from the source router.',
+          hostel_already_selected: 'This customer is already at the selected hostel.',
+        }
+        setActionError(customerAction.action === 'edit' ? 'That email or phone number belongs to another user.' : reasons[requestError.code] || 'The account cannot be moved. Check the destination plan and username.')
       } else if (requestError instanceof AdminApiError && requestError.status === 422) {
         setActionError('Enter a valid email and phone number, for example 024 123 4567.')
+      } else if (requestError instanceof AdminApiError && requestError.code === 'hostel_transfer_unconfirmed') {
+        setActionError('The source router could not confirm removal. Inspect the account on both routers before retrying the move.')
       } else if (requestError instanceof AdminApiError && [502, 503].includes(requestError.status)) {
         setActionError('A hostel router is unavailable. The action was not completed.')
       } else {
@@ -2208,7 +2207,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
 
     const failedResult = results.find((result) => result.status === 'rejected')
     if (failedResult) throw failedResult.reason
-    return profilesCommonToAll(results.map((result) => result.value))
+    return profilesAcrossHostels(results.map((result) => result.value), bulkHostels)
   }
 
   useEffect(() => {
@@ -2249,7 +2248,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
           )))
         }
         handleError(error, selectedId === ALL_HOSTELS_ID
-          ? 'Every hostel must be reachable to list their shared profiles. Check the offline router and try again.'
+          ? 'Every hostel must be reachable to compare their profiles. Check the offline router and try again.'
           : 'The router could not be reached. Check its connection and try again.')
       })
       .finally(() => { if (active) setLoadingProfiles(false) })
@@ -2349,7 +2348,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
     setPageError('')
     try {
       setProfiles(await listProfilesForSelection(selectedId))
-      setToast(allHostelsSelected ? 'Shared profiles refreshed from all routers.' : 'Profiles refreshed from the router.')
+      setToast(allHostelsSelected ? 'Profiles refreshed from all routers.' : 'Profiles refreshed from the router.')
       window.setTimeout(() => setToast(''), 3000)
     } catch (error) {
       if (!allHostelsSelected) {
@@ -2358,7 +2357,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
         )))
       }
       handleError(error, allHostelsSelected
-        ? 'Every hostel must be reachable to list their shared profiles. Check the offline router and try again.'
+        ? 'Every hostel must be reachable to compare their profiles. Check the offline router and try again.'
         : 'The router could not be reached. Check its connection and try again.')
     } finally {
       setLoadingProfiles(false)
@@ -2383,7 +2382,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
         throw new Error(`Saved ${savedCount} of ${bulkHostels.length} hostels. Retry to update the remaining hostels.`)
       }
 
-      const saved = profilesCommonToAll(results.map((result) => [result.value]))[0]
+      const saved = profilesAcrossHostels(results.map((result) => [result.value]), bulkHostels)[0]
       setProfiles((current) => current.map((profile) => (
         profile.mikrotik_profile.toLocaleLowerCase() === saved.mikrotik_profile.toLocaleLowerCase()
           ? saved
@@ -2578,15 +2577,16 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
           <button aria-label="Transactions" className={view === 'transactions' ? 'active' : ''} title="Transactions" type="button" onClick={() => selectView('transactions')}><Icon name="receipt" /><span className="sidebar-nav-label">Transactions</span></button>
           <button aria-label="Revenue and analysis" className={view === 'analysis' ? 'active' : ''} title="Revenue & analysis" type="button" onClick={() => selectView('analysis')}><Icon name="activity" /><span className="sidebar-nav-label">Revenue &amp; analysis</span></button>
           <button aria-label="Help and support" className={view === 'support' ? 'active' : ''} title="Help & support" type="button" onClick={() => selectView('support')}><Icon name="settings" /><span className="sidebar-nav-label">Help &amp; support</span></button>
+          <button aria-label="Issues and complaints" className={view === 'issues' ? 'active' : ''} title="Issues & complaints" type="button" onClick={() => selectView('issues')}><Icon name="alert" /><span className="sidebar-nav-label">Issues &amp; complaints</span></button>
         </nav>
         <div className="sidebar-security"><span><Icon name="check" /></span><div><strong>Secure session</strong><small>Protected admin access</small></div></div>
       </aside>
 
       <main className="dashboard-main">
-        <AdminHeader admin={admin} view={view} Icon={Icon} onNavigate={selectView} onRequestLogout={() => setShowLogoutConfirm(true)} signingOut={signingOut} mobileSidebarOpen={mobileSidebarOpen} onToggleSidebar={toggleSidebar} />
+        <AdminHeader admin={admin} view={view} Icon={Icon} onNavigate={selectView} onRequestLogout={() => setShowLogoutConfirm(true)} signingOut={signingOut} mobileSidebarOpen={mobileSidebarOpen} onToggleSidebar={toggleSidebar} onSessionExpired={onSessionExpired} />
 
         <div className="dashboard-content">
-          {view === 'dashboard' ? <DashboardOverview hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onOpenAnalysis={() => selectView('analysis')} onOpenCustomers={() => selectView('customers')} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'customers' ? <CustomersDevicesPanel admin={admin} hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'network' ? <AccessPointsPanel hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'wireguard' ? <WireGuardPanel hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onSelect={setSelectedId} canEdit={admin.role !== 'viewer'} onSessionExpired={onSessionExpired} /> : view === 'transactions' ? <TransactionsPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'analysis' ? <AnalysisPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'support' ? <SupportSettingsPanel canEdit={admin.role !== 'viewer'} onSessionExpired={onSessionExpired} /> : view === 'hostels' ? <>
+          {view === 'dashboard' ? <DashboardOverview hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onOpenAnalysis={() => selectView('analysis')} onOpenCustomers={() => selectView('customers')} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'customers' ? <CustomersDevicesPanel admin={admin} hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'network' ? <AccessPointsPanel hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onSelect={setSelectedId} onSessionExpired={onSessionExpired} /> : view === 'wireguard' ? <WireGuardPanel hostels={hostels} loadingHostels={loadingHostels} selectedId={selectedId} onSelect={setSelectedId} canEdit={admin.role !== 'viewer'} onSessionExpired={onSessionExpired} /> : view === 'transactions' ? <TransactionsPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'analysis' ? <AnalysisPanel hostels={hostels} onSessionExpired={onSessionExpired} /> : view === 'issues' ? <IssuesPanel hostels={hostels} canEdit={admin.role !== 'viewer'} onSessionExpired={onSessionExpired} /> : view === 'support' ? <SupportSettingsPanel canEdit={admin.role !== 'viewer'} onSessionExpired={onSessionExpired} /> : view === 'hostels' ? <>
             <header className="dashboard-page-heading">
               <div><p className="dashboard-kicker">Network management</p><h1>Hostels</h1><p>Add and manage the hostel routers stored in the database.</p></div>
             </header>

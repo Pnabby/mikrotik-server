@@ -176,6 +176,7 @@ def transfer_customer_hostel(
 ) -> HostelTransferResponse:
     customer = session.scalar(
         select(Customer).where(Customer.id == customer.id).with_for_update()
+        .execution_options(populate_existing=True)
     )
     if customer is None:
         raise ServiceError(status.HTTP_404_NOT_FOUND, "Customer was not found.")

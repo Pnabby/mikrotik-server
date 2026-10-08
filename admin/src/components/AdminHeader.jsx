@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { applyTheme, initialTheme, savePreference } from '../theme'
+import { getNotifications } from '../services/adminApi'
 
 const PAGES = [
   ['dashboard', 'Dashboard', 'grid', 'overview'],
@@ -12,6 +13,7 @@ const PAGES = [
   ['transactions', 'Transactions', 'receipt', 'payments receipts sales'],
   ['analysis', 'Revenue & analysis', 'activity', 'reports charts forecasts'],
   ['support', 'Help & support', 'settings', 'contact phone whatsapp'],
+  ['issues', 'Issues & complaints', 'alert', 'support complaints notifications room reply'],
 ]
 
 function HeaderIcon({ name, Icon }) {
@@ -23,16 +25,41 @@ function HeaderIcon({ name, Icon }) {
   return paths[name] ? <svg className="header-icon" aria-hidden="true" viewBox="0 0 24 24">{paths[name]}</svg> : <Icon name={name} />
 }
 
-export default function AdminHeader({ admin, view, Icon, onNavigate, onRequestLogout, signingOut, mobileSidebarOpen, onToggleSidebar }) {
+export default function AdminHeader({ admin, view, Icon, onNavigate, onRequestLogout, signingOut, mobileSidebarOpen, onToggleSidebar, onSessionExpired }) {
   const [theme, setTheme] = useState(initialTheme)
   const [popover, setPopover] = useState('')
   const [query, setQuery] = useState('')
+  const [notifications, setNotifications] = useState(null)
+  const [notificationError, setNotificationError] = useState('')
   const header = useRef(null)
   const search = useRef(null)
   const accountButton = useRef(null)
   const notificationButton = useRef(null)
   const roleLabel = { admin: 'Administrator', operator: 'Operator', viewer: 'Viewer' }[admin.role] || admin.role
   const results = PAGES.filter(([, label, , aliases]) => `${label} ${aliases}`.toLowerCase().includes(query.trim().toLowerCase()))
+
+  useEffect(() => {
+    let active = true
+    let running = false
+    async function refresh() {
+      if (running) return
+      running = true
+      try {
+        const result = await getNotifications()
+        if (active) { setNotifications(result); setNotificationError('') }
+      } catch (err) {
+        if (active) {
+          if (err.status === 401) onSessionExpired()
+          else setNotificationError('Notifications could not be refreshed.')
+        }
+      } finally { running = false }
+    }
+    refresh()
+    const timer = window.setInterval(refresh, 15000)
+    window.addEventListener('vlad:issues-updated', refresh)
+    window.addEventListener('focus', refresh)
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener('vlad:issues-updated', refresh); window.removeEventListener('focus', refresh) }
+  }, [onSessionExpired])
 
   useEffect(() => { applyTheme(theme); savePreference('vlad-wifi-theme', theme) }, [theme])
   useEffect(() => { setPopover(''); setQuery('') }, [view])
@@ -77,8 +104,14 @@ export default function AdminHeader({ admin, view, Icon, onNavigate, onRequestLo
     <div className="header-tools">
       <button className="header-icon-button" type="button" aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} onClick={() => setTheme((value) => value === 'dark' ? 'light' : 'dark')}><HeaderIcon name={theme === 'dark' ? 'sun' : 'moon'} Icon={Icon} /></button>
       <div className="notification-menu">
-        <button ref={notificationButton} className="header-icon-button" type="button" aria-label="Session notifications" aria-expanded={popover === 'notifications'} aria-controls="session-notifications" onClick={() => setPopover((value) => value === 'notifications' ? '' : 'notifications')}><HeaderIcon name="bell" Icon={Icon} /></button>
-        {popover === 'notifications' && <div className="header-popover notification-popover" id="session-notifications"><strong>Session notifications</strong><div><span className="header-notification-icon"><Icon name="check" /></span><p><strong>Your session is secure</strong><small>Signed in as {admin.username}. Live router alerts appear on the Dashboard.</small></p></div><button type="button" onClick={() => navigate('dashboard')}>View dashboard</button></div>}
+        <button ref={notificationButton} className="header-icon-button notification-trigger" type="button" aria-label={`Notifications${notifications ? `: ${notifications.count} issues awaiting attention` : ''}`} aria-expanded={popover === 'notifications'} aria-controls="session-notifications" onClick={() => setPopover((value) => value === 'notifications' ? '' : 'notifications')}><HeaderIcon name="bell" Icon={Icon} />{notifications && <span className="notification-count" aria-hidden="true">{notifications.count > 99 ? '99+' : notifications.count}</span>}</button>
+        {popover === 'notifications' && <div className="header-popover notification-popover" id="session-notifications"><strong>Notifications {notifications && `(${notifications.count})`}</strong>
+          {notificationError && <p className="notification-error" role="alert">{notificationError}</p>}
+          {!notifications && !notificationError && <p>Loading notifications…</p>}
+          {notifications?.count === 0 && <div><span className="header-notification-icon"><Icon name="check" /></span><p>No issues awaiting attention.</p></div>}
+          {notifications?.items.map((issue) => <button className="issue-notification" type="button" key={issue.id} onClick={() => navigate('issues')}><strong>{issue.subject}</strong><small>{issue.hostel_name} · {issue.username}{issue.room_number ? ` · Room ${issue.room_number}` : ''}</small></button>)}
+          <button type="button" onClick={() => navigate('issues')}>View all issues</button>
+        </div>}
       </div>
       <div className="dashboard-admin-menu">
         <button ref={accountButton} className="admin-profile-trigger" type="button" aria-label="Open account menu" aria-haspopup="menu" aria-expanded={popover === 'profile'} onClick={() => setPopover((value) => value === 'profile' ? '' : 'profile')}><span className="admin-profile-copy"><strong>{admin.username}</strong><small>{roleLabel}</small></span><span className="admin-avatar">{admin.username.slice(0, 1).toUpperCase()}</span></button>

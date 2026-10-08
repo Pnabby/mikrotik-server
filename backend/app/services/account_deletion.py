@@ -17,6 +17,7 @@ from app.models.customer_session import CustomerSession
 from app.models.email_otp_challenge import EmailOtpChallenge
 from app.models.payment_event import PaymentEvent
 from app.models.subscription import Subscription
+from app.models.support_issue import SupportIssue
 from app.models.transaction import Transaction
 
 
@@ -132,4 +133,5 @@ class AccountDeletionService:
         self._session.execute(
             delete(CustomerSession).where(CustomerSession.customer_id == customer_id)
         )
+        self._session.execute(delete(SupportIssue).where(SupportIssue.customer_id == customer_id))
         self._session.execute(delete(Customer).where(Customer.id == customer_id))

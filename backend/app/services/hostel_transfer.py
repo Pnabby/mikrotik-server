@@ -11,12 +11,14 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import ServiceError
 from app.core.security import PasswordHasher, PinHasher
+from app.integrations.mikrotik.client import _parse_routeros_duration
 from app.models.activation import Activation
 from app.models.admin_user import AdminUser
 from app.models.audit_log import AuditLog
 from app.models.customer import Customer
 from app.models.enums import ActivationStatus, AuditActorType, SubscriptionStatus
 from app.models.subscription import Subscription
+from app.services.profile_settings import profile_differences
 
 logger = logging.getLogger(__name__)
 
@@ -130,13 +132,15 @@ class HostelTransferService:
         # each other's newly-created destination copy.
         locked_customer = self._session.scalar(
             select(Customer).where(Customer.id == customer.id).with_for_update()
+            .execution_options(populate_existing=True)
         )
         if locked_customer is None:
             raise ServiceError(status.HTTP_404_NOT_FOUND, "Customer was not found.")
         customer = locked_customer
         source_router_id = customer.router_id
         if destination_router_id == source_router_id:
-            raise ServiceError(status.HTTP_409_CONFLICT, "The customer is already at this hostel.")
+            raise ServiceError(status.HTTP_409_CONFLICT, "The customer is already at this hostel.",
+                               error_code="hostel_already_selected")
         unresolved_activation = next(
             iter(
                 self._session.scalars(
@@ -152,21 +156,35 @@ class HostelTransferService:
             raise ServiceError(
                 status.HTTP_409_CONFLICT,
                 "Finish the pending plan activation before changing hostels.",
+                error_code="hostel_activation_pending",
             )
 
         source_user = source_client.get_hotspot_user(customer.username)
         if source_user is None:
-            raise ServiceError(status.HTTP_409_CONFLICT, "The source network account is missing.")
+            raise ServiceError(status.HTTP_409_CONFLICT, "The source network account is missing.",
+                               error_code="hostel_source_user_missing")
         if destination_client.get_hotspot_user(customer.username) is not None:
             raise ServiceError(
                 status.HTTP_409_CONFLICT,
                 "That username already exists at the destination hostel.",
+                error_code="hostel_username_conflict",
             )
         profile = str(source_user.get("profile") or "").strip()
-        if not profile or destination_client.get_hotspot_user_profile(profile) is None:
+        destination_profile = destination_client.get_hotspot_user_profile(profile) if profile else None
+        if destination_profile is None:
             raise ServiceError(
                 status.HTTP_409_CONFLICT,
                 "The customer's network profile is unavailable at the destination hostel.",
+                error_code="hostel_profile_missing",
+            )
+        source_profile = source_client.get_hotspot_user_profile(profile)
+        if source_profile is None:
+            raise ServiceError(status.HTTP_409_CONFLICT, "The source profile is missing.",
+                               error_code="hostel_profile_missing")
+        if profile_differences(source_profile, destination_profile):
+            raise ServiceError(
+                status.HTTP_409_CONFLICT, "The hostel profiles have different network settings.",
+                error_code="hostel_profile_mismatch",
             )
 
         # This must happen before reading counters: RouterOS writes a terminated
@@ -175,13 +193,20 @@ class HostelTransferService:
         if settled_user is None:
             raise ServiceError(status.HTTP_409_CONFLICT, "The source network account is missing.")
         byte_limits = _remaining_byte_limits(settled_user)
+        restored_user = _user_with_remaining_uptime(settled_user)
+        transfer_user = {**restored_user, "server": "all"}
+        # These bindings refer to the old subnet. The new hostel assigns its own IP/routes.
+        transfer_user.pop("address", None)
+        transfer_user.pop("routes", None)
+        if any(remaining == 0 for remaining in byte_limits.values()):
+            transfer_user["disabled"] = "yes"
 
         try:
             copied_user = destination_client.create_hotspot_user_copy(
-                settled_user,
+                transfer_user,
                 byte_limits=byte_limits,
             )
-            if not _copy_matches(settled_user, copied_user, byte_limits):
+            if not _copy_matches(transfer_user, copied_user, byte_limits):
                 raise RuntimeError("Destination HotSpot user did not match the transfer.")
         except Exception as exc:
             # The add may have reached RouterOS even when its read-back failed.
@@ -203,6 +228,7 @@ class HostelTransferService:
                 raise ServiceError(
                     status.HTTP_502_BAD_GATEWAY,
                     "The previous hostel could not confirm account removal.",
+                    error_code="hostel_transfer_unconfirmed",
                 ) from exc
             if not source_deleted:
                 self._remove_destination_copy(destination_client, customer.username)
@@ -249,7 +275,7 @@ class HostelTransferService:
             self._restore_source_after_database_failure(
                 source_client,
                 destination_client,
-                settled_user,
+                restored_user,
                 byte_limits,
             )
             raise ServiceError(
@@ -283,11 +309,25 @@ class HostelTransferService:
         byte_limits: dict[str, int | None],
     ) -> None:
         username = str(settled_user.get("name") or "")
-        self._remove_destination_copy(destination_client, username)
         try:
-            source_client.create_hotspot_user_copy(settled_user, byte_limits=byte_limits)
+            restored = source_client.create_hotspot_user_copy(settled_user, byte_limits=byte_limits)
+            if not _copy_matches(settled_user, restored, byte_limits):
+                raise RuntimeError("Source restoration did not match.")
         except Exception:
             logger.critical("Could not restore source HotSpot user %s", username, exc_info=True)
+            return
+        self._remove_destination_copy(destination_client, username)
+
+
+def _user_with_remaining_uptime(user: dict[str, str]) -> dict[str, str]:
+    result = dict(user)
+    limit = _parse_routeros_duration(user.get("limit-uptime"))
+    if limit:
+        remaining = max(0, limit - _parse_routeros_duration(user.get("uptime")))
+        result["limit-uptime"] = f"{max(1, remaining)}s"
+        if remaining == 0:
+            result["disabled"] = "yes"
+    return result
 
 
 def _remaining_byte_limits(user: dict[str, str]) -> dict[str, int | None]:
@@ -313,6 +353,12 @@ def _copy_matches(
     for field in ("name", "password", "profile", "comment", "disabled"):
         if str(destination.get(field) or "") != str(source.get(field) or ""):
             return False
+    if source.get("server") and destination.get("server") != source["server"]:
+        return False
+    if _parse_routeros_duration(source.get("limit-uptime")) != _parse_routeros_duration(
+        destination.get("limit-uptime")
+    ):
+        return False
     for field, remaining in byte_limits.items():
         expected = 0 if remaining is None else max(1, remaining)
         if _router_int(destination.get(field)) != expected:

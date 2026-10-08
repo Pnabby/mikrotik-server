@@ -205,7 +205,17 @@ export default function ProfilePage() {
       if (error instanceof AccountApiError && error.status === 401) {
         setTransferError('The PIN is incorrect. Your hostel was not changed.')
       } else if (error instanceof AccountApiError && error.status === 409) {
-        setTransferError('This account cannot be moved to that hostel. Its network plan may not be available there.')
+        const reasons = {
+          hostel_already_selected: 'Your account is already registered at this hostel.',
+          hostel_activation_pending: 'Finish your pending plan activation before moving hostels.',
+          hostel_username_conflict: 'Your username already exists there. Please raise an issue so an admin can help.',
+          hostel_source_user_missing: 'Your network account needs an admin repair. Please raise an issue.',
+          hostel_profile_missing: 'Your plan is missing at that hostel. Ask an admin to match the hostel plans in the Profile catalogue.',
+          hostel_profile_mismatch: 'The hostels have different speed, device, or timeout settings for your plan. Ask an admin to match them in the Profile catalogue.',
+        }
+        setTransferError(reasons[error.code] || 'This account cannot be moved yet. Please raise an issue so an admin can help.')
+      } else if (error instanceof AccountApiError && error.code === 'hostel_transfer_unconfirmed') {
+        setTransferError('The routers could not confirm the move. Please raise an issue so an admin can check your account before you retry.')
       } else if (error instanceof AccountApiError && [502, 503].includes(error.status)) {
         setTransferError('A hostel router is temporarily unavailable. Your account was not moved; please try again.')
       } else {
@@ -337,7 +347,7 @@ export default function ProfilePage() {
                 <input autoComplete="current-password" id="hostel-transfer-pin" inputMode="numeric" maxLength={6} placeholder="6-digit PIN" type="password" value={transferForm.pin} onChange={(event) => { setTransferForm((current) => ({ ...current, pin: event.target.value.replace(/\D/g, '').slice(0, 6) })); setTransferError('') }} />
               </label>
               <small>Any data already used is deducted before your remaining allowance moves to the new hostel.</small>
-              {transferError && <p className="portal-modal-error" role="alert">{transferError}</p>}
+              {transferError && <p className="portal-modal-error" role="alert">{transferError} <a href="/issues">Raise an issue</a></p>}
               <div className="portal-modal-actions">
                 <button disabled={transferring} type="button" onClick={closeTransferModal}>Cancel</button>
                 <button className="confirm" disabled={transferring} type="submit">{transferring ? 'Moving account...' : 'Confirm hostel move'}</button>

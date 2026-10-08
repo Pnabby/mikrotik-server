@@ -376,6 +376,31 @@ class MikroTikClient:
         )
         return self.get_hotspot_user(normalized_username)
 
+    def configure_hotspot_user_profile(
+        self, name: str, settings: dict[str, str], *, template: dict[str, str] | None = None
+    ) -> dict[str, str]:
+        """Apply portable settings while preserving router-local dependencies."""
+        allowed = {"rate-limit", "shared-users", "session-timeout", "idle-timeout",
+                   "keepalive-timeout"}
+        if set(settings) - allowed:
+            raise ValueError("Unsupported profile settings.")
+        resource = self.connect().get_resource("/ip/hotspot/user/profile")
+        existing = self.get_hotspot_user_profile(name)
+        if existing is None:
+            if template is None:
+                raise RouterOsApiError("A source profile is required to create this profile.")
+            portable = {"on-login", "on-logout", "add-mac-cookie", "mac-cookie-timeout",
+                        "transparent-proxy", "open-status-page"}
+            attributes = {key: str(value) for key, value in template.items()
+                          if key in portable and value is not None}
+            resource.add(**{"name": name, **attributes, **settings})
+        else:
+            resource.set(**{"id": existing["id"], **settings})
+        saved = self.get_hotspot_user_profile(name)
+        if saved is None:
+            raise RouterOsApiError("Profile settings could not be read back.")
+        return saved
+
     def create_hotspot_user_copy(
         self,
         user: dict[str, str],
