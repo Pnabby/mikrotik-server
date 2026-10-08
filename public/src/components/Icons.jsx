@@ -57,6 +57,14 @@ export function ChatIcon() {
   return <Icon><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8Z" /><path d="M8 10h.01M12 10h.01M16 10h.01" /></Icon>
 }
 
+export function SendIcon() {
+  return <Icon><path d="m22 2-7 20-4-9-9-4 20-7ZM22 2 11 13" /></Icon>
+}
+
+export function ClockIcon() {
+  return <Icon><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></Icon>
+}
+
 export function GlobeIcon() {
   return <Icon><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" /><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" /></Icon>
 }
