@@ -387,7 +387,7 @@ class AdminProfileService:
         package.duration_seconds = update.duration_seconds
         package.data_limit_bytes = update.data_limit_bytes
         package.device_limit = (
-            update.router_settings.shared_users if update.router_settings else update.device_limit
+            update.router_settings.device_limit if update.router_settings else update.device_limit
         )
         package.is_promotional = update.is_promotional
         package.is_active = update.is_visible
@@ -528,7 +528,11 @@ class AdminProfileService:
             ),
             available_on_router=raw_profile is not None,
             rate_limit=_profile_value(raw_profile, "rate-limit"),
-            shared_users=_positive_int(raw_profile, "shared-users"),
+            shared_users=(
+                "unlimited"
+                if (_profile_value(raw_profile, "shared-users") or "").lower() == "unlimited"
+                else _positive_int(raw_profile, "shared-users")
+            ),
             session_timeout=_profile_value(raw_profile, "session-timeout"),
             idle_timeout=_profile_value(raw_profile, "idle-timeout"),
             address_pool=_profile_value(raw_profile, "address-pool"),

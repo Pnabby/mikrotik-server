@@ -41,6 +41,13 @@ The synchronous execution behavior is documented in the
 Read-only probes establish API access and command support; write permissions are still
 enforced by RouterOS when the guarded account mutations run.
 
+Profile comparisons accept the router-reported `shared-users=unlimited` value as a
+distinct limit. Two unlimited profiles can match; unlimited and a finite device count
+remain a mismatch. Unknown or invalid device limits also require admin correction
+instead of causing a server error. The admin profile editor preserves unlimited settings
+and can apply them across hostels; the customer catalogue stores that allowance as a
+null device limit. Speed and timeout checks remain part of every transfer.
+
 The initial snapshot commits **before any router write**. Each mutation has a committed
 intent. The source receives a unique operation marker and is temporarily disabled,
 then its sessions/cookies are removed and usage is settled. This stops reconnects

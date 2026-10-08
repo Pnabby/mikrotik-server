@@ -355,8 +355,9 @@ def test_disconnect_clears_pool_even_when_close_fails():
 
 
 @pytest.mark.parametrize("actor", ["customer", "admin"])
+@pytest.mark.parametrize("shared_users", ["1", "unlimited"])
 def test_both_entry_points_probe_before_mutation_and_move_despite_cached_offline_status(
-    routers, monkeypatch, actor
+    routers, monkeypatch, actor, shared_users
 ):
     session, source, destination = routers
     for router in session.scalars(select(Router)):
@@ -373,6 +374,7 @@ def test_both_entry_points_probe_before_mutation_and_move_despite_cached_offline
 
     monkeypatch.setattr(module, "mikrotik_client_context", context)
     for side, client in (("source", source), ("destination", destination)):
+        monkeypatch.setattr(client, "get_hotspot_user_profile", lambda _: {"name": "paid", "shared-users": shared_users})
         probe = client.check_transfer_availability
 
         def record_probe(side=side, probe=probe):

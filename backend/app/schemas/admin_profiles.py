@@ -4,6 +4,7 @@ import re
 import uuid
 from datetime import datetime
 from decimal import Decimal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -88,7 +89,7 @@ class AdminRouterProfileResponse(BaseModel):
     is_registration_profile: bool
     available_on_router: bool
     rate_limit: str | None
-    shared_users: int | None
+    shared_users: int | Literal["unlimited"] | None
     session_timeout: str | None
     idle_timeout: str | None
     address_pool: str | None
@@ -99,10 +100,19 @@ class AdminRouterProfileSettings(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
     rate_limit: str = Field(default="", max_length=200)
-    shared_users: int = Field(default=1, ge=1, le=1000)
+    shared_users: Annotated[int, Field(ge=1, le=1000)] | Literal["unlimited"] = 1
     session_timeout: str = Field(default="0s", max_length=40)
     idle_timeout: str = Field(default="none", max_length=40)
     keepalive_timeout: str = Field(default="2m", max_length=40)
+
+    @field_validator("shared_users", mode="before")
+    @classmethod
+    def normalize_shared_users(cls, value):
+        return value.strip().lower() if isinstance(value, str) else value
+
+    @property
+    def device_limit(self) -> int | None:
+        return None if self.shared_users == "unlimited" else self.shared_users
 
     @field_validator("rate_limit")
     @classmethod

@@ -59,11 +59,60 @@ def test_equivalent_router_speed_and_timeout_formats_match():
     assert profile_differences({"rate-limit": ""}, {"rate-limit": "0/0"}) == []
 
 
+@pytest.mark.parametrize("source,destination", [
+    ("unlimited", "unlimited"),
+    (" UNLIMITED ", "unlimited"),
+    ("003", "3"),
+])
+def test_matching_shared_user_limits_support_router_unlimited_value(source, destination):
+    assert profile_differences({"shared-users": source}, {"shared-users": destination}) == []
+
+
+@pytest.mark.parametrize("source,destination", [
+    ("unlimited", "1"),
+    ("2", "unlimited"),
+    ("2", "3"),
+    ("invalid", "invalid"),
+    ("invalid", "1"),
+    ("0", "0"),
+    ("-1", "-1"),
+])
+def test_different_or_unrecognized_shared_user_limits_block_matching(source, destination):
+    assert profile_differences({"shared-users": source}, {"shared-users": destination}) == ["shared-users"]
+
+
+def test_other_profile_mismatches_still_block_with_unlimited_devices():
+    assert profile_differences(
+        {"shared-users": "unlimited", "rate-limit": "5M/10M"},
+        {"shared-users": "unlimited", "rate-limit": "5M/5M"},
+    ) == ["rate-limit"]
+
+
+@pytest.mark.parametrize("value", ["unlimited", " UNLIMITED "])
+def test_admin_router_settings_preserve_unlimited_instead_of_a_numeric_limit(value):
+    settings = AdminRouterProfileSettings(shared_users=value)
+    assert settings.shared_users == "unlimited"
+    assert settings.device_limit is None
+    assert settings.router_values()["shared-users"] == "unlimited"
+    assert settings.model_dump()["shared_users"] == "unlimited"
+
+
+@pytest.mark.parametrize("value", [1, "2", 1000])
+def test_admin_numeric_shared_user_limits_keep_numeric_catalogue_limit(value):
+    settings = AdminRouterProfileSettings(shared_users=value)
+    assert settings.device_limit == int(value)
+    assert settings.router_values()["shared-users"] == str(int(value))
+
+
 @pytest.mark.parametrize(
     "settings",
     [
         {"rate_limit": "10 Mbps"},
         {"shared_users": 0},
+        {"shared_users": -1},
+        {"shared_users": 1001},
+        {"shared_users": "unknown"},
+        {"shared_users": "none"},
         {"session_timeout": "tomorrow"},
         {"rate_limit": "1M/2M; /system reboot"},
         {"idle_timeout": "00:99:00"},
@@ -127,6 +176,53 @@ def test_existing_profile_speed_and_devices_are_written_to_router_and_catalogue(
     assert resource.records[0]["address-pool"] == "local-pool"
     assert saved.download_speed == "8 Mbps"
     assert saved.device_limit == 2
+
+
+def test_admin_can_change_finite_profile_to_unlimited_and_read_it_back(support_db):
+    session, _, admin, source, _ = support_db
+    client, resource = client_for([{
+        "id": "*1", "name": "paid", "address-pool": "local-pool", "shared-users": "2",
+    }])
+    service = AdminProfileService(session, Settings())
+    service.save_profile(
+        router=source, router_client=client, mikrotik_profile="paid",
+        update=AdminProfileUpdate(
+            display_name="Weekly", amount=10,
+            router_settings=AdminRouterProfileSettings(shared_users=2),
+        ),
+        admin=admin, ip_address=None,
+    )
+    saved = service.save_profile(
+        router=source, router_client=client, mikrotik_profile="paid",
+        update=AdminProfileUpdate(
+            display_name="Weekly", amount=10, device_limit=2,
+            router_settings=AdminRouterProfileSettings(shared_users="unlimited"),
+        ),
+        admin=admin, ip_address=None,
+    )
+    assert resource.records[0]["shared-users"] == "unlimited"
+    assert resource.records[0]["address-pool"] == "local-pool"
+    assert saved.shared_users == "unlimited" and saved.device_limit is None
+    assert saved.amount == 10
+    listed = service.list_profiles(source, client)
+    assert listed[0].shared_users == "unlimited" and listed[0].device_limit is None
+
+
+def test_admin_can_match_unlimited_profile_at_another_hostel(support_db):
+    session, _, admin, source, destination = support_db
+    client, resource = client_for([])
+    saved = AdminProfileService(session, Settings()).save_profile(
+        router=destination, router_client=client, mikrotik_profile="paid",
+        update=AdminProfileUpdate(
+            display_name="Weekly", amount=10, source_router_id=source.id,
+            router_settings=AdminRouterProfileSettings(shared_users="unlimited"),
+        ),
+        admin=admin, ip_address=None,
+        source_profile={"name": "paid", "shared-users": "unlimited", "on-login": ":log info $user;"},
+    )
+    assert saved.shared_users == "unlimited" and saved.device_limit is None
+    assert resource.writes[0]["shared-users"] == "unlimited"
+    assert resource.writes[0]["on-login"] == ":log info $user;"
 
 
 def test_missing_profile_requires_an_explicit_source(support_db):

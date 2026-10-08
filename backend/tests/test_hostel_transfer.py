@@ -407,6 +407,36 @@ def test_mismatched_profiles_do_not_disconnect_source(field, changed):
     assert "clear-auth" not in source.events
 
 
+def test_matching_unlimited_device_profiles_transfer_remaining_allowances():
+    original_comment = "activation=ACT-original;login=2026-10-01T12:34:56Z"
+    source = FakeTransferClient(_user(
+        comment=original_comment,
+        **{"limit-bytes-total": "1000", "bytes-in": "400", "limit-uptime": "2h", "uptime": "30m"},
+    ))
+    destination = FakeTransferClient()
+    source.get_hotspot_user_profile = lambda _: {"name": "paid", "shared-users": "unlimited"}
+    destination.get_hotspot_user_profile = lambda _: {"name": "paid", "shared-users": "unlimited"}
+    result = _move(source, destination)
+    assert result.router_id == "new-hostel"
+    assert result.remaining_data_limit_bytes == 600
+    assert source.user is None and destination.user["disabled"] == "no"
+    assert destination.user["limit-uptime"] == "5400s"
+    assert destination.user["comment"] == original_comment
+
+
+@pytest.mark.parametrize("source_limit,destination_limit", [("unlimited", "1"), ("2", "unlimited"), ("invalid", "invalid")])
+def test_unlimited_or_invalid_profile_mismatch_does_not_change_accounts(source_limit, destination_limit):
+    source = FakeTransferClient(_user())
+    destination = FakeTransferClient()
+    source.get_hotspot_user_profile = lambda _: {"name": "paid", "shared-users": source_limit}
+    destination.get_hotspot_user_profile = lambda _: {"name": "paid", "shared-users": destination_limit}
+    with pytest.raises(ServiceError) as error:
+        _move(source, destination)
+    assert error.value.error_code == "hostel_profile_mismatch"
+    assert source.user["disabled"] == "no" and destination.user is None
+    assert "clear-auth" not in source.events and "mutate-user" not in source.events
+
+
 def test_failed_destination_readback_preserves_both_frozen_accounts_for_review():
     source = FakeTransferClient(_user())
     destination = FakeTransferClient()

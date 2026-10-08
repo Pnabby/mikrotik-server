@@ -256,7 +256,8 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
     applyRouterSettings: Boolean(profile.bulk_mode),
     sourceRouterId: profile.source_router_id || '',
     rateLimit: routerDefaults.rate_limit || '',
-    sharedUsers: routerDefaults.shared_users || 1,
+    sharedUsers: routerDefaults.shared_users === 'unlimited' ? 1 : routerDefaults.shared_users || 1,
+    unlimitedSharedUsers: routerDefaults.shared_users === 'unlimited',
     sessionTimeout: routerDefaults.session_timeout || '0s',
     idleTimeout: routerDefaults.idle_timeout || 'none',
     keepaliveTimeout: routerDefaults.keepalive_timeout || '2m',
@@ -283,7 +284,8 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
       deviceLimit: selected.device_limit || '', downloadSpeed: selected.download_speed || '',
       isPromotional: Boolean(selected.is_promotional), isVisible: Boolean(selected.is_visible),
       applyRouterSettings: true, sourceRouterId: selected.router_id,
-      rateLimit: selected.rate_limit || '', sharedUsers: selected.shared_users || 1,
+      rateLimit: selected.rate_limit || '', sharedUsers: selected.shared_users === 'unlimited' ? 1 : selected.shared_users || 1,
+      unlimitedSharedUsers: selected.shared_users === 'unlimited',
       sessionTimeout: selected.session_timeout || '0s', idleTimeout: selected.idle_timeout || 'none',
       keepaliveTimeout: selected.keepalive_timeout || '2m',
     }))
@@ -312,6 +314,12 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
       setError('Enable router settings and choose a source hostel to create the missing profiles.')
       return
     }
+    if (form.applyRouterSettings && !form.unlimitedSharedUsers && (
+      !Number.isInteger(Number(form.sharedUsers)) || Number(form.sharedUsers) < 1 || Number(form.sharedUsers) > 1000
+    )) {
+      setError('Enter a simultaneous device limit between 1 and 1000, or select unlimited devices.')
+      return
+    }
 
     setSaving(true)
     try {
@@ -326,7 +334,7 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
         data_limit_bytes: form.dataLimitGb === ''
           ? null
           : Math.round(Number(form.dataLimitGb) * 1024 ** 3),
-        device_limit: form.applyRouterSettings ? Number(form.sharedUsers) : form.deviceLimit === '' ? null : Number(form.deviceLimit),
+        device_limit: form.applyRouterSettings ? (form.unlimitedSharedUsers ? null : Number(form.sharedUsers)) : form.deviceLimit === '' ? null : Number(form.deviceLimit),
         download_speed: form.downloadSpeed.trim() || null,
         is_promotional: profile.is_registration_profile ? false : form.isPromotional,
         is_visible: profile.is_registration_profile ? false : form.isVisible,
@@ -334,7 +342,7 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
         ...(form.applyRouterSettings ? {
           source_router_id: form.sourceRouterId || null,
           router_settings: {
-            rate_limit: form.rateLimit.trim(), shared_users: Number(form.sharedUsers),
+            rate_limit: form.rateLimit.trim(), shared_users: form.unlimitedSharedUsers ? 'unlimited' : Number(form.sharedUsers),
             session_timeout: form.sessionTimeout.trim(), idle_timeout: form.idleTimeout.trim(),
             keepalive_timeout: form.keepaliveTimeout.trim(),
           },
@@ -396,7 +404,7 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
           <Icon name={profile.configuration_consistent ? 'check' : 'alert'} />
           <div><strong>Match plans across {profile.hostel_count} hostels</strong><p>{profile.available_hostels} of {profile.hostel_count} routers have this profile. Choose a hostel below to use its plan settings, then save to apply them across all active hostels. Missing profiles will be created from that source.</p></div>
         </div>}
-        {profile.hostel_profiles && <div className="profile-comparison"><table><thead><tr><th>Hostel</th><th>Upload / download</th><th>Devices</th><th>Session timeout</th><th>Match from</th></tr></thead><tbody>{profile.hostel_profiles.map((entry) => <tr key={entry.router_id}><td>{entry.hostel_name}</td><td>{entry.available_on_router ? entry.rate_limit || 'Unlimited' : 'Missing profile'}</td><td>{entry.shared_users ?? '—'}</td><td>{entry.session_timeout || 'No limit'}</td><td>{entry.available_on_router && <button type="button" disabled={saving} onClick={() => useHostelSettings(entry)}>Use settings</button>}</td></tr>)}</tbody></table></div>}
+        {profile.hostel_profiles && <div className="profile-comparison"><table><thead><tr><th>Hostel</th><th>Upload / download</th><th>Devices</th><th>Session timeout</th><th>Match from</th></tr></thead><tbody>{profile.hostel_profiles.map((entry) => <tr key={entry.router_id}><td>{entry.hostel_name}</td><td>{entry.available_on_router ? entry.rate_limit || 'Unlimited' : 'Missing profile'}</td><td>{entry.shared_users === 'unlimited' ? 'Unlimited' : entry.shared_users ?? '—'}</td><td>{entry.session_timeout || 'No limit'}</td><td>{entry.available_on_router && <button type="button" disabled={saving} onClick={() => useHostelSettings(entry)}>Use settings</button>}</td></tr>)}</tbody></table></div>}
 
         <form className="profile-editor-form" onSubmit={submit}>
           <section>
@@ -463,7 +471,7 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
               </label>
               <label className="editor-field">
                 <span>Device limit <em>Optional</em></span>
-                <input disabled={form.applyRouterSettings} max="1000" min="1" name="deviceLimit" placeholder="Unlimited" step="1" type="number" value={form.applyRouterSettings ? form.sharedUsers : form.deviceLimit} onChange={change} />
+                <input disabled={form.applyRouterSettings} max="1000" min="1" name="deviceLimit" placeholder="Unlimited" step="1" type="number" value={form.applyRouterSettings ? (form.unlimitedSharedUsers ? '' : form.sharedUsers) : form.deviceLimit} onChange={change} />
                 {form.applyRouterSettings && <small>Uses the simultaneous device limit configured below.</small>}
               </label>
             </div>
@@ -479,7 +487,8 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
             <label className="router-settings-option"><input checked={form.applyRouterSettings} name="applyRouterSettings" type="checkbox" onChange={change} />Apply these settings to the router{profile.bulk_mode ? 's at all active hostels' : ''}</label>
             {form.applyRouterSettings && <>
               <label className="editor-field"><span>Upload / download rate limit</span><input maxLength={200} name="rateLimit" placeholder="e.g. 5M/10M" value={form.rateLimit} onChange={change} /><small>Upload first, download second. Leave blank for unlimited speed. The customer download speed updates from this value.</small></label>
-              <label className="editor-field"><span>Simultaneous devices on the router</span><input required min={1} max={1000} type="number" name="sharedUsers" value={form.sharedUsers} onChange={change} /><small>This is the router&apos;s shared-users limit.</small></label>
+              <label className="router-settings-option"><input checked={form.unlimitedSharedUsers} name="unlimitedSharedUsers" type="checkbox" onChange={change} />Unlimited simultaneous devices</label>
+              <label className="editor-field"><span>Simultaneous devices on the router</span><input disabled={form.unlimitedSharedUsers} required={!form.unlimitedSharedUsers} min={1} max={1000} placeholder="Unlimited" type="number" name="sharedUsers" value={form.unlimitedSharedUsers ? '' : form.sharedUsers} onChange={change} /><small>{form.unlimitedSharedUsers ? 'No simultaneous device limit will be applied to this router profile.' : 'RouterOS allows at most this many simultaneous devices.'}</small></label>
               <label className="editor-field"><span>Session timeout</span><input required maxLength={40} name="sessionTimeout" value={form.sessionTimeout} onChange={change} /><small>Use 0s for no session limit, or a duration such as 1h.</small></label>
               <div className="editor-two-columns"><label className="editor-field"><span>Idle timeout</span><input required maxLength={40} name="idleTimeout" value={form.idleTimeout} onChange={change} /></label><label className="editor-field"><span>Keepalive timeout</span><input required maxLength={40} name="keepaliveTimeout" value={form.keepaliveTimeout} onChange={change} /></label></div>
               <p className="customer-delete-help">These settings apply to every user of this router profile when they reconnect.</p>
