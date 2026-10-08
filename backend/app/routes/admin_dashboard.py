@@ -38,6 +38,7 @@ from app.services.account_deletion import AccountDeletionService
 from app.services.admin_dashboard import AdminDashboardService
 from app.services.admin_messaging import AdminMessagingService
 from app.services.hostel_transfer import HostelTransferService
+from app.services.hostel_transfer_availability import resolve_transfer_routers
 
 router = APIRouter(prefix="/api/admin/dashboard", tags=["admin dashboard"])
 SessionDependency = Annotated[Session, Depends(get_db_session)]
@@ -217,11 +218,9 @@ def transfer_customer_hostel(
     session: SessionDependency,
 ) -> AdminCustomerTransferResponse:
     customer = _editable_customer(customer_id, admin, session)
-    try:
-        source_router = get_router(session, customer.router_id)
-        destination_router = get_router(session, payload.destination_router_id)
-    except UnknownRouterError as exc:
-        raise ServiceError(status.HTTP_503_SERVICE_UNAVAILABLE, ROUTER_UNAVAILABLE_DETAIL) from exc
+    source_router, destination_router = resolve_transfer_routers(
+        session, customer.router_id, payload.destination_router_id
+    )
     with (
         mikrotik_client_context(source_router) as source_client,
         mikrotik_client_context(destination_router) as destination_client,

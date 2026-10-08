@@ -130,11 +130,31 @@ class MikroTikClient:
         return self._api
 
     def disconnect(self) -> None:
-        if self._pool is not None:
-            self._pool.disconnect()
-        self._pool = None
-        self._api = None
-        self._dhcp_lease_hints_by_mac = None
+        try:
+            if self._pool is not None:
+                self._pool.disconnect()
+        finally:
+            self._pool = None
+            self._api = None
+            self._dhcp_lease_hints_by_mac = None
+
+    def check_transfer_availability(self) -> None:
+        """Read-only checks using the same authenticated session as the move."""
+        api = self.connect()
+        if not api.get_resource("/system/identity").get():
+            raise RouterOsApiError("Router identity was not confirmed.")
+        for path in (
+            "/ip/hotspot/user", "/ip/hotspot/user/profile",
+            "/ip/hotspot/active", "/ip/hotspot/cookie",
+        ):
+            api.get_resource(path).call("print", {"count-only": ""})
+        # Exercise the synchronous scripting command without changing accounts,
+        # sessions or configuration. A ping/read alone cannot establish this.
+        result = api.get_resource("/").call(
+            "execute", {"script": ':put "hostel-transfer-ready"', "as-string": ""}
+        )
+        if str(result.done_message.get("ret", "")).strip() != "hostel-transfer-ready":
+            raise RouterOsApiError("Synchronous transfer commands were not confirmed.")
 
     def get_system_identity(self) -> list[dict[str, str]]:
         api = self.connect()
