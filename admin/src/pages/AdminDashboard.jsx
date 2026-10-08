@@ -2015,9 +2015,14 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
       } else if (requestError instanceof AdminApiError && requestError.status === 422) {
         setActionError('Enter a valid email and phone number, for example 024 123 4567.')
       } else if (requestError instanceof AdminApiError && requestError.code === 'hostel_transfer_unconfirmed') {
-        setActionError('The source router could not confirm removal. Inspect the account on both routers before retrying the move.')
+        setActionError('The move needs recovery. Check its recovery state and the account on both routers before retrying.')
+      } else if (requestError instanceof AdminApiError && requestError.code && (
+        requestError.code.startsWith('hostel_source_router_') || requestError.code.startsWith('hostel_destination_router_') ||
+        ['hostel_both_routers_not_ready', 'hostel_transfer_storage_unavailable', 'hostel_transfer_not_configured', 'router_not_configured', 'router_request_failed'].includes(requestError.code)
+      )) {
+        setActionError(requestError.detail || 'The move could not be started. Check the server configuration.')
       } else if (requestError instanceof AdminApiError && [502, 503].includes(requestError.status)) {
-        setActionError('A hostel router is unavailable. The action was not completed.')
+        setActionError('The server could not complete the action. Check the API response and server logs for the cause.')
       } else {
         setActionError('The customer action could not be completed. Please try again.')
       }

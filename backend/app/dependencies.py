@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from fastapi.exceptions import RequestValidationError
+from routeros_api.exceptions import RouterOsApiConnectionError, RouterOsApiError
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import ServiceError
@@ -17,6 +19,8 @@ from app.integrations.mikrotik.registry import (
     get_router,
 )
 from app.services.hotspot import HotspotService
+
+logger = logging.getLogger(__name__)
 
 ROUTER_UNAVAILABLE_DETAIL = (
     "The router service is temporarily unavailable. Please try again later."
@@ -41,9 +45,10 @@ def mikrotik_client_context(
     try:
         config = MikroTikConfig.from_env(router)
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Router service is not configured.",
+        raise ServiceError(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Router service is not configured.",
+            error_code="router_not_configured",
         ) from exc
 
     client = MikroTikClient(config)
@@ -51,13 +56,24 @@ def mikrotik_client_context(
         yield client
     except (HTTPException, RequestValidationError, ServiceError):
         raise
-    except Exception as exc:
+    except (OSError, RouterOsApiConnectionError) as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=ROUTER_UNAVAILABLE_DETAIL,
         ) from exc
+    except RouterOsApiError:
+        raise ServiceError(
+            status.HTTP_502_BAD_GATEWAY,
+            "Router API operation failed.",
+            error_code="router_request_failed",
+        ) from None
     finally:
-        client.disconnect()
+        try:
+            client.disconnect()
+        except (OSError, RouterOsApiError):
+            # Closing a socket cannot turn a confirmed move into a failure or
+            # replace the original error with a misleading availability error.
+            logger.warning("Router API disconnect failed: router_id=%s", router.router_id)
 
 
 RouterDependency = Annotated[RouterDefinition, Depends(resolve_router)]

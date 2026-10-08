@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 from cryptography.fernet import InvalidToken
 from fastapi import status
+from routeros_api.exceptions import RouterOsApiError
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -19,6 +20,7 @@ from app.models.customer import Customer
 from app.models.enums import AuditActorType, SubscriptionStatus
 from app.models.hostel_transfer import HostelTransferOperation
 from app.models.subscription import Subscription
+from app.services.hostel_transfer_availability import check_transfer_routers, router_failure_reason
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +108,7 @@ class HostelTransferRecovery:
         self.session = session
         self.cipher = cipher
 
-    def run(self, operation, source, destination, *, raise_errors=True):
+    def run(self, operation, source, destination, *, raise_errors=True, routers_checked=False):
         operation_id = operation.id
         try:
             if not operation.is_active:
@@ -115,6 +117,8 @@ class HostelTransferRecovery:
                 raise ManualTransferReview(operation.error_code or "manual_review")
             operation.attempt_count += 1
             self._checkpoint(operation, operation.stage)
+            if not routers_checked:
+                check_transfer_routers(source, destination)
             snapshot = self.cipher.decrypt(operation.id, operation.encrypted_snapshot)
             self._drive(operation, snapshot, source, destination)
             return operation
@@ -137,7 +141,25 @@ class HostelTransferRecovery:
                     "Transfer will be reconciled when the database is available.",
                     error_code="hostel_transfer_unconfirmed",
                 ) from None
-        except Exception:  # noqa: BLE001 - RouterOS failures have no stable common exception type.
+        except ServiceError as exc:
+            # A recovery preflight can fail before either account is touched.
+            # Retain the journal and its direction, then retry when both APIs work.
+            self.record_failure(operation_id, exc.error_code or "router_preflight_failed")
+            if raise_errors:
+                raise ServiceError(
+                    status.HTTP_502_BAD_GATEWAY,
+                    "Transfer requires reconciliation.",
+                    error_code="hostel_transfer_unconfirmed",
+                ) from None
+        except (OSError, RouterOsApiError) as exc:
+            self.record_failure(operation_id, f"router_{router_failure_reason(exc)}", rollback=True)
+            if raise_errors:
+                raise ServiceError(
+                    status.HTTP_502_BAD_GATEWAY,
+                    "Transfer requires reconciliation.",
+                    error_code="hostel_transfer_unconfirmed",
+                ) from None
+        except Exception:  # noqa: BLE001 - Unexpected adapter failures must remain recoverable.
             self.record_failure(operation_id, "router_operation_unconfirmed", rollback=True)
             if raise_errors:
                 raise ServiceError(

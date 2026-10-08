@@ -217,8 +217,13 @@ export default function ProfilePage() {
         setTransferError(reasons[error.code] || 'This account cannot be moved yet. Please raise an issue so an admin can help.')
       } else if (error instanceof AccountApiError && error.code === 'hostel_transfer_unconfirmed') {
         setTransferError('The routers could not confirm the move. Please raise an issue so an admin can check your account before you retry.')
+      } else if (error instanceof AccountApiError && error.code && (
+        error.code.startsWith('hostel_source_router_') || error.code.startsWith('hostel_destination_router_') ||
+        ['hostel_both_routers_not_ready', 'hostel_transfer_storage_unavailable', 'hostel_transfer_not_configured', 'router_not_configured', 'router_request_failed'].includes(error.code)
+      )) {
+        setTransferError(error.detail || 'The move could not be started. Please contact support.')
       } else if (error instanceof AccountApiError && [502, 503].includes(error.status)) {
-        setTransferError('A hostel router is temporarily unavailable. Your account was not moved; please try again.')
+        setTransferError('The server could not complete the move. Please raise an issue so an admin can check the cause.')
       } else {
         setTransferError('The hostel change could not be completed. Please try again or contact support.')
       }

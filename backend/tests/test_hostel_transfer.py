@@ -76,6 +76,9 @@ class FakeTransferClient:
         self.events = []
         self.copied_limits = None
 
+    def check_transfer_availability(self):
+        self.events.append("check-availability")
+
     def get_hotspot_user(self, _username):
         self.events.append("read-user")
         return dict(self.user) if self.user else None

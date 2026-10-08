@@ -1,9 +1,8 @@
 # Hostel transfer recovery
 
-This change adds durable failure recovery on `dev`. Transfer request/response shapes,
-PIN/admin authentication, profile comparisons, destination network bindings, and the
-existing remaining-byte/uptime calculations are preserved. Pricing, payments, plan
-activation and frontend code are unchanged.
+Transfers use durable checkpoints, authenticated router preflight and repeatable
+failure recovery. PIN/admin authentication, profile comparisons, destination network
+bindings and remaining-byte/uptime calculations protect the account throughout a move.
 
 ## What is persisted
 
@@ -21,6 +20,26 @@ CLI output, audit records and recovery logs contain no credentials or raw router
 Encrypted snapshots are erased when operations complete or roll back.
 
 ## Safe progress and recovery
+
+Each new move verifies **both router APIs** through their configured host/port and
+the same authenticated connections used for the transfer. The checks read router
+identity and the Hotspot menus, then run a harmless synchronous `/execute as-string`
+probe. A cached `offline` status or ping result does not decide availability. Both
+routers are checked even if the first probe fails. Recovery repeats these checks
+before resuming writes.
+
+Preflight failures do not disable users, clear sessions, create copies or create an
+active transfer operation. The response identifies the source/destination and separates
+connection, login, permission, unsupported command and catalogue configuration errors.
+Storage/migration or encryption configuration failures have their own codes and are
+not reported as router outages. After a durable transfer starts, uncertain outcomes
+continue to return `hostel_transfer_unconfirmed` and retain the existing recovery path.
+The operator journal records only fixed failure codes; raw API errors are never exposed.
+
+The synchronous execution behavior is documented in the
+[RouterOS scripting manual](https://manual.mikrotik.com/docs/developer-guides/scripting/).
+Read-only probes establish API access and command support; write permissions are still
+enforced by RouterOS when the guarded account mutations run.
 
 The initial snapshot commits **before any router write**. Each mutation has a committed
 intent. The source receives a unique operation marker and is temporarily disabled,

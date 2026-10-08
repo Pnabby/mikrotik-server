@@ -21,6 +21,7 @@ from app.models.enums import ActivationStatus, AuditActorType, PaymentStatus, Su
 from app.models.hostel_transfer import HostelTransferOperation
 from app.models.subscription import Subscription
 from app.models.transaction import Transaction
+from app.services.hostel_transfer_availability import check_transfer_routers, transfer_router_read
 from app.services.hostel_transfer_recovery import HostelTransferRecovery
 from app.services.profile_settings import profile_differences
 from app.services.transfer_lock import transfer_lock
@@ -41,6 +42,8 @@ _BYTE_LIMIT_FIELDS = {
 
 
 class HostelTransferRouterClient(Protocol):
+    def check_transfer_availability(self) -> None: ...
+
     def get_hotspot_user(self, username: str) -> dict[str, str] | None: ...
 
     def get_hotspot_user_profile(self, profile: str) -> dict[str, str] | None: ...
@@ -135,12 +138,20 @@ class HostelTransferService:
         **kwargs,
     ) -> HostelTransferResult:
         with transfer_lock(self._session, customer.id):
-            pending = self._session.scalar(
-                select(HostelTransferOperation.id).where(
-                    HostelTransferOperation.customer_id == customer.id,
-                    HostelTransferOperation.is_active.is_(True),
+            try:
+                pending = self._session.scalar(
+                    select(HostelTransferOperation.id).where(
+                        HostelTransferOperation.customer_id == customer.id,
+                        HostelTransferOperation.is_active.is_(True),
+                    )
                 )
-            )
+            except SQLAlchemyError:
+                self._session.rollback()
+                raise ServiceError(
+                    status.HTTP_503_SERVICE_UNAVAILABLE,
+                    "Transfer storage is unavailable.",
+                    error_code="hostel_transfer_storage_unavailable",
+                ) from None
             if pending is not None:
                 raise ServiceError(
                     status.HTTP_409_CONFLICT,
@@ -207,14 +218,19 @@ class HostelTransferService:
                 error_code="hostel_activation_pending",
             )
 
-        source_user = source_client.get_hotspot_user(customer.username)
+        check_transfer_routers(source_client, destination_client)
+        source_user = transfer_router_read(
+            "source", lambda: source_client.get_hotspot_user(customer.username)
+        )
         if source_user is None:
             raise ServiceError(
                 status.HTTP_409_CONFLICT,
                 "The source network account is missing.",
                 error_code="hostel_source_user_missing",
             )
-        if destination_client.get_hotspot_user(customer.username) is not None:
+        if transfer_router_read(
+            "destination", lambda: destination_client.get_hotspot_user(customer.username)
+        ) is not None:
             raise ServiceError(
                 status.HTTP_409_CONFLICT,
                 "That username already exists at the destination hostel.",
@@ -222,7 +238,9 @@ class HostelTransferService:
             )
         profile = str(source_user.get("profile") or "").strip()
         destination_profile = (
-            destination_client.get_hotspot_user_profile(profile) if profile else None
+            transfer_router_read(
+                "destination", lambda: destination_client.get_hotspot_user_profile(profile)
+            ) if profile else None
         )
         if destination_profile is None:
             raise ServiceError(
@@ -230,7 +248,9 @@ class HostelTransferService:
                 "The customer's network profile is unavailable at the destination hostel.",
                 error_code="hostel_profile_missing",
             )
-        source_profile = source_client.get_hotspot_user_profile(profile)
+        source_profile = transfer_router_read(
+            "source", lambda: source_client.get_hotspot_user_profile(profile)
+        )
         if source_profile is None:
             raise ServiceError(
                 status.HTTP_409_CONFLICT,
@@ -254,7 +274,8 @@ class HostelTransferService:
             cipher = self._cipher or TransferSnapshotCipher.from_settings(get_settings())
         except ValueError:
             raise ServiceError(
-                status.HTTP_503_SERVICE_UNAVAILABLE, "Transfer recovery is not configured."
+                status.HTTP_503_SERVICE_UNAVAILABLE, "Transfer recovery is not configured.",
+                error_code="hostel_transfer_not_configured",
             ) from None
         operation_id = uuid4()
         operation = HostelTransferOperation(
@@ -306,9 +327,10 @@ class HostelTransferService:
             raise ServiceError(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
                 "Transfer could not be recorded. Please try again.",
+                error_code="hostel_transfer_storage_unavailable",
             ) from None
         HostelTransferRecovery(self._session, cipher).run(
-            operation, source_client, destination_client
+            operation, source_client, destination_client, routers_checked=True
         )
         if operation.status != "completed":
             raise ServiceError(

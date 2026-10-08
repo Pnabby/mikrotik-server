@@ -13,6 +13,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import get_settings
 from app.core.exceptions import ServiceError
+from app.core.transfer_errors import TRANSFER_ERROR_DETAILS
 from app.dependencies import ROUTER_UNAVAILABLE_DETAIL
 from app.routes import (
     account,
@@ -156,7 +157,9 @@ def create_app() -> FastAPI:
     @application.exception_handler(ServiceError)
     async def handle_service_error(_request: Request, exc: ServiceError) -> JSONResponse:
         content: dict[str, object] = {
-            "detail": _public_error_detail(exc.status_code)
+            "detail": TRANSFER_ERROR_DETAILS.get(
+                exc.error_code, _public_error_detail(exc.status_code)
+            )
         }
         if exc.error_code:
             content["code"] = exc.error_code
