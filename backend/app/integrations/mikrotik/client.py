@@ -376,6 +376,31 @@ class MikroTikClient:
         )
         return self.get_hotspot_user(normalized_username)
 
+    def configure_hotspot_user_profile(
+        self, name: str, settings: dict[str, str], *, template: dict[str, str] | None = None
+    ) -> dict[str, str]:
+        """Apply portable settings while preserving router-local dependencies."""
+        allowed = {"rate-limit", "shared-users", "session-timeout", "idle-timeout",
+                   "keepalive-timeout"}
+        if set(settings) - allowed:
+            raise ValueError("Unsupported profile settings.")
+        resource = self.connect().get_resource("/ip/hotspot/user/profile")
+        existing = self.get_hotspot_user_profile(name)
+        if existing is None:
+            if template is None:
+                raise RouterOsApiError("A source profile is required to create this profile.")
+            portable = {"on-login", "on-logout", "add-mac-cookie", "mac-cookie-timeout",
+                        "transparent-proxy", "open-status-page"}
+            attributes = {key: str(value) for key, value in template.items()
+                          if key in portable and value is not None}
+            resource.add(**{"name": name, **attributes, **settings})
+        else:
+            resource.set(**{"id": existing["id"], **settings})
+        saved = self.get_hotspot_user_profile(name)
+        if saved is None:
+            raise RouterOsApiError("Profile settings could not be read back.")
+        return saved
+
     def create_hotspot_user_copy(
         self,
         user: dict[str, str],
@@ -412,6 +437,21 @@ class MikroTikClient:
         if copied_user is None:
             raise RouterOsApiError("Transferred HotSpot user could not be read back.")
         return copied_user
+
+    def settle_hotspot_transfer_user(self, expected: dict[str, str]) -> dict[str, str] | None:
+        from app.integrations.mikrotik.transfer import mutate_transfer_user
+
+        return mutate_transfer_user(self, expected, settle=True)
+
+    def mutate_hotspot_transfer_user(
+        self, expected: dict[str, str], *, comment: str | None = None,
+        disabled: bool | None = None, remove: bool = False,
+    ) -> dict[str, str] | None:
+        from app.integrations.mikrotik.transfer import mutate_transfer_user
+
+        return mutate_transfer_user(
+            self, expected, comment=comment, disabled=disabled, remove=remove,
+        )
 
     @staticmethod
     def _remove_hotspot_records(resource, username: str) -> None:

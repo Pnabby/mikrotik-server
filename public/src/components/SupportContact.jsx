@@ -35,8 +35,7 @@ export default function SupportContact() {
     return () => window.removeEventListener('vlad:open-support', openFromLink)
   }, [])
 
-  if (!support?.phone_number && !support?.whatsapp_url) return null
-  const telephone = support.phone_number?.replace(/[^+\d]/g, '')
+  const telephone = support?.phone_number?.replace(/[^+\d]/g, '')
 
   return (
     <>
@@ -54,13 +53,14 @@ export default function SupportContact() {
             <p>Choose one of the available support options below.</p>
 
             <div className="support-modal-actions">
-              {support.phone_number && (
+              <a className="support-modal-phone" href="/issues"><ChatIcon /><span><small>Send a complaint and track replies</small><strong>Raise an issue</strong></span></a>
+              {support?.phone_number && (
                 <a className="support-modal-phone" href={`tel:${telephone}`}>
                   <PhoneIcon />
                   <span><small>Call support</small><strong>{support.phone_number}</strong></span>
                 </a>
               )}
-              {support.whatsapp_url && (
+              {support?.whatsapp_url && (
                 <a className="support-modal-whatsapp" href={support.whatsapp_url} rel="noreferrer" target="_blank">
                   <ChatIcon />
                   <span><small>Send a message</small><strong>Open WhatsApp</strong></span>

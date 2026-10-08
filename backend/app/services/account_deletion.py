@@ -15,9 +15,12 @@ from app.models.audit_log import AuditLog
 from app.models.customer import Customer
 from app.models.customer_session import CustomerSession
 from app.models.email_otp_challenge import EmailOtpChallenge
+from app.models.hostel_transfer import HostelTransferOperation
 from app.models.payment_event import PaymentEvent
 from app.models.subscription import Subscription
+from app.models.support_issue import SupportIssue
 from app.models.transaction import Transaction
+from app.services.transfer_lock import transfer_lock
 
 
 class AccountDeletionRouterClient(Protocol):
@@ -40,6 +43,42 @@ class AccountDeletionService:
         self.erase(customer, router_client)
 
     def erase(
+        self,
+        customer: Customer,
+        router_client: AccountDeletionRouterClient,
+    ) -> None:
+        # Deletion must not discard a recovery snapshot or race a router move.
+        router_id, username = customer.router_id, customer.username
+        with transfer_lock(self._session, customer.id):
+            if (
+                self._session.scalar(
+                    select(HostelTransferOperation.id).where(
+                        HostelTransferOperation.customer_id == customer.id,
+                        HostelTransferOperation.is_active.is_(True),
+                    )
+                )
+                is not None
+            ):
+                raise ServiceError(
+                    status.HTTP_409_CONFLICT,
+                    "Resolve the pending hostel transfer first.",
+                    error_code="hostel_transfer_in_progress",
+                )
+            current = self._session.scalar(
+                select(Customer)
+                .where(Customer.id == customer.id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+            if current is None or (current.router_id, current.username) != (router_id, username):
+                raise ServiceError(
+                    status.HTTP_409_CONFLICT,
+                    "The account moved. Please retry deletion.",
+                    error_code="hostel_transfer_unconfirmed",
+                )
+            self._erase(customer, router_client)
+
+    def _erase(
         self,
         customer: Customer,
         router_client: AccountDeletionRouterClient,
@@ -107,9 +146,7 @@ class AccountDeletionService:
         self._session.execute(delete(Subscription).where(Subscription.customer_id == customer_id))
         if activation_ids:
             self._session.execute(
-                delete(ActivationAttempt).where(
-                    ActivationAttempt.activation_id.in_(activation_ids)
-                )
+                delete(ActivationAttempt).where(ActivationAttempt.activation_id.in_(activation_ids))
             )
         self._session.execute(delete(Activation).where(Activation.customer_id == customer_id))
         if transaction_ids or references:
@@ -132,4 +169,5 @@ class AccountDeletionService:
         self._session.execute(
             delete(CustomerSession).where(CustomerSession.customer_id == customer_id)
         )
+        self._session.execute(delete(SupportIssue).where(SupportIssue.customer_id == customer_id))
         self._session.execute(delete(Customer).where(Customer.id == customer_id))

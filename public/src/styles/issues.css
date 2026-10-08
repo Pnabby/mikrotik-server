@@ -1,0 +1,25 @@
+.issues-page { max-width: 900px; margin: 0 auto; padding: 36px 20px 90px; color: #202939; }
+.issues-heading { margin-bottom: 24px; }
+.issues-heading h1 { margin: 0 0 8px; font-size: 30px; }
+.issues-heading p, .issue-card > small { color: #667085; line-height: 1.6; }
+.issue-card { padding: 24px; margin-bottom: 20px; border: 1px solid #e4e7ec; border-radius: 16px; background: #fff; }
+.issue-form { display: grid; gap: 18px; }
+.issue-form p { margin: 0; }
+.issue-form label { display: grid; gap: 8px; font-weight: 600; }
+.issue-form label small { color: #667085; font-weight: 400; }
+.issue-form input, .issue-form textarea { width: 100%; padding: 12px; border: 1px solid #d0d5dd; border-radius: 9px; color: #202939; font: inherit; box-sizing: border-box; }
+.issue-form textarea { resize: vertical; }
+.issue-primary { display: inline-block; justify-self: start; padding: 12px 20px; border: 0; border-radius: 9px; color: #fff; background: #465ff5; font: inherit; font-weight: 600; text-decoration: none; cursor: pointer; }
+.issue-primary:disabled { opacity: .6; cursor: wait; }
+.issue-title { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.issue-title h3 { margin: 0 0 8px; overflow-wrap: anywhere; }
+.issue-status { display: inline-block; padding: 5px 10px; border-radius: 20px; background: #fff4db; color: #8a5700; font-size: 12px; }
+.issue-status.attended { color: #087f5b; background: #eafaf4; }
+.issue-message { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; }
+.issue-reply { padding: 16px; margin-top: 16px; border-radius: 10px; background: #f0f3ff; }
+.issue-reply small { display: block; margin-top: 5px; color: #667085; }
+.issue-reply p { margin-bottom: 0; }
+.issue-error, .issue-success { padding: 15px; border-radius: 9px; background: #fff1f0; color: #b42318; }
+.issue-success { color: #087f5b; background: #eafaf4; }
+.issue-pagination { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.issue-pagination button { padding: 9px 15px; border: 1px solid #d0d5dd; border-radius: 8px; background: #fff; cursor: pointer; }

@@ -28,7 +28,9 @@ from app.routes import (
     registration,
     routers,
     support,
+    support_issues,
 )
+from app.services.hostel_transfer_reconciliation import reconcile_hostel_transfers
 from app.services.retention import delete_inactive_accounts
 from app.services.router_metrics import collect_router_metrics
 
@@ -82,18 +84,36 @@ async def _router_metrics_worker() -> None:
         await asyncio.sleep(settings.router_metrics_sample_interval_seconds)
 
 
+async def _hostel_transfer_recovery_worker() -> None:
+    settings = get_settings()
+    await asyncio.sleep(15)
+    while True:
+        try:
+            await asyncio.to_thread(reconcile_hostel_transfers, settings)
+        except Exception:  # noqa: BLE001 - Background recovery must survive transient failures.
+            logger.warning("Hostel transfer reconciliation failed and will retry.")
+        await asyncio.sleep(settings.hostel_transfer_recovery_interval_seconds)
+
+
 @asynccontextmanager
 async def _lifespan(_application: FastAPI):
     settings = get_settings()
     retention_task = None
     router_metrics_task = None
+    transfer_recovery_task = None
     if settings.inactive_account_cleanup_enabled:
         retention_task = asyncio.create_task(_retention_worker())
     if settings.router_metrics_collection_enabled and settings.database_url:
         router_metrics_task = asyncio.create_task(_router_metrics_worker())
+    if settings.hostel_transfer_recovery_enabled and settings.database_url:
+        transfer_recovery_task = asyncio.create_task(_hostel_transfer_recovery_worker())
     try:
         yield
     finally:
+        if transfer_recovery_task is not None:
+            transfer_recovery_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await transfer_recovery_task
         if retention_task is not None:
             retention_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -130,6 +150,7 @@ def create_app() -> FastAPI:
     application.include_router(admin_profiles.router)
     application.include_router(admin_wireguard.router)
     application.include_router(support.router)
+    application.include_router(support_issues.router)
     application.include_router(pages.router)
 
     @application.exception_handler(ServiceError)

@@ -28,7 +28,7 @@ class CustomerAccountService:
         now = datetime.now(UTC)
         current_subscription = self._session.scalar(
             select(Subscription)
-            .options(joinedload(Subscription.package))
+            .options(joinedload(Subscription.package), joinedload(Subscription.transaction))
             .where(
                 Subscription.customer_id == customer.id,
                 Subscription.status == SubscriptionStatus.ACTIVE,
@@ -116,6 +116,17 @@ class CustomerAccountService:
             else []
         )
         presentation_by_package = {mapping.package_id: mapping for mapping in presentation_mappings}
+        # A transfer retains the purchased package. Per-hostel catalogues can use
+        # different package IDs, so preserve that purchase's presentation as a fallback.
+        if current_subscription and current_subscription.package_id not in presentation_by_package:
+            origin_mapping = self._session.scalar(
+                select(RouterPackageProfile).where(
+                    RouterPackageProfile.router_id == current_subscription.transaction.router_id,
+                    RouterPackageProfile.package_id == current_subscription.package_id,
+                )
+            )
+            if origin_mapping is not None:
+                presentation_by_package[current_subscription.package_id] = origin_mapping
         router_name = customer.router.name if customer.router is not None else "Your hostel"
         return CustomerAccountResponse(
             username=customer.username,

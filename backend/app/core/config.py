@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     admin_dist_dir: Path = PROJECT_ROOT / "admin" / "dist"
 
     database_url: str | None = None
+    hostel_transfer_recovery_enabled: bool = True
+    hostel_transfer_recovery_interval_seconds: int = Field(default=60, ge=30, le=3600)
 
     brevo_api_key: SecretStr | None = None
     brevo_sender_email: str | None = None

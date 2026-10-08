@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.db.session import get_db_session
-from app.dependencies import MikroTikClientDependency, RouterDependency
+from app.dependencies import MikroTikClientDependency, RouterDependency, mikrotik_client_context
+from app.integrations.mikrotik.registry import get_router
 from app.models.admin_user import AdminUser
 from app.models.enums import AdminRole
 from app.models.package import PlanGroup
@@ -319,6 +320,18 @@ def save_router_profile(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
     router_model = session.get(Router, router_definition.router_id)
     assert router_model is not None
+    source_profile = None
+    if payload.source_router_id and payload.router_settings:
+        source_model = session.get(Router, payload.source_router_id)
+        if source_model is None or not source_model.is_active:
+            raise HTTPException(status.HTTP_404_NOT_FOUND)
+        if source_model.id == router_model.id:
+            source_profile = router_client.get_hotspot_user_profile(mikrotik_profile)
+        else:
+            with mikrotik_client_context(get_router(session, source_model.id)) as source_client:
+                source_profile = source_client.get_hotspot_user_profile(mikrotik_profile)
+        if source_profile is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND)
     return AdminProfileService(session, settings).save_profile(
         router=router_model,
         router_client=router_client,
@@ -326,6 +339,7 @@ def save_router_profile(
         update=payload,
         admin=admin,
         ip_address=request.client.host if request.client else None,
+        source_profile=source_profile,
     )
 
 

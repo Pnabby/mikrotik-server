@@ -30,10 +30,15 @@ from app.schemas.admin_profiles import (
     AdminProfileUpdate,
     AdminRouterProfileResponse,
 )
+from app.services.profile_settings import profile_differences
 
 
 class RouterProfileClient(Protocol):
     def get_hotspot_user_profiles(self) -> list[dict[str, str]]: ...
+
+    def configure_hotspot_user_profile(
+        self, name: str, settings: dict[str, str], *, template: dict[str, str] | None = None
+    ) -> dict[str, str]: ...
 
     def force_ip_cloud_update(self) -> None: ...
 
@@ -231,7 +236,7 @@ class AdminProfileService:
     ) -> list[AdminRouterProfileResponse]:
         raw_profiles = self._read_router_profiles(router, router_client)
         live_profiles = {
-            name.casefold(): profile
+            name: profile
             for profile in raw_profiles
             if (name := _text(profile.get("name")))
         }
@@ -243,11 +248,11 @@ class AdminProfileService:
             )
             .where(RouterPackageProfile.router_id == router.id)
         ).all()
-        mappings_by_name = {mapping.mikrotik_profile.casefold(): mapping for mapping in mappings}
+        mappings_by_name = {mapping.mikrotik_profile: mapping for mapping in mappings}
         profile_names = sorted(
             set(live_profiles) | set(mappings_by_name),
             key=lambda key: (
-                key == self._settings.mikrotik_registration_profile.casefold(),
+                key.casefold() == self._settings.mikrotik_registration_profile.casefold(),
                 key,
             ),
         )
@@ -276,6 +281,7 @@ class AdminProfileService:
         update: AdminProfileUpdate,
         admin: AdminUser,
         ip_address: str | None,
+        source_profile: dict[str, str] | None = None,
     ) -> AdminRouterProfileResponse:
         normalized_profile = mikrotik_profile.strip()
         if not normalized_profile or len(normalized_profile) > 120:
@@ -284,13 +290,13 @@ class AdminProfileService:
             (
                 profile
                 for profile in self._read_router_profiles(router, router_client)
-                if _text(profile.get("name")).casefold() == normalized_profile.casefold()
+                if _text(profile.get("name")) == normalized_profile
             ),
             None,
         )
-        if raw_profile is None:
+        if raw_profile is None and not (source_profile and update.router_settings):
             raise ServiceError(status.HTTP_404_NOT_FOUND, "Router profile was not found.")
-        canonical_name = _text(raw_profile.get("name"))
+        canonical_name = _text(raw_profile.get("name")) if raw_profile else normalized_profile
         if (
             canonical_name.casefold() == self._settings.mikrotik_registration_profile.casefold()
             and update.is_visible
@@ -305,7 +311,7 @@ class AdminProfileService:
             .options(joinedload(RouterPackageProfile.package))
             .where(
                 RouterPackageProfile.router_id == router.id,
-                func.lower(RouterPackageProfile.mikrotik_profile) == canonical_name.casefold(),
+                RouterPackageProfile.mikrotik_profile == canonical_name,
             )
             .limit(1)
         )
@@ -333,9 +339,30 @@ class AdminProfileService:
         else:
             package = self._isolate_shared_package(mapping)
 
+        # Validate the catalogue before touching RouterOS.
+        if update.group_id is not None and self._session.scalar(
+            select(PlanGroup.id).where(PlanGroup.id == update.group_id, PlanGroup.router_id == router.id)
+        ) is None:
+            raise ServiceError(status.HTTP_400_BAD_REQUEST, "Invalid plan group.")
+        if update.router_settings is not None:
+            try:
+                raw_profile = router_client.configure_hotspot_user_profile(
+                    canonical_name, update.router_settings.router_values(), template=source_profile,
+                )
+                if profile_differences(update.router_settings.router_values(), raw_profile):
+                    raise RuntimeError("Router profile read-back did not match the requested settings.")
+            except Exception as exc:
+                raise ServiceError(
+                    status.HTTP_502_BAD_GATEWAY, "Router settings could not be confirmed.",
+                    error_code="profile_settings_unconfirmed",
+                ) from exc
+
         mapping.display_name = update.display_name
         mapping.description = update.description
-        mapping.download_speed = update.download_speed
+        mapping.download_speed = (
+            _download_speed(_profile_value(raw_profile, "rate-limit"))
+            if update.router_settings is not None else update.download_speed
+        )
         mapping.is_active = update.is_visible
         if "group_id" in update.model_fields_set:
             if update.group_id is None:
@@ -359,7 +386,9 @@ class AdminProfileService:
         package.currency = update.currency
         package.duration_seconds = update.duration_seconds
         package.data_limit_bytes = update.data_limit_bytes
-        package.device_limit = update.device_limit
+        package.device_limit = (
+            update.router_settings.shared_users if update.router_settings else update.device_limit
+        )
         package.is_promotional = update.is_promotional
         package.is_active = update.is_visible
         router.status = RouterStatus.ONLINE
@@ -384,6 +413,9 @@ class AdminProfileService:
                         "download_speed": update.download_speed,
                         "is_promotional": update.is_promotional,
                         "group_id": str(mapping.group_id) if mapping.group_id else None,
+                        "router_settings": update.router_settings.model_dump()
+                        if update.router_settings else None,
+                        "source_router_id": update.source_router_id,
                     },
                     ip_address=(ip_address or "")[:64] or None,
                 )
@@ -424,7 +456,7 @@ class AdminProfileService:
             select(RouterPackageProfile)
             .where(
                 RouterPackageProfile.router_id == router.id,
-                func.lower(RouterPackageProfile.mikrotik_profile) == normalized_profile.casefold(),
+                RouterPackageProfile.mikrotik_profile == normalized_profile,
             )
             .limit(1)
         )
@@ -500,6 +532,7 @@ class AdminProfileService:
             session_timeout=_profile_value(raw_profile, "session-timeout"),
             idle_timeout=_profile_value(raw_profile, "idle-timeout"),
             address_pool=_profile_value(raw_profile, "address-pool"),
+            keepalive_timeout=_profile_value(raw_profile, "keepalive-timeout"),
         )
 
     def list_plan_groups(self, router: Router) -> list[AdminPlanGroupResponse]:

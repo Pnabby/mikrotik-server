@@ -46,6 +46,7 @@ def status_session(request: Request, session: SessionDependency) -> StatusSessio
 @router.get("/forgot-password", include_in_schema=False)
 @router.get("/account", include_in_schema=False)
 @router.get("/profile", include_in_schema=False)
+@router.get("/issues", include_in_schema=False)
 @router.get("/verify-phone", include_in_schema=False)
 @router.get("/terms", include_in_schema=False)
 @router.get("/privacy", include_in_schema=False)
