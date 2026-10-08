@@ -207,7 +207,8 @@ export default function ProfilePage() {
       } else if (error instanceof AccountApiError && error.status === 409) {
         const reasons = {
           hostel_already_selected: 'Your account is already registered at this hostel.',
-          hostel_activation_pending: 'Finish your pending plan activation before moving hostels.',
+          hostel_activation_pending: 'Your WiFi plan activation is still pending. Open Purchases and retry activation before moving hostels.',
+          hostel_transfer_in_progress: 'An account update or hostel move is already running or awaiting recovery. Refresh your profile and try again shortly. Contact support if it stays pending.',
           hostel_username_conflict: 'Your username already exists there. Please raise an issue so an admin can help.',
           hostel_source_user_missing: 'Your network account needs an admin repair. Please raise an issue.',
           hostel_profile_missing: 'Your plan is missing at that hostel. Ask an admin to match the hostel plans in the Profile catalogue.',

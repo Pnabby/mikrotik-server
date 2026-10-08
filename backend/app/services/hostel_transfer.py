@@ -5,7 +5,7 @@ from typing import Protocol
 from uuid import uuid4
 
 from fastapi import status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -17,9 +17,10 @@ from app.integrations.mikrotik.client import _HOTSPOT_USER_TRANSFER_FIELDS, _par
 from app.models.activation import Activation
 from app.models.admin_user import AdminUser
 from app.models.customer import Customer
-from app.models.enums import ActivationStatus, AuditActorType, SubscriptionStatus
+from app.models.enums import ActivationStatus, AuditActorType, PaymentStatus, SubscriptionStatus
 from app.models.hostel_transfer import HostelTransferOperation
 from app.models.subscription import Subscription
+from app.models.transaction import Transaction
 from app.services.hostel_transfer_recovery import HostelTransferRecovery
 from app.services.profile_settings import profile_differences
 from app.services.transfer_lock import transfer_lock
@@ -181,9 +182,19 @@ class HostelTransferService:
         unresolved_activation = next(
             iter(
                 self._session.scalars(
-                    select(Activation.id).where(
+                    select(Activation.id).join(
+                        Transaction, Activation.transaction_id == Transaction.id,
+                    ).where(
                         Activation.customer_id == customer.id,
                         Activation.status.in_(_UNRESOLVED_ACTIVATION_STATUSES),
+                        # Checkout creates a NOT_STARTED activation before payment.
+                        # An unpaid, never-attempted checkout has no router work to
+                        # settle; paid or possibly applied activations still block.
+                        or_(
+                            Transaction.payment_status == PaymentStatus.SUCCESS,
+                            Activation.status != ActivationStatus.NOT_STARTED,
+                            Activation.attempt_count > 0,
+                        ),
                     )
                 )
             ),

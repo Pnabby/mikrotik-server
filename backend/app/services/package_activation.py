@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
+from app.core.exceptions import ServiceError
 from app.models.activation import Activation
 from app.models.activation_attempt import ActivationAttempt
 from app.models.audit_log import AuditLog
@@ -22,10 +23,12 @@ from app.models.enums import (
     AuditActorType,
     SubscriptionStatus,
 )
+from app.models.hostel_transfer import HostelTransferOperation
 from app.models.package import Package
 from app.models.router import Router
 from app.models.subscription import Subscription
 from app.services.notifications import CustomerNotificationService
+from app.services.transfer_lock import transfer_lock
 
 
 class ActivationRouterClient(Protocol):
@@ -68,6 +71,31 @@ class PackageActivationService:
         *,
         trigger: ActivationTrigger,
     ) -> ActivationStatus:
+        # A checkout may be paid while its customer is moving. Share the move's
+        # lock across commits, and leave verified payment durable for the normal
+        # activation retry once transfer/recovery has finished.
+        try:
+            with transfer_lock(self._session, activation.customer_id):
+                pending_transfer = self._session.scalar(
+                    select(HostelTransferOperation.id).where(
+                        HostelTransferOperation.customer_id == activation.customer_id,
+                        HostelTransferOperation.is_active.is_(True),
+                    ).limit(1)
+                )
+                if pending_transfer is not None:
+                    return activation.status
+                return self._activate(activation, trigger=trigger)
+        except ServiceError as exc:
+            if exc.error_code != "hostel_transfer_in_progress":
+                raise
+            return activation.status
+
+    def _activate(
+        self,
+        activation: Activation,
+        *,
+        trigger: ActivationTrigger,
+    ) -> ActivationStatus:
         activation = self._session.scalar(
             select(Activation).where(Activation.id == activation.id).with_for_update()
         )
@@ -77,6 +105,17 @@ class PackageActivationService:
             if activation.status == ActivationStatus.SUCCESS:
                 self._notify_activation(activation)
             return activation.status
+
+        if activation.status == ActivationStatus.NOT_STARTED and activation.attempt_count == 0:
+            # A never-applied purchase follows the customer's current hostel.
+            # Read the database column so a cached customer cannot send a late
+            # payment callback to the old router. Keep the transaction's hostel
+            # and completed activation history intact for financial attribution.
+            current_router_id = self._session.scalar(
+                select(Customer.router_id).where(Customer.id == activation.customer_id)
+            )
+            if current_router_id is not None:
+                activation.router_id = current_router_id
 
         router = self._session.get(Router, activation.router_id)
         if router is not None and not router.is_active:
