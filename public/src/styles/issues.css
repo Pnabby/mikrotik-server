@@ -1,25 +1,132 @@
-.issues-page { max-width: 900px; margin: 0 auto; padding: 36px 20px 90px; color: #202939; }
-.issues-heading { margin-bottom: 24px; }
-.issues-heading h1 { margin: 0 0 8px; font-size: 30px; }
-.issues-heading p, .issue-card > small { color: #667085; line-height: 1.6; }
-.issue-card { padding: 24px; margin-bottom: 20px; border: 1px solid #e4e7ec; border-radius: 16px; background: #fff; }
-.issue-form { display: grid; gap: 18px; }
-.issue-form p { margin: 0; }
-.issue-form label { display: grid; gap: 8px; font-weight: 600; }
-.issue-form label small { color: #667085; font-weight: 400; }
-.issue-form input, .issue-form textarea { width: 100%; padding: 12px; border: 1px solid #d0d5dd; border-radius: 9px; color: #202939; font: inherit; box-sizing: border-box; }
-.issue-form textarea { resize: vertical; }
-.issue-primary { display: inline-block; justify-self: start; padding: 12px 20px; border: 0; border-radius: 9px; color: #fff; background: #465ff5; font: inherit; font-weight: 600; text-decoration: none; cursor: pointer; }
-.issue-primary:disabled { opacity: .6; cursor: wait; }
-.issue-title { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
-.issue-title h3 { margin: 0 0 8px; overflow-wrap: anywhere; }
-.issue-status { display: inline-block; padding: 5px 10px; border-radius: 20px; background: #fff4db; color: #8a5700; font-size: 12px; }
-.issue-status.attended { color: #087f5b; background: #eafaf4; }
-.issue-message { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; }
-.issue-reply { padding: 16px; margin-top: 16px; border-radius: 10px; background: #f0f3ff; }
-.issue-reply small { display: block; margin-top: 5px; color: #667085; }
-.issue-reply p { margin-bottom: 0; }
-.issue-error, .issue-success { padding: 15px; border-radius: 9px; background: #fff1f0; color: #b42318; }
-.issue-success { color: #087f5b; background: #eafaf4; }
-.issue-pagination { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-.issue-pagination button { padding: 9px 15px; border: 1px solid #d0d5dd; border-radius: 8px; background: #fff; cursor: pointer; }
+.issues-page { max-width: 1180px; margin: 0 auto; padding: 44px 24px 100px; color: var(--account-ink); }
+.issues-page svg { width: 20px; height: 20px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.issues-heading { margin-bottom: 30px; }
+.issues-eyebrow { color: var(--account-primary); font-size: 11px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+.issues-heading h1 { margin: 9px 0 10px; font-size: clamp(28px, 3vw, 38px); line-height: 1.2; letter-spacing: -.04em; }
+.issues-heading > p:last-child { color: var(--account-muted); font-size: 14px; line-height: 1.7; }
+.issues-compose-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; align-items: start; gap: 24px; }
+.issue-card { min-width: 0; border: 1px solid var(--account-line); border-radius: 18px; background: #fff; box-shadow: 0 3px 12px #17203303; }
+.issue-form { display: grid; gap: 24px; padding: 28px; scroll-margin-top: 150px; }
+.issue-section-heading { display: flex; align-items: center; gap: 14px; }
+.issue-icon-tile { display: inline-grid; place-items: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: 13px; color: var(--account-primary); background: #eef1ff; }
+.issue-section-heading h2, .issue-guide h2, .issue-summary h2 { font-size: 17px; line-height: 1.5; letter-spacing: -.02em; }
+.issue-section-heading p { margin-top: 3px; color: var(--account-muted); font-size: 12px; line-height: 1.6; }
+.issue-hostel-context { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border: 1px solid #e3e8ff; border-radius: 11px; color: var(--account-primary); background: #f6f8ff; }
+.issue-hostel-context small { display: block; color: var(--account-muted); font-size: 11px; margin-bottom: 3px; }
+.issue-hostel-context strong { display: block; color: var(--account-ink); font-size: 13px; overflow-wrap: anywhere; }
+.issue-hostel-context > span { margin-left: auto; color: #62709d; font-size: 10px; text-align: right; }
+.issue-form fieldset { display: grid; gap: 20px; min-width: 0; border: 0; padding: 0; }
+.issue-form-row { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: 18px; }
+.issue-form label { display: block; color: #344054; font-size: 12px; font-weight: 650; }
+.issue-form label > small { margin-left: 5px; color: var(--account-muted); font-size: 10px; font-weight: 400; }
+.issue-form input, .issue-form textarea { display: block; width: 100%; margin-top: 9px; padding: 12px 14px; border: 1px solid #d5dce8; border-radius: 10px; color: var(--account-ink); background: #fff; font: inherit; font-size: 13px; font-weight: 400; line-height: 1.6; transition: border-color .15s, box-shadow .15s; }
+.issue-form input::placeholder, .issue-form textarea::placeholder { color: #7c879a; }
+.issue-form textarea { min-height: 158px; resize: vertical; }
+.issue-form input:focus, .issue-form textarea:focus { outline: none; border-color: var(--account-primary); box-shadow: 0 0 0 3px #4361ee14; }
+.issue-form fieldset:disabled { opacity: .65; }
+.issue-field-hint { display: flex; justify-content: space-between; gap: 12px; margin-top: -12px; color: var(--account-muted); font-size: 10px; line-height: 1.6; }
+.issue-field-hint > span:last-child { white-space: nowrap; }
+.issue-form-footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding-top: 22px; border-top: 1px solid var(--account-line); }
+.issue-form-footer > p { display: flex; align-items: center; gap: 8px; max-width: 225px; color: var(--account-muted); font-size: 10px; line-height: 1.6; }
+.issue-form-footer > p svg { width: 17px; height: 17px; color: #8894a8; }
+.issue-primary { display: inline-flex; align-items: center; justify-content: center; gap: 9px; padding: 12px 19px; border: 1px solid transparent; border-radius: 10px; color: #fff; background: var(--account-primary); font: inherit; font-size: 12px; font-weight: 650; text-decoration: none; white-space: nowrap; cursor: pointer; transition: background .15s, box-shadow .15s; }
+.issue-primary:hover { background: var(--account-primary-dark); box-shadow: 0 4px 12px #4361ee24; }
+.issue-primary svg { width: 16px; height: 16px; }
+.issue-primary:disabled { opacity: .65; cursor: wait; }
+.issues-page a:focus-visible, .issues-page button:focus-visible { outline: 3px solid #4361ee70; outline-offset: 3px; }
+.issues-sidebar { display: grid; gap: 20px; }
+.issue-guide, .issue-summary { padding: 25px; }
+.issue-guide h2 { margin: 9px 0 24px; }
+.issue-guide ol { display: grid; gap: 25px; list-style: none; }
+.issue-guide li { position: relative; display: flex; gap: 13px; }
+.issue-guide li:not(:last-child)::after { content: ''; position: absolute; width: 1px; top: 33px; bottom: -18px; left: 14px; background: var(--account-line); }
+.issue-guide li > span { display: grid; place-items: center; width: 29px; height: 29px; flex-shrink: 0; border: 1px solid #e2e7fc; border-radius: 50%; color: var(--account-primary); background: #f4f6ff; font-size: 11px; font-weight: 700; }
+.issue-guide h3 { padding-top: 3px; font-size: 12px; line-height: 1.6; }
+.issue-guide li p { margin-top: 5px; color: var(--account-muted); font-size: 11px; line-height: 1.8; }
+.issue-summary > div { display: flex; align-items: center; gap: 9px; }
+.issue-summary > div svg { color: var(--account-primary); width: 17px; height: 17px; }
+.issue-summary h2 { font-size: 13px; }
+.issue-summary dl { display: grid; gap: 16px; margin: 22px 0; }
+.issue-summary dl > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.issue-summary dt { color: var(--account-muted); font-size: 12px; }
+.issue-summary dd { font-size: 19px; font-weight: 700; }
+.issue-summary a, .issue-empty a:not(.issue-primary) { display: inline-flex; gap: 10px; align-items: center; color: var(--account-primary); text-decoration: none; font-size: 12px; font-weight: 600; }
+.issue-summary a { display: flex; justify-content: space-between; padding-top: 17px; border-top: 1px solid var(--account-line); }
+.issues-history { margin-top: 42px; scroll-margin-top: 150px; }
+.issues-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
+.issues-history-heading h2 { display: flex; align-items: center; gap: 10px; font-size: 21px; letter-spacing: -.025em; }
+.issues-history-heading h2 > span { padding: 3px 8px; border: 1px solid var(--account-line); border-radius: 7px; background: #fff; color: var(--account-muted); font-size: 11px; font-weight: 600; }
+.issues-history-heading p { margin-top: 6px; color: var(--account-muted); font-size: 12px; line-height: 1.6; }
+.issues-history-note { display: flex; align-items: center; gap: 6px; color: var(--account-muted); font-size: 10px; white-space: nowrap; }
+.issues-history-note svg { width: 14px; height: 14px; }
+.issue-history-card { padding: 25px 28px; margin-bottom: 16px; }
+.issue-title { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.issue-title h3 { font-size: 15px; line-height: 1.7; overflow-wrap: anywhere; }
+.issue-status { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; padding: 5px 9px; border-radius: 6px; background: #fff5e5; color: #915d13; font-size: 10px; font-weight: 600; white-space: nowrap; }
+.issue-status svg { width: 12px; height: 12px; }
+.issue-status.attended { color: #147451; background: #eaf7f0; }
+.issue-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 9px; color: var(--account-muted); font-size: 10px; line-height: 1.5; }
+.issue-meta span { display: inline-flex; align-items: center; gap: 5px; }
+.issue-meta svg { width: 13px; height: 13px; }
+.issue-message { margin-top: 18px; color: #475467; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.85; }
+.issue-replies { display: grid; gap: 16px; padding-top: 20px; margin-top: 22px; border-top: 1px solid var(--account-line); }
+.issue-reply { display: flex; align-items: start; gap: 12px; }
+.issue-reply-avatar { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; color: var(--account-primary); background: #eef1ff; border-radius: 9px; }
+.issue-reply-avatar svg { width: 16px; height: 16px; }
+.issue-reply > div { min-width: 0; flex: 1; padding: 13px 16px; border-radius: 0 12px 12px; background: #f7f8fc; }
+.issue-reply-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 5px 12px; }
+.issue-reply-heading strong { font-size: 11px; }
+.issue-reply-heading time { color: var(--account-muted); font-size: 10px; }
+.issue-reply .issue-message { margin-top: 8px; font-size: 12px; }
+.issue-waiting { display: flex; align-items: center; gap: 7px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--account-line); color: var(--account-muted); font-size: 10px; line-height: 1.7; }
+.issue-waiting svg { width: 14px; height: 14px; }
+.issue-empty { display: grid; justify-items: center; gap: 12px; padding: 40px 24px; text-align: center; }
+.issue-empty h2 { font-size: 22px; letter-spacing: -.025em; }
+.issue-empty h3 { font-size: 15px; }
+.issue-empty > p { max-width: 450px; color: var(--account-muted); font-size: 12px; line-height: 1.8; }
+.issue-empty a { margin-top: 4px; }
+.issue-signin { max-width: 620px; margin: 40px auto; padding: 48px 24px; }
+.issue-alert { display: flex; align-items: start; gap: 9px; padding: 13px 15px; border-radius: 10px; font-size: 12px; line-height: 1.7; }
+.issue-alert svg { width: 17px; height: 17px; margin-top: 2px; }
+.issue-error { background: #fff1f0; color: #b42318; }
+.issue-success { background: #eaf7f0; color: #147451; }
+.issues-history > .issue-alert { margin-bottom: 16px; }
+.issue-history-loading { display: flex; justify-content: center; align-items: center; gap: 10px; padding: 50px 20px; color: var(--account-muted); font-size: 12px; }
+.issue-spinner { display: inline-block; width: 16px; height: 16px; flex-shrink: 0; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: issue-spin .8s linear infinite; }
+.issue-pagination { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 24px; color: var(--account-muted); font-size: 11px; }
+.issue-pagination button { padding: 10px 15px; border: 1px solid #d5dce8; border-radius: 9px; color: var(--account-ink); background: #fff; font: inherit; cursor: pointer; }
+.issue-pagination button:disabled { opacity: .45; cursor: default; }
+@keyframes issue-spin { to { transform: rotate(360deg); } }
+@media (max-width: 1000px) { .issues-compose-layout { grid-template-columns: minmax(0, 1fr) 280px; gap: 18px; } .issue-form { padding: 24px; } .issue-form-row { grid-template-columns: minmax(0, 1fr) 130px; gap: 14px; } .issue-guide, .issue-summary { padding: 22px; } }
+@media (max-width: 800px) { .issues-compose-layout { grid-template-columns: minmax(0, 1fr); } .issues-sidebar { grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); align-items: start; } }
+@media (max-width: 560px) {
+  .issues-page { padding: 30px 16px 96px; }
+  .issues-heading { margin-bottom: 23px; }
+  .issues-heading > p:last-child { font-size: 12px; }
+  .issue-form { padding: 20px; gap: 21px; }
+  .issue-form-row { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .issue-form input, .issue-form textarea { font-size: 16px; }
+  .issue-section-heading h2 { font-size: 15px; }
+  .issue-hostel-context { flex-wrap: wrap; padding: 12px; }
+  .issue-hostel-context > span { width: 100%; text-align: left; padding-left: 32px; margin-top: -5px; }
+  .issue-form-footer { flex-direction: column-reverse; gap: 12px; }
+  .issue-form-footer .issue-primary { width: 100%; padding: 13px; }
+  .issue-form-footer > p { max-width: none; }
+  .issue-field-hint { font-size: 9px; }
+  .issues-sidebar { grid-template-columns: minmax(0, 1fr); }
+  .issue-guide { padding: 22px; }
+  .issue-summary { padding: 22px; }
+  .issues-sidebar .issue-summary { order: -1; }
+  .issues-history { margin-top: 32px; }
+  .issues-history-heading { align-items: start; }
+  .issues-history-heading h2 { font-size: 18px; }
+  .issues-history-note { display: none; }
+  .issue-history-card { padding: 20px; }
+  .issue-title { flex-direction: column; gap: 7px; }
+  .issue-title h3 { font-size: 14px; }
+  .issue-message { font-size: 13px; }
+  .issue-reply { gap: 8px; }
+  .issue-reply > div { padding: 12px; }
+  .issue-pagination { font-size: 10px; }
+}
+@media (prefers-reduced-motion: reduce) { .issue-spinner { animation: none; } .issues-page * { transition: none; } }
