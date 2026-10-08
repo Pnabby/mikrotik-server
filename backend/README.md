@@ -7,6 +7,9 @@ setup, and migration safety notes.
 The redesigned database contract and failure-safety invariants are documented in
 `SCHEMA.md`.
 
+Durable hostel-transfer checkpoints, automatic reconciliation and operator retry
+commands are documented in [HOSTEL_TRANSFER_RECOVERY.md](HOSTEL_TRANSFER_RECOVERY.md).
+
 The protected admin API can list hostels, discover live MikroTik HotSpot profiles, and
 configure the customer-facing plan name and commercial terms for each hostel. Run the
 admin React app on port 5174 from the repository root to use the management workspace.

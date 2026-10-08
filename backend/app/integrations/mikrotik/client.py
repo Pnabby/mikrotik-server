@@ -438,6 +438,21 @@ class MikroTikClient:
             raise RouterOsApiError("Transferred HotSpot user could not be read back.")
         return copied_user
 
+    def settle_hotspot_transfer_user(self, expected: dict[str, str]) -> dict[str, str] | None:
+        from app.integrations.mikrotik.transfer import mutate_transfer_user
+
+        return mutate_transfer_user(self, expected, settle=True)
+
+    def mutate_hotspot_transfer_user(
+        self, expected: dict[str, str], *, comment: str | None = None,
+        disabled: bool | None = None, remove: bool = False,
+    ) -> dict[str, str] | None:
+        from app.integrations.mikrotik.transfer import mutate_transfer_user
+
+        return mutate_transfer_user(
+            self, expected, comment=comment, disabled=disabled, remove=remove,
+        )
+
     @staticmethod
     def _remove_hotspot_records(resource, username: str) -> None:
         """Remove sessions/cookies and tolerate RouterOS expiry races."""

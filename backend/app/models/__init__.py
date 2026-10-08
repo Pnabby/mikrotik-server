@@ -6,6 +6,7 @@ from app.models.audit_log import AuditLog
 from app.models.customer import Customer
 from app.models.customer_session import CustomerSession
 from app.models.email_otp_challenge import EmailOtpChallenge
+from app.models.hostel_transfer import HostelTransferOperation
 from app.models.package import Package, PlanGroup, RouterPackageProfile
 from app.models.payment_event import PaymentEvent
 from app.models.phone_otp_challenge import PhoneOtpChallenge
@@ -25,6 +26,7 @@ __all__ = [
     "Customer",
     "CustomerSession",
     "EmailOtpChallenge",
+    "HostelTransferOperation",
     "Package",
     "PaymentEvent",
     "PhoneOtpChallenge",
