@@ -2005,7 +2005,8 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
         const reasons = {
           hostel_profile_missing: 'The router profile is missing. Open Profile catalogue, select All hostels, choose a source with Use settings, and save to create matching profiles.',
           hostel_profile_mismatch: 'The speed, device, or timeout settings differ. Open Profile catalogue → All hostels and use one hostel’s settings to match the plan.',
-          hostel_activation_pending: 'Finish the pending plan activation before moving this account.',
+          hostel_activation_pending: 'A paid or previously attempted plan activation is still pending. Finish its activation or reconciliation before moving this account.',
+          hostel_transfer_in_progress: 'An account update or hostel move is running or awaiting recovery. Check its recovery state before retrying.',
           hostel_username_conflict: 'This username already exists on the destination router.',
           hostel_source_user_missing: 'The customer’s account is missing from the source router.',
           hostel_already_selected: 'This customer is already at the selected hostel.',

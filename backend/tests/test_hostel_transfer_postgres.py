@@ -7,7 +7,7 @@ import uuid
 
 import pytest
 from alembic.config import Config
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 from test_hostel_transfer import FakeTransferClient, _customer, _move, _user
@@ -56,6 +56,68 @@ def child_try_lock(url, schema, customer_id, output):
         except ServiceError as exc:
             output.put(exc.error_code)
     engine.dispose()
+
+
+def test_activation_respects_transfer_lock_and_uses_current_hostel(isolated_postgres, monkeypatch):
+    from test_hostel_transfer_pending_payments import CheckoutRouter
+
+    from app.core.config import Settings
+    from app.models.activation import Activation
+    from app.models.enums import ActivationStatus, ActivationTrigger, PaymentStatus
+    from app.models.package import Package
+    from app.models.router import Router
+    from app.models.subscription import Subscription
+    from app.models.transaction import Transaction
+    from app.services.package_activation import PackageActivationService
+
+    _url, _schema, engine = isolated_postgres
+    customer = _customer()
+    client = CheckoutRouter(_user())
+    used = []
+
+    def client_for(router_id):
+        used.append(router_id)
+        return client
+
+    with Session(engine, expire_on_commit=False) as session:
+        session.add_all([
+            Router(id="old-hostel", name="Old", vpn_host="old.test"),
+            Router(id="new-hostel", name="New", vpn_host="new.test"),
+        ])
+        package = Package(code="weekly", name="Weekly", amount=10, data_limit_bytes=2000)
+        session.add(package)
+        session.flush()
+        session.add(customer)
+        session.flush()
+        transaction = Transaction(
+            customer_id=customer.id, package_id=package.id, router_id="old-hostel",
+            paystack_reference="late-payment", amount=10, payment_status=PaymentStatus.SUCCESS,
+        )
+        session.add(transaction)
+        session.flush()
+        activation = Activation(
+            customer_id=customer.id, package_id=package.id, transaction_id=transaction.id,
+            router_id="old-hostel", target_profile="paid",
+        )
+        session.add(activation)
+        session.commit()
+        service = PackageActivationService(session, client_for, Settings())
+        monkeypatch.setattr(service, "_notify_activation", lambda *_a, **_k: None)
+        with Session(engine) as transferring, transfer_lock(transferring, customer.id):
+            assert service.activate(
+                activation, trigger=ActivationTrigger.PAYSTACK_WEBHOOK,
+            ) == ActivationStatus.NOT_STARTED
+            assert used == []
+            assert activation.attempt_count == 0
+        customer.router_id = "new-hostel"
+        session.commit()
+        assert service.activate(
+            activation, trigger=ActivationTrigger.CUSTOMER_RETRY,
+        ) == ActivationStatus.SUCCESS
+        assert used == ["new-hostel"]
+        assert activation.router_id == "new-hostel"
+        assert transaction.router_id == "old-hostel"
+        assert session.scalars(select(Subscription)).one().router_id == "new-hostel"
 
 
 def test_customer_lock_survives_commits_and_blocks_another_process(isolated_postgres):

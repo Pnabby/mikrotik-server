@@ -120,6 +120,13 @@ assign its own server and network address. Transfer errors identify missing prof
 settings mismatches, pending activations, and username conflicts. To fix a mismatch, use
 **Profile catalogue → All hostels → Configure all / Edit all → Use settings → Save**.
 
+Unpaid or failed checkouts that have never attempted activation do not block a hostel move.
+Paid activations and activations with possible router writes must finish first. If a checkout
+is paid after a move, its first activation uses the customer's current hostel, while the
+transaction retains its original hostel for financial attribution. Activation shares the
+transfer lock and waits for any active transfer recovery to finish; the customer can then
+retry activation from Purchases. Completed activations keep their historical router records.
+
 Customers can submit complaints from **Raise an issue** (`/issues`) with an optional room
 number. The server records their account's hostel and keeps that original hostel on the
 issue after a move. Customers see only their own issues and admin replies. The admin
