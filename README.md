@@ -19,7 +19,7 @@ The move ends RouterOS sessions and remembered logins, carries the hotspot user 
 and comment to the destination, and deducts settled byte usage from finite allowances.
 Customer and admin transfer dialogs show a spinner while the move runs and explain that
 it may take 30 seconds or more. The account overview confirms plan activity using live
-RouterOS status: disabled users show **Inactive** and **No active plan**, while failed
+RouterOS status: disabled users show **Exhausted** and **No active plan**, while failed
 router checks show **Status unavailable**. **Refresh WiFi status** reads the router again.
 Purchased plan details and purchase history remain available when WiFi access is inactive.
 The customer-facing paths and APIs are available:

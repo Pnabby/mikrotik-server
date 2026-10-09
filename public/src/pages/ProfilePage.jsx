@@ -164,12 +164,12 @@ export default function ProfilePage() {
     try {
       await changePin(pinForm.oldPin, pinForm.newPin, pinForm.confirmation)
       setPinForm({ oldPin: '', newPin: '', confirmation: '' })
-      setPinSuccess('Your PIN was changed successfully on Vlad WiFi and your hostel router.')
+      setPinSuccess('Your PIN was changed successfully. Use your new PIN to sign in to Vlad WiFi.')
     } catch (error) {
       if (error instanceof AccountApiError && error.status === 401) {
         setPinError('Your current PIN is incorrect.')
       } else if (error instanceof AccountApiError && [502, 503].includes(error.status)) {
-        setPinError('Your hostel router is unavailable. Your PIN was not changed.')
+        setPinError('Your PIN could not be changed right now. Please try again later.')
       } else {
         setPinError('Your PIN could not be changed. Please try again.')
       }
@@ -208,23 +208,23 @@ export default function ProfilePage() {
       } else if (error instanceof AccountApiError && error.status === 409) {
         const reasons = {
           hostel_already_selected: 'Your account is already registered at this hostel.',
-          hostel_activation_pending: 'Your WiFi plan activation is still pending. Open Purchases and retry activation before moving hostels.',
-          hostel_transfer_in_progress: 'An account update or hostel move is already running or awaiting recovery. Refresh your profile and try again shortly. Contact support if it stays pending.',
+          hostel_activation_pending: 'Your plan is still being set up. Open Purchases and select Retry activation before moving hostels.',
+          hostel_transfer_in_progress: 'Your account is still being updated. Please try again shortly or contact support if it takes longer than expected.',
           hostel_username_conflict: 'Your username already exists there. Please raise an issue so an admin can help.',
-          hostel_source_user_missing: 'Your network account needs an admin repair. Please raise an issue.',
-          hostel_profile_missing: 'Your plan is missing at that hostel. Ask an admin to match the hostel plans in the Profile catalogue.',
-          hostel_profile_mismatch: 'The hostels have different speed, device, or timeout settings for your plan. Ask an admin to match them in the Profile catalogue.',
+          hostel_source_user_missing: 'We need to check your account before it can be moved. Please raise an issue for help.',
+          hostel_profile_missing: 'Your plan is not available at that hostel yet. Please raise an issue so we can help with your move.',
+          hostel_profile_mismatch: 'Your plan needs an update before it can be used at that hostel. Please raise an issue so we can help with your move.',
         }
         setTransferError(reasons[error.code] || 'This account cannot be moved yet. Please raise an issue so an admin can help.')
       } else if (error instanceof AccountApiError && error.code === 'hostel_transfer_unconfirmed') {
-        setTransferError('The routers could not confirm the move. Please raise an issue so an admin can check your account before you retry.')
+        setTransferError('We could not confirm your hostel change. Please raise an issue so we can check your account before you try again.')
       } else if (error instanceof AccountApiError && error.code && (
         error.code.startsWith('hostel_source_router_') || error.code.startsWith('hostel_destination_router_') ||
         ['hostel_both_routers_not_ready', 'hostel_transfer_storage_unavailable', 'hostel_transfer_not_configured', 'router_not_configured', 'router_request_failed'].includes(error.code)
       )) {
-        setTransferError(error.detail || 'The move could not be started. Please contact support.')
+        setTransferError('The move could not be started. Please try again later or contact support.')
       } else if (error instanceof AccountApiError && [502, 503].includes(error.status)) {
-        setTransferError('The server could not complete the move. Please raise an issue so an admin can check the cause.')
+        setTransferError('We could not complete your move. Please raise an issue so we can help.')
       } else {
         setTransferError('The hostel change could not be completed. Please try again or contact support.')
       }
@@ -301,7 +301,7 @@ export default function ProfilePage() {
         <section className="profile-pin-card">
           <div>
             <h2>Change password (PIN)</h2>
-            <p>Enter your current PIN, then enter your new 6-digit PIN twice. We will verify your hostel router before changing it.</p>
+            <p>Enter your current PIN, then enter your new 6-digit PIN twice.</p>
           </div>
           <form className="profile-pin-form" noValidate onSubmit={submitPinChange}>
             <label htmlFor="current-pin">Current PIN</label>
@@ -312,7 +312,7 @@ export default function ProfilePage() {
             </div>
             {pinError && <p className="profile-pin-message error" role="alert">{pinError}</p>}
             {pinSuccess && <p className="profile-pin-message success" role="status">{pinSuccess}</p>}
-            <button disabled={changingPin} type="submit">{changingPin ? 'Checking router...' : 'Change PIN'}</button>
+            <button disabled={changingPin} type="submit">{changingPin ? 'Changing PIN...' : 'Change PIN'}</button>
           </form>
         </section>
 
@@ -375,7 +375,7 @@ export default function ProfilePage() {
           <section className="portal-modal profile-action-modal" role="dialog" aria-modal="true" aria-labelledby="delete-account-title" onMouseDown={(event) => event.stopPropagation()}>
             <span className="portal-modal-icon"><WarningIcon /></span>
             <h2 id="delete-account-title">Delete your account permanently?</h2>
-            <p>Your account, plan history, sessions, hotspot user, and remembered cookies will be removed. <strong>This cannot be undone.</strong></p>
+            <p>Your account, plan history and saved logins will be removed, and all WiFi connections will end. <strong>This cannot be undone.</strong></p>
             <form className="profile-modal-form" noValidate onSubmit={permanentlyDelete}>
               <label htmlFor="delete-account-pin"><span>Enter your PIN to confirm</span>
                 <input autoFocus autoComplete="off" id="delete-account-pin" inputMode="numeric" maxLength={6} placeholder="6-digit PIN" type="password" value={deletePin} onChange={(event) => { setDeletePin(event.target.value.replace(/\D/g, '')); setDeleteError('') }} />
