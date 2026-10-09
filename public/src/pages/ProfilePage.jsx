@@ -180,6 +180,7 @@ export default function ProfilePage() {
 
   async function submitHostelTransfer(event) {
     event.preventDefault()
+    if (transferring) return
     if (!transferForm.destinationRouterId) {
       setTransferError('Select the hostel you are moving to.')
       return
@@ -344,19 +345,25 @@ export default function ProfilePage() {
             <p>Your account will be moved from <strong>{account.hostel_name}</strong>. All active WiFi sessions and remembered logins will end first.</p>
             <form className="profile-modal-form" noValidate onSubmit={submitHostelTransfer}>
               <label htmlFor="destination-hostel"><span>New hostel</span>
-                <select autoFocus id="destination-hostel" value={transferForm.destinationRouterId} onChange={(event) => { setTransferForm((current) => ({ ...current, destinationRouterId: event.target.value })); setTransferError('') }}>
+                <select autoFocus disabled={transferring} id="destination-hostel" value={transferForm.destinationRouterId} onChange={(event) => { setTransferForm((current) => ({ ...current, destinationRouterId: event.target.value })); setTransferError('') }}>
                   <option value="">Select your new hostel</option>
                   {hostels.filter((hostel) => hostel.router_id !== account.router_id).map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}
                 </select>
               </label>
               <label htmlFor="hostel-transfer-pin"><span>Enter your PIN to confirm</span>
-                <input autoComplete="current-password" id="hostel-transfer-pin" inputMode="numeric" maxLength={6} placeholder="6-digit PIN" type="password" value={transferForm.pin} onChange={(event) => { setTransferForm((current) => ({ ...current, pin: event.target.value.replace(/\D/g, '').slice(0, 6) })); setTransferError('') }} />
+                <input autoComplete="current-password" disabled={transferring} id="hostel-transfer-pin" inputMode="numeric" maxLength={6} placeholder="6-digit PIN" type="password" value={transferForm.pin} onChange={(event) => { setTransferForm((current) => ({ ...current, pin: event.target.value.replace(/\D/g, '').slice(0, 6) })); setTransferError('') }} />
               </label>
               <small>Any data already used is deducted before your remaining allowance moves to the new hostel.</small>
+              {transferring ? (
+                <aside className="transfer-progress" role="status" aria-live="polite">
+                  <span className="transfer-spinner" aria-hidden="true" />
+                  <div><strong>Moving your account</strong><small>This may take 30 seconds or more. Please keep this page open.</small></div>
+                </aside>
+              ) : <small>The move may take 30 seconds or more.</small>}
               {transferError && <p className="portal-modal-error" role="alert">{transferError} <a href="/issues">Raise an issue</a></p>}
               <div className="portal-modal-actions">
                 <button disabled={transferring} type="button" onClick={closeTransferModal}>Cancel</button>
-                <button className="confirm" disabled={transferring} type="submit">{transferring ? 'Moving account...' : 'Confirm hostel move'}</button>
+                <button className="confirm" aria-busy={transferring} disabled={transferring} type="submit">{transferring ? 'Moving account...' : 'Confirm hostel move'}</button>
               </div>
             </form>
           </section>

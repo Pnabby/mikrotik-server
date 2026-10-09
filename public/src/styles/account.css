@@ -1267,6 +1267,18 @@ input {
   background: #eef0f4;
 }
 
+.network-unavailable > span,
+.network-checking > span {
+  color: #8a94a6;
+  background: #eef0f4;
+}
+
+.network-actions {
+  display: grid;
+  justify-items: end;
+  gap: 0.5rem;
+}
+
 .network-state > div {
   display: grid;
   gap: 0.1rem;
@@ -1389,6 +1401,24 @@ input {
 .plan-breakdown-status.exhausted {
   color: #b54708;
   background: #fff1e7;
+}
+
+.plan-breakdown-status.inactive,
+.plan-breakdown-status.unavailable,
+.plan-breakdown-status.checking {
+  color: #536078;
+  background: #eef0f4;
+}
+
+.plan-status-notice {
+  margin-top: 1rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid #e8ebf1;
+  border-radius: 10px;
+  color: var(--account-muted);
+  background: #f8f9fc;
+  font-size: 0.75rem;
+  line-height: 1.6;
 }
 
 .plan-breakdown-list {
@@ -1817,6 +1847,56 @@ input {
 
 .profile-modal-form .portal-modal-actions {
   margin-top: 0.35rem;
+}
+
+.profile-modal-form select:disabled,
+.profile-modal-form input:disabled {
+  color: var(--account-muted);
+  background: #f8f9fc;
+  cursor: wait;
+}
+
+.transfer-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid #dce2ff;
+  border-radius: 12px;
+  color: var(--account-primary);
+  background: #f2f4ff;
+}
+
+.transfer-spinner {
+  width: 25px;
+  height: 25px;
+  flex: 0 0 auto;
+  border: 3px solid #dce2ff;
+  border-top-color: var(--account-primary);
+  border-radius: 50%;
+  animation: account-spin 850ms linear infinite;
+}
+
+.transfer-progress strong,
+.transfer-progress small {
+  display: block;
+}
+
+.transfer-progress strong {
+  font-size: 0.78rem;
+}
+
+.transfer-progress small {
+  margin-top: 0.3rem;
+  color: #536078;
+  font-size: 0.7rem;
+  line-height: 1.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transfer-spinner {
+    animation: none;
+  }
 }
 
 /* Profile */
@@ -2250,6 +2330,10 @@ input {
   }
 
   .network-state {
+    width: 100%;
+  }
+
+  .network-actions {
     width: 100%;
   }
 
