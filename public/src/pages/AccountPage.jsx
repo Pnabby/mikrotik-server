@@ -10,6 +10,7 @@ import {
   DeviceTypeIcon,
   DotIcon,
   PlanIcon,
+  RefreshIcon,
   ShieldIcon,
   VoucherIcon,
   WarningIcon,
@@ -24,6 +25,7 @@ import {
   retryFreePlanClaim,
   verifyPlanPurchase,
 } from '../services/accountApi'
+import { getPlanStatus } from '../utils/planStatus'
 
 function formatMoney(amount, currency) {
   const numericAmount = Number(amount)
@@ -61,15 +63,6 @@ function formatDateTime(value, fallback = '--') {
     hour: 'numeric',
     minute: '2-digit',
   }).format(date)
-}
-
-function timestampHasPassed(value) {
-  if (!value) return false
-  const normalizedValue = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
-    ? `${value.replace(' ', 'T')}Z`
-    : value
-  const timestamp = new Date(normalizedValue).getTime()
-  return Number.isFinite(timestamp) && timestamp <= Date.now()
 }
 
 function formatDuration(seconds) {
@@ -136,6 +129,26 @@ const PAYMENT_NOTICE_COPY = {
   failed: {
     title: 'The payment was not completed.',
     detail: 'No plan was activated. You can select a plan and try again.',
+  },
+}
+
+const PLAN_STATUS_COPY = {
+  active: { label: 'Active', access: 'Active plan' },
+  inactive: {
+    label: 'Inactive', access: 'No active plan',
+    detail: 'Your WiFi account is disabled, so this plan is inactive. Choose a plan below or raise an issue if you need help.',
+  },
+  exhausted: {
+    label: 'Exhausted', access: 'No active plan',
+    detail: 'This plan has run out of data or reached its expiry. Choose a plan below to reconnect.',
+  },
+  checking: {
+    label: 'Checking…', access: 'Checking router…',
+    detail: 'Checking your plan status with the hostel router.',
+  },
+  unavailable: {
+    label: 'Status unavailable', access: 'Status unavailable',
+    detail: 'We could not confirm your plan status from the hostel router. Refresh your WiFi status and try again.',
   },
 }
 
@@ -445,7 +458,7 @@ export default function AccountPage() {
 
   function requestPlanPurchase(plan) {
     setPurchaseError('')
-    if (account?.current_plan && !isCurrentPlanExhausted) {
+    if (account?.current_plan && !['inactive', 'exhausted'].includes(planStatus)) {
       setPurchaseTarget(plan)
       return
     }
@@ -509,12 +522,10 @@ export default function AccountPage() {
 
   const currentPlan = account.current_plan
   const hasCurrentPlan = Boolean(currentPlan)
-  const dataAllowanceExhausted = hasCurrentPlan
-    && networkStatus?.total_data_left_bytes !== null
-    && networkStatus?.total_data_left_bytes !== undefined
-    && Number(networkStatus.total_data_left_bytes) <= 0
+  const planStatus = getPlanStatus(currentPlan, networkStatus, networkPhase)
+  const hasActivePlan = planStatus === 'active'
+  const planStatusCopy = PLAN_STATUS_COPY[planStatus]
   const planExpiryDate = networkStatus?.expiry_date || currentPlan?.expires_at || null
-  const isCurrentPlanExhausted = dataAllowanceExhausted || timestampHasPassed(planExpiryDate)
   const devices = networkStatus?.connected_devices || []
   const statusUnavailable = networkPhase === 'error'
   const planName = currentPlan?.name || ''
@@ -575,7 +586,9 @@ export default function AccountPage() {
   const previousPlans = account.previous_plans || []
   const purchases = account.purchases || []
   const visiblePurchases = showAllPurchases ? purchases : purchases.slice(0, 5)
-  const paymentNoticeCopy = PAYMENT_NOTICE_COPY[visiblePaymentNotice]
+  const paymentNoticeCopy = visiblePaymentNotice === 'active' && !hasActivePlan
+    ? { title: 'Your plan purchase was completed.', detail: hasCurrentPlan ? planStatusCopy.detail : 'Choose a plan below or contact support if you need help.' }
+    : PAYMENT_NOTICE_COPY[visiblePaymentNotice]
 
   return (
     <main className="account-page">
@@ -599,9 +612,12 @@ export default function AccountPage() {
             <p>Track your WiFi access, devices, plans, and purchases.</p>
           </div>
           {hasCurrentPlan && (
-            <div className={`network-state ${isCurrentPlanExhausted ? 'network-exhausted' : 'network-active'}`}>
-              <span><DotIcon /></span>
-              <div><small>WiFi access</small><strong>{isCurrentPlanExhausted ? 'Exhausted' : 'Active plan'}</strong></div>
+            <div className="network-actions">
+              <div className={`network-state network-${planStatus}`} role="status">
+                <span><DotIcon /></span>
+                <div><small>WiFi access</small><strong>{planStatusCopy.access}</strong></div>
+              </div>
+              <button className="network-refresh" type="button" disabled={networkPhase === 'loading'} onClick={refreshNetworkStatus}><RefreshIcon />{networkPhase === 'loading' ? 'Checking router…' : 'Refresh WiFi status'}</button>
             </div>
           )}
         </section>
@@ -618,7 +634,7 @@ export default function AccountPage() {
             </article>
             <article>
               <span><PlanIcon /></span>
-              <div><small>Current plan</small><strong>{planName}</strong></div>
+              <div><small>Current plan</small><strong>{hasActivePlan ? planName : planStatusCopy.access}</strong></div>
             </article>
             <article>
               <span><DevicesIcon /></span>
@@ -633,10 +649,11 @@ export default function AccountPage() {
               <div>
                 <span className="account-eyebrow">Your plan</span>
                 <h2 id="plan-breakdown-title">Plan breakdown</h2>
-                <p>Your current WiFi plan and access details.</p>
+                <p>{hasActivePlan ? 'Your current WiFi plan and access details.' : 'Your plan details and current WiFi access status.'}</p>
               </div>
-              <span className={`plan-breakdown-status${isCurrentPlanExhausted ? ' exhausted' : ''}`}><DotIcon />{isCurrentPlanExhausted ? 'Exhausted' : 'Active'}</span>
+              <span className={`plan-breakdown-status ${planStatus}`}><DotIcon />{planStatusCopy.label}</span>
             </div>
+            {planStatusCopy.detail && <p className="plan-status-notice" role="status">{planStatusCopy.detail}</p>}
             <dl className="plan-breakdown-list">
               <div><dt>Plan</dt><dd>{planName}</dd></div>
               <div><dt>Login date</dt><dd>{loginDateLabel}</dd></div>
@@ -645,10 +662,10 @@ export default function AccountPage() {
               <div><dt>Device allowance</dt><dd>{currentPlan.device_limit ? `${currentPlan.device_limit} device${currentPlan.device_limit === 1 ? '' : 's'}` : 'Unlimited devices'}</dd></div>
               <div><dt>Download speed</dt><dd>{currentPlan.download_speed || 'Not listed'}</dd></div>
             </dl>
-            <div className="captive-portal-callout">
+            {hasActivePlan && <div className="captive-portal-callout">
               <div><strong>Ready to connect?</strong><p>Open the WiFi login page to activate your plan on this device.</p></div>
               <a href="http://wifi.flint.net">Open WiFi login</a>
-            </div>
+            </div>}
           </section>
         )}
 
@@ -818,7 +835,7 @@ export default function AccountPage() {
         <div className="portal-modal-backdrop" role="presentation" onMouseDown={() => !purchasingPlanId && setPurchaseTarget(null)}>
           <section className={`portal-modal${purchaseTarget.is_promotional ? ' special-offer-modal' : ''}`} role="dialog" aria-modal="true" aria-labelledby="replace-plan-title" onMouseDown={(event) => event.stopPropagation()}>
             <span className="portal-modal-icon plan-replace-icon"><WarningIcon /></span>
-            <h2 id="replace-plan-title">Replace your active plan?</h2>
+            <h2 id="replace-plan-title">{hasActivePlan ? 'Replace your active plan?' : 'Replace your existing plan?'}</h2>
             <p>
               You currently have <strong>{currentPlan.name}</strong>. {purchaseTarget.is_promotional && Number(purchaseTarget.amount) === 0 ? 'Claiming' : 'Purchasing'} <strong>{purchaseTarget.name}</strong> will immediately replace it. Any remaining time or data on your current plan will not carry over. All connected devices will be logged out and every device must sign in through the WiFi portal again.
             </p>

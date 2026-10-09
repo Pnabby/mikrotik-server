@@ -1926,6 +1926,16 @@ a:focus-visible {
 .customer-action-panel form button.primary { border-color: var(--green-600); color: var(--on-primary); background: var(--green-600); }
 .customer-action-panel.danger form button.primary { border-color: var(--red-600); background: var(--danger-fill); }
 .customer-action-panel form button:disabled { cursor: wait; opacity: 0.6; }
+.customer-action-panel form select:disabled,
+.customer-action-panel form input:disabled { color: var(--muted); background: var(--bg); cursor: wait; }
+.customer-transfer-help { color: var(--muted); font-size: 0.59rem; line-height: 1.6; }
+.customer-transfer-progress { display: flex; align-items: center; gap: 0.75rem; padding: 0.85rem; border: 1px solid color-mix(in srgb, var(--green-600) 20%, var(--line)); border-radius: 10px; color: var(--primary-text); background: var(--green-50); }
+.customer-transfer-progress strong,
+.customer-transfer-progress small { display: block; }
+.customer-transfer-progress strong { font-size: 0.65rem; }
+.customer-transfer-progress small { margin-top: 0.25rem; color: var(--muted); font-size: 0.59rem; line-height: 1.6; }
+.customer-transfer-spinner { width: 24px; height: 24px; flex: 0 0 auto; border: 3px solid color-mix(in srgb, var(--green-600) 20%, transparent); border-top-color: var(--green-600); border-radius: 50%; animation: admin-spin 850ms linear infinite; }
+@media (prefers-reduced-motion: reduce) { .customer-transfer-spinner { animation: none; } }
 .admin-status-pill { display: inline-flex; padding: 0.28rem 0.48rem; border-radius: 999px; color: var(--muted); background: var(--bg); font-size: 0.53rem; font-weight: 800; text-transform: capitalize; }
 .admin-status-pill.success,
 .admin-status-pill.active { color: var(--primary-text); background: var(--green-50); }
