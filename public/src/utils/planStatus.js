@@ -4,7 +4,7 @@ export function getPlanStatus(currentPlan, networkStatus, networkPhase, now = Da
   if (networkPhase !== 'ready' || typeof networkStatus?.disabled !== 'boolean') return 'unavailable'
 
   // RouterOS is authoritative: a stored subscription cannot enable a disabled user.
-  if (networkStatus.disabled) return 'inactive'
+  if (networkStatus.disabled) return 'exhausted'
 
   const remaining = networkStatus.total_data_left_bytes
   const expiry = networkStatus.expiry_date || currentPlan.expires_at

@@ -7,9 +7,9 @@ const currentPlan = { status: 'active', expires_at: null }
 const routerStatus = { disabled: false, total_data_left_bytes: 1, expiry_date: null }
 const now = Date.parse('2026-10-09T00:00:00Z')
 
-test('a disabled router user has no active plan despite an active stored subscription and remaining data', () => {
-  assert.equal(getPlanStatus(currentPlan, { ...routerStatus, disabled: true }, 'ready', now), 'inactive')
-  assert.equal(getPlanStatus(currentPlan, { ...routerStatus, disabled: true, total_data_left_bytes: 0 }, 'ready', now), 'inactive')
+test('a disabled router user has an exhausted plan despite an active stored subscription and remaining data', () => {
+  assert.equal(getPlanStatus(currentPlan, { ...routerStatus, disabled: true }, 'ready', now), 'exhausted')
+  assert.equal(getPlanStatus(currentPlan, { ...routerStatus, disabled: true, total_data_left_bytes: 0 }, 'ready', now), 'exhausted')
 })
 
 test('an enabled router user with remaining allowance has an active plan even without connected devices', () => {
@@ -25,7 +25,7 @@ test('a failed router check cannot use stale enabled status to claim the plan is
 
 test('refreshing router status shows checking until the latest result arrives', () => {
   assert.equal(getPlanStatus(currentPlan, routerStatus, 'loading', now), 'checking')
-  assert.equal(getPlanStatus(currentPlan, { ...routerStatus, disabled: true }, 'ready', now), 'inactive')
+  assert.equal(getPlanStatus(currentPlan, { ...routerStatus, disabled: true }, 'ready', now), 'exhausted')
 })
 
 test('an enabled user with no remaining data or an expired plan is exhausted', () => {

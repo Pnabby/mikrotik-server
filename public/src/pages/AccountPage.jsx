@@ -116,7 +116,7 @@ const PAYMENT_NOTICE_COPY = {
   },
   activation_pending: {
     title: 'Your plan is being activated.',
-    detail: 'Your transaction is safe. We are automatically retrying the router; you can also retry it now.',
+    detail: 'Your purchase is safe. We are getting your plan ready; you can also try again.',
   },
   pending: {
     title: 'Your payment is still being confirmed.',
@@ -136,19 +136,19 @@ const PLAN_STATUS_COPY = {
   active: { label: 'Active', access: 'Active plan' },
   inactive: {
     label: 'Inactive', access: 'No active plan',
-    detail: 'Your WiFi account is disabled, so this plan is inactive. Choose a plan below or raise an issue if you need help.',
+    detail: 'You do not have an active plan. Choose a plan below to get connected.',
   },
   exhausted: {
     label: 'Exhausted', access: 'No active plan',
-    detail: 'This plan has run out of data or reached its expiry. Choose a plan below to reconnect.',
+    detail: 'Your plan has been exhausted. Choose a new plan below to get connected again.',
   },
   checking: {
-    label: 'Checking…', access: 'Checking router…',
-    detail: 'Checking your plan status with the hostel router.',
+    label: 'Checking…', access: 'Checking plan…',
+    detail: 'Checking your plan status.',
   },
   unavailable: {
     label: 'Status unavailable', access: 'Status unavailable',
-    detail: 'We could not confirm your plan status from the hostel router. Refresh your WiFi status and try again.',
+    detail: 'We could not check your plan status. Please refresh and try again.',
   },
 }
 
@@ -448,7 +448,7 @@ export default function AccountPage() {
         error instanceof AccountApiError && error.status === 409
           ? error.detail || 'This special offer has already been claimed.'
           : error instanceof AccountApiError && error.status === 503
-          ? 'The router is currently unreachable. Please contact support.'
+          ? 'Your plan could not be activated right now. Please try again or contact support.'
           : 'Checkout could not be started. Please try again in a moment.',
       )
       setPurchaseTarget(null)
@@ -617,7 +617,7 @@ export default function AccountPage() {
                 <span><DotIcon /></span>
                 <div><small>WiFi access</small><strong>{planStatusCopy.access}</strong></div>
               </div>
-              <button className="network-refresh" type="button" disabled={networkPhase === 'loading'} onClick={refreshNetworkStatus}><RefreshIcon />{networkPhase === 'loading' ? 'Checking router…' : 'Refresh WiFi status'}</button>
+              <button className="network-refresh" type="button" disabled={networkPhase === 'loading'} onClick={refreshNetworkStatus}><RefreshIcon />{networkPhase === 'loading' ? 'Checking plan…' : 'Refresh WiFi status'}</button>
             </div>
           )}
         </section>
@@ -706,7 +706,7 @@ export default function AccountPage() {
               <VoucherIcon />
             </div>
           </div>
-          <div className="plan-speed-notice" role="note"><DataUsedIcon /><p><strong>Understanding your plan speed</strong><span>The speed shown is the maximum a plan can reach. Actual speed cannot be guaranteed, especially during peak hours, and your distance from the WiFi router or access point can also affect it.</span></p></div>
+          <div className="plan-speed-notice" role="note"><DataUsedIcon /><p><strong>Understanding your plan speed</strong><span>The speed shown is the maximum a plan can reach. Actual speed can vary, especially during peak hours or when the WiFi signal is weak.</span></p></div>
           {availablePlans.length ? (
             <>
               {purchaseError && <div className="plan-purchase-error" role="alert">{purchaseError}</div>}

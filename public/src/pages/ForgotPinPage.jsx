@@ -77,7 +77,7 @@ export default function ForgotPinPage() {
       setStep('code')
     } catch (requestError) {
       if (requestError instanceof AccountApiError && [502, 503].includes(requestError.status)) {
-        setError('Your hostel router is unavailable. No code was sent; please try again later.')
+        setError('We could not send your code right now. Please try again later.')
       } else if (requestError instanceof AccountApiError && requestError.status === 429) {
         setError('Please wait before requesting another code.')
       } else if (mode === 'unlock' && requestError instanceof AccountApiError && requestError.status === 404) {
@@ -154,7 +154,7 @@ export default function ForgotPinPage() {
       setStep('done')
     } catch (requestError) {
       if (requestError instanceof AccountApiError && [502, 503].includes(requestError.status)) {
-        setError('Your hostel router is unavailable. No account change was made.')
+        setError('We could not update your account right now. Please try again later.')
       } else if (requestError instanceof AccountApiError && requestError.status === 429) {
         setError('Too many incorrect attempts. Request a new code.')
       } else if (requestError instanceof AccountApiError && requestError.status === 400) {
@@ -191,14 +191,14 @@ export default function ForgotPinPage() {
 
         <section className="signup-card login-card reset-pin-card">
           {step === 'email' && <>
-            <div className="signup-card-header"><h2>Find your account</h2><p>We will check your hostel router before sending a verification code.</p></div>
+            <div className="signup-card-header"><h2>Find your account</h2><p>Enter your account details to receive a verification code.</p></div>
             <div className="recovery-mode-tabs" aria-label="Choose recovery type"><button className={mode === 'username' ? 'active' : ''} type="button" onClick={() => chooseMode('username')}>Forgot username</button><button className={mode === 'pin' ? 'active' : ''} type="button" onClick={() => chooseMode('pin')}>Forgot PIN</button><button className={mode === 'unlock' ? 'active' : ''} type="button" onClick={() => chooseMode('unlock')}>Unlock account</button></div>
             <form className="login-form" noValidate onSubmit={requestCode}>
               {mode === 'unlock'
                 ? <div className="signup-field"><label htmlFor="unlock-username">Username</label><input autoCapitalize="none" autoComplete="username" className="signup-input" id="unlock-username" maxLength="64" placeholder="Enter your username" spellCheck="false" type="text" value={username} onChange={(event) => { setUsername(event.target.value.toLowerCase().replace(/\s/g, '')); setError('') }} /></div>
                 : <div className="signup-field"><label htmlFor="reset-email">Email address</label><input autoComplete="email" className="signup-input" id="reset-email" placeholder="you@example.com" type="email" value={email} onChange={(event) => { setEmail(event.target.value); setError('') }} /></div>}
               {error && <div className="otp-api-error" role="alert">{error}</div>}
-              <button className="signup-submit" disabled={busy} type="submit">{busy ? 'Checking router...' : `Send ${mode === 'username' ? 'username recovery' : mode === 'unlock' ? 'account unlock' : 'PIN reset'} code`}</button>
+              <button className="signup-submit" disabled={busy} type="submit">{busy ? 'Sending code...' : `Send ${mode === 'username' ? 'username recovery' : mode === 'unlock' ? 'account unlock' : 'PIN reset'} code`}</button>
             </form>
           </>}
 
@@ -208,12 +208,12 @@ export default function ForgotPinPage() {
               <div className="signup-field"><label htmlFor="reset-code">Verification code</label><OtpInput autoFocus id="reset-code" invalid={Boolean(error)} value={form.code} onChange={(value) => { setForm((current) => ({ ...current, code: value })); setError('') }} /></div>
               {mode === 'pin' && <><div className="signup-field"><label htmlFor="reset-new-pin">New PIN</label><input autoComplete="new-password" className="signup-input pin-masked" id="reset-new-pin" inputMode="numeric" maxLength="6" name="newPin" placeholder="6-digit PIN" type="text" value={form.newPin} onChange={updatePinField} /></div><div className="signup-field"><label htmlFor="reset-confirm-pin">Confirm new PIN</label><input autoComplete="new-password" className="signup-input pin-masked" id="reset-confirm-pin" inputMode="numeric" maxLength="6" name="confirmation" placeholder="Repeat new PIN" type="text" value={form.confirmation} onChange={updatePinField} /></div></>}
               {error && <div className="otp-api-error" role="alert">{error}</div>}
-              <button className="signup-submit" disabled={busy} type="submit">{busy ? 'Checking router...' : mode === 'username' ? 'Recover username' : mode === 'unlock' ? 'Unlock account' : 'Reset PIN'}</button>
+              <button className="signup-submit" disabled={busy} type="submit">{busy ? 'Updating account...' : mode === 'username' ? 'Recover username' : mode === 'unlock' ? 'Unlock account' : 'Reset PIN'}</button>
               <div className="otp-actions"><button disabled={busy || resendIn > 0} type="button" onClick={requestCode}>{resendIn > 0 ? `Send another email in ${resendIn}s` : 'Send another email code'}</button>{mode === 'pin' && deliveryMethod === 'email' && <button disabled={busy} type="button" onClick={useSmsFallback}>I can’t access my email — send by SMS</button>}<button disabled={busy} type="button" onClick={restartRecovery}>Use another {mode === 'unlock' ? 'username' : 'email'}</button></div>
             </form>
           </>}
 
-          {step === 'done' && <div className="reset-pin-success"><span aria-hidden="true">&#10003;</span><h2>{mode === 'username' ? 'Username recovered' : mode === 'unlock' ? 'Account unlocked' : 'PIN changed'}</h2>{mode === 'username' ? <><p>Your Vlad WiFi username is:</p><strong className="recovered-username">{recoveredUsername}</strong></> : mode === 'unlock' ? <p>Your account is unlocked and the failed-login counter has been cleared. You can now log in.</p> : <p>Your new PIN is active in Vlad WiFi and on your hostel router. You can now log in.</p>}<a className="signup-submit" href="/">Return to login</a></div>}
+          {step === 'done' && <div className="reset-pin-success"><span aria-hidden="true">&#10003;</span><h2>{mode === 'username' ? 'Username recovered' : mode === 'unlock' ? 'Account unlocked' : 'PIN changed'}</h2>{mode === 'username' ? <><p>Your Vlad WiFi username is:</p><strong className="recovered-username">{recoveredUsername}</strong></> : mode === 'unlock' ? <p>Your account is unlocked. You can now log in.</p> : <p>Your PIN has been changed. You can now sign in with your new PIN.</p>}<a className="signup-submit" href="/">Return to login</a></div>}
           {step !== 'done' && <p className="reset-back-link"><a href="/">Back to login</a></p>}
         </section>
       </div>
