@@ -47,16 +47,16 @@ const DURATION_UNITS = {
 }
 const ALL_HOSTELS_ID = '__all_hostels__'
 const ADMIN_VIEW_PATHS = {
-  dashboard: '/admin/dashboard',
-  hostels: '/admin/hostels',
-  profiles: '/admin/profiles',
-  customers: '/admin/customers',
-  network: '/admin/network',
-  wireguard: '/admin/wireguard',
-  transactions: '/admin/transactions',
-  analysis: '/admin/analysis',
-  support: '/admin/support',
-  issues: '/admin/issues',
+  dashboard: '/dashboard',
+  hostels: '/hostels',
+  profiles: '/profiles',
+  customers: '/customers',
+  network: '/network',
+  wireguard: '/wireguard',
+  transactions: '/transactions',
+  analysis: '/analysis',
+  support: '/support',
+  issues: '/issues',
 }
 const ADMIN_PATH_VIEWS = Object.fromEntries(
   Object.entries(ADMIN_VIEW_PATHS).map(([view, path]) => [path, view]),
