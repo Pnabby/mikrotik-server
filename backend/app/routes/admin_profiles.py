@@ -24,6 +24,8 @@ from app.schemas.admin_profiles import (
     AdminPlanGroupCreate,
     AdminPlanGroupResponse,
     AdminPlanGroupUpdate,
+    AdminProfileDetailsResponse,
+    AdminProfileDetailsUpdate,
     AdminProfileUpdate,
     AdminRouterProfileResponse,
 )
@@ -340,6 +342,33 @@ def save_router_profile(
         admin=admin,
         ip_address=request.client.host if request.client else None,
         source_profile=source_profile,
+    )
+
+
+@router.patch(
+    "/hostels/{router_id}/profiles/{mikrotik_profile}",
+    response_model=AdminProfileDetailsResponse,
+)
+def update_router_profile_details(
+    router_id: str,
+    mikrotik_profile: str,
+    payload: AdminProfileDetailsUpdate,
+    request: Request,
+    admin: AdminDependency,
+    session: SessionDependency,
+    settings: SettingsDependency,
+) -> AdminProfileDetailsResponse:
+    if admin.role not in {AdminRole.OPERATOR, AdminRole.ADMINISTRATOR}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+    router_model = session.get(Router, router_id)
+    if router_model is None or not router_model.is_active:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+    return AdminProfileService(session, settings).update_profile_details(
+        router=router_model,
+        mikrotik_profile=mikrotik_profile,
+        update=payload,
+        admin=admin,
+        ip_address=request.client.host if request.client else None,
     )
 
 
