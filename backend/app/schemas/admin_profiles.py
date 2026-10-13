@@ -71,7 +71,7 @@ class AdminHostelCreate(AdminHostelUpdate):
         return value
 
 
-class AdminRouterProfileResponse(BaseModel):
+class AdminProfileDetailsResponse(BaseModel):
     mikrotik_profile: str
     display_name: str | None
     description: str | None
@@ -87,6 +87,9 @@ class AdminRouterProfileResponse(BaseModel):
     is_configured: bool
     is_visible: bool
     is_registration_profile: bool
+
+
+class AdminRouterProfileResponse(AdminProfileDetailsResponse):
     available_on_router: bool
     rate_limit: str | None
     shared_users: int | Literal["unlimited"] | None
@@ -190,6 +193,31 @@ class AdminProfileUpdate(BaseModel):
     def validate_free_public_plan(self) -> AdminProfileUpdate:
         if self.is_visible and self.amount == 0 and not self.is_promotional:
             raise ValueError("A published free plan must be promotional.")
+        return self
+
+
+class AdminProfileDetailsUpdate(BaseModel):
+    """Only supplied catalogue fields are updated; RouterOS fields are rejected."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+
+    display_name: str | None = Field(default=None, min_length=2, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    amount: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+    duration_seconds: int | None = Field(default=None, gt=0, le=10 * 365 * 24 * 60 * 60)
+    data_limit_bytes: int | None = Field(default=None, gt=0)
+    device_limit: int | None = Field(default=None, gt=0, le=1000)
+    download_speed: str | None = Field(default=None, max_length=40)
+    is_promotional: bool | None = None
+    is_visible: bool | None = None
+    group_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def reject_null_required_fields(self) -> AdminProfileDetailsUpdate:
+        for field in ("display_name", "amount", "currency", "is_promotional", "is_visible"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null.")
         return self
 
 

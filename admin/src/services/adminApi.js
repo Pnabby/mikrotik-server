@@ -21,7 +21,10 @@ async function request(path, options = {}) {
   })
   if (!response.ok) {
     const body = await response.json().catch(() => ({}))
-    throw new AdminApiError(response.status, body.detail || '', body.code || '')
+    const detail = body.code === 'profile_details_invalid'
+      ? Object.values(body.field_errors || {}).join(' ') || body.detail
+      : body.detail
+    throw new AdminApiError(response.status, detail || '', body.code || '')
   }
   if (response.status === 204) return null
   return response.json()
@@ -229,6 +232,16 @@ export function saveHostelProfile(routerId, mikrotikProfile, profile) {
     {
       method: 'PUT',
       body: JSON.stringify(profile),
+    },
+  )
+}
+
+export function updateHostelProfileDetails(routerId, mikrotikProfile, changes) {
+  return request(
+    `/api/admin/hostels/${encodeURIComponent(routerId)}/profiles/${encodeURIComponent(mikrotikProfile)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(changes),
     },
   )
 }

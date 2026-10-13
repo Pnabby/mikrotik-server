@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Protocol
 
 from fastapi import status
+from pydantic import ValidationError
 from routeros_api.exceptions import RouterOsApiError
 from sqlalchemy import Integer, func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -27,6 +28,8 @@ from app.schemas.admin_profiles import (
     AdminPlanGroupCreate,
     AdminPlanGroupResponse,
     AdminPlanGroupUpdate,
+    AdminProfileDetailsResponse,
+    AdminProfileDetailsUpdate,
     AdminProfileUpdate,
     AdminRouterProfileResponse,
 )
@@ -439,6 +442,118 @@ class AdminProfileService:
             mapping=mapping,
         )
 
+    def update_profile_details(
+        self,
+        *,
+        router: Router,
+        mikrotik_profile: str,
+        update: AdminProfileDetailsUpdate,
+        admin: AdminUser,
+        ip_address: str | None,
+    ) -> AdminProfileDetailsResponse:
+        """Update an existing plan without opening a router connection."""
+        normalized_profile = mikrotik_profile.strip()
+        mapping = self._session.scalar(
+            select(RouterPackageProfile)
+            .options(joinedload(RouterPackageProfile.package))
+            .where(
+                RouterPackageProfile.router_id == router.id,
+                RouterPackageProfile.mikrotik_profile == normalized_profile,
+            )
+            .limit(1)
+        )
+        if mapping is None:
+            raise ServiceError(status.HTTP_404_NOT_FOUND, "This plan has not been configured.")
+
+        before = self._profile_details_response(normalized_profile, mapping)
+        supplied = update.model_dump(exclude_unset=True)
+        current = before.model_dump(include=set(AdminProfileDetailsUpdate.model_fields))
+        try:
+            validated = AdminProfileUpdate.model_validate({**current, **supplied})
+        except ValidationError as exc:
+            raise ServiceError(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                "The plan details are invalid.",
+                error_code="profile_details_invalid",
+                field_errors={
+                    str(error["loc"][0]) if error["loc"] else "plan":
+                    error["msg"].removeprefix("Value error, ")
+                    for error in exc.errors()
+                },
+            ) from exc
+        if before.is_registration_profile and validated.is_visible:
+            raise ServiceError(
+                status.HTTP_400_BAD_REQUEST,
+                "The registration profile cannot be published for purchase.",
+                error_code="profile_details_invalid",
+                field_errors={"is_visible": "The registration profile cannot be published for purchase."},
+            )
+        changes = {
+            key: getattr(validated, key)
+            for key in supplied
+            if getattr(validated, key) != current[key]
+        }
+        if not changes:
+            return before
+
+        if "group_id" in changes and validated.group_id is not None:
+            group = self._session.scalar(
+                select(PlanGroup).where(
+                    PlanGroup.id == validated.group_id, PlanGroup.router_id == router.id,
+                )
+            )
+            if group is None:
+                raise ServiceError(
+                    status.HTTP_400_BAD_REQUEST,
+                    "Invalid plan group.",
+                    error_code="profile_details_invalid",
+                    field_errors={"group_id": "The selected plan group does not belong to this hostel."},
+                )
+
+        package_fields = {
+            "display_name": "name", "description": "description", "amount": "amount",
+            "currency": "currency", "duration_seconds": "duration_seconds",
+            "data_limit_bytes": "data_limit_bytes", "device_limit": "device_limit",
+            "is_promotional": "is_promotional", "is_visible": "is_active",
+        }
+        mapping_fields = {
+            "display_name": "display_name", "description": "description",
+            "download_speed": "download_speed", "is_visible": "is_active", "group_id": "group_id",
+        }
+        try:
+            package = (
+                self._isolate_shared_package(mapping)
+                if package_fields.keys() & changes.keys() else mapping.package
+            )
+            for key, value in changes.items():
+                if key in package_fields:
+                    setattr(package, package_fields[key], value)
+                if key in mapping_fields:
+                    setattr(mapping, mapping_fields[key], value)
+            self._session.add(
+                AuditLog(
+                    actor_type=AuditActorType.ADMIN,
+                    admin_user_id=admin.id,
+                    action="router_profile.updated",
+                    entity_type="router_package_profile",
+                    entity_id=str(mapping.id),
+                    details={
+                        "router_id": router.id,
+                        "mikrotik_profile": normalized_profile,
+                        "before": before.model_dump(mode="json", include=set(changes)),
+                        "after": validated.model_dump(mode="json", include=set(changes)),
+                    },
+                    ip_address=(ip_address or "")[:64] or None,
+                )
+            )
+            self._session.commit()
+        except SQLAlchemyError as exc:
+            self._session.rollback()
+            raise ServiceError(
+                status.HTTP_500_INTERNAL_SERVER_ERROR, "The plan details could not be saved.",
+            ) from exc
+        return self._profile_details_response(normalized_profile, mapping)
+
     def delete_profile_configuration(
         self,
         *,
@@ -494,20 +609,14 @@ class AdminProfileService:
                 "The router profile configuration could not be deleted.",
             ) from exc
 
-    def _profile_response(
-        self,
-        *,
-        profile_name: str,
-        raw_profile: dict[str, str] | None,
-        mapping: RouterPackageProfile | None,
-    ) -> AdminRouterProfileResponse:
+    def _profile_details_response(
+        self, profile_name: str, mapping: RouterPackageProfile | None,
+    ) -> AdminProfileDetailsResponse:
         package = mapping.package if mapping is not None else None
-        return AdminRouterProfileResponse(
+        return AdminProfileDetailsResponse(
             mikrotik_profile=profile_name,
             display_name=(mapping.display_name or package.name) if mapping and package else None,
-            description=(mapping.description or package.description)
-            if mapping and package
-            else None,
+            description=(mapping.description or package.description) if mapping and package else None,
             package_id=package.id if package else None,
             group_id=mapping.group_id if mapping else None,
             amount=package.amount if package else None,
@@ -515,16 +624,28 @@ class AdminProfileService:
             duration_seconds=package.duration_seconds if package else None,
             data_limit_bytes=package.data_limit_bytes if package else None,
             device_limit=package.device_limit if package else None,
-            download_speed=(
-                mapping.download_speed
-                if mapping and mapping.download_speed
-                else _download_speed(_profile_value(raw_profile, "rate-limit"))
-            ),
+            download_speed=mapping.download_speed if mapping else None,
             is_promotional=bool(package and package.is_promotional),
             is_configured=mapping is not None,
             is_visible=bool(mapping and mapping.is_active and package and package.is_active),
             is_registration_profile=(
                 profile_name.casefold() == self._settings.mikrotik_registration_profile.casefold()
+            ),
+        )
+
+    def _profile_response(
+        self,
+        *,
+        profile_name: str,
+        raw_profile: dict[str, str] | None,
+        mapping: RouterPackageProfile | None,
+    ) -> AdminRouterProfileResponse:
+        return AdminRouterProfileResponse(
+            **self._profile_details_response(profile_name, mapping).model_dump(exclude={"download_speed"}),
+            download_speed=(
+                mapping.download_speed
+                if mapping and mapping.download_speed
+                else _download_speed(_profile_value(raw_profile, "rate-limit"))
             ),
             available_on_router=raw_profile is not None,
             rate_limit=_profile_value(raw_profile, "rate-limit"),

@@ -5,6 +5,7 @@ import AdminHeader from '../components/AdminHeader'
 import WireGuardPanel from '../components/WireGuardPanel'
 import IssuesPanel from '../components/IssuesPanel'
 import { profilesAcrossHostels } from '../utils/profileCatalogue'
+import { changedProfileDetails, DURATION_UNITS, mergeProfileDetails, profileDetailsFromForm, profileSaveRequest } from '../utils/profileEdits'
 
 import {
   AdminApiError,
@@ -36,15 +37,10 @@ import {
   transferCustomerHostel,
   updateAllHostelPlanGroup,
   updateHostel,
+  updateHostelProfileDetails,
   updatePlanGroup,
 } from '../services/adminApi'
 
-const DURATION_UNITS = {
-  hours: 60 * 60,
-  days: 24 * 60 * 60,
-  weeks: 7 * 24 * 60 * 60,
-  months: 30 * 24 * 60 * 60,
-}
 const ALL_HOSTELS_ID = '__all_hostels__'
 const ADMIN_VIEW_PATHS = {
   dashboard: '/dashboard',
@@ -240,7 +236,7 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
       profile.duration_seconds,
       profile.is_configured ? null : profile.session_timeout,
     )
-  const [form, setForm] = useState({
+  const [initialForm] = useState({
     displayName: mixedFields.has('display_name') ? '' : profile.display_name || titleFromProfile(profile.mikrotik_profile),
     description: mixedFields.has('description') ? '' : profile.description || '',
     amount: mixedFields.has('amount') ? '' : profile.amount ?? '',
@@ -253,7 +249,7 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
     isPromotional: mixedFields.has('is_promotional') ? false : profile.is_promotional || false,
     isVisible: profile.is_registration_profile || mixedFields.has('is_visible') ? false : profile.is_visible,
     groupId: profile.group_id || '',
-    applyRouterSettings: Boolean(profile.bulk_mode),
+    applyRouterSettings: false,
     sourceRouterId: profile.source_router_id || '',
     rateLimit: routerDefaults.rate_limit || '',
     sharedUsers: routerDefaults.shared_users === 'unlimited' ? 1 : routerDefaults.shared_users || 1,
@@ -262,6 +258,8 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
     idleTimeout: routerDefaults.idle_timeout || 'none',
     keepaliveTimeout: routerDefaults.keepalive_timeout || '2m',
   })
+  const [form, setForm] = useState(initialForm)
+  const [editedFields, setEditedFields] = useState([])
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -271,6 +269,7 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
   function change(event) {
     const { name, value, checked, type } = event.target
     setForm((current) => ({ ...current, [name]: type === 'checkbox' ? checked : value }))
+    setEditedFields((current) => current.includes(name) ? current : [...current, name])
     setError('')
   }
 
@@ -289,28 +288,32 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
       sessionTimeout: selected.session_timeout || '0s', idleTimeout: selected.idle_timeout || 'none',
       keepaliveTimeout: selected.keepalive_timeout || '2m',
     }))
+    setEditedFields(['displayName', 'description', 'amount', 'currency', 'durationValue',
+      'dataLimitGb', 'deviceLimit', 'downloadSpeed', 'isPromotional', 'isVisible'])
     setError('')
   }
 
   async function submit(event) {
     event.preventDefault()
-    if (!form.displayName.trim()) {
+    const changes = changedProfileDetails(initialForm, form, profile, editedFields)
+    const requiresAllDetails = !profile.is_configured
+    if ((requiresAllDetails || Object.hasOwn(changes, 'display_name')) && form.displayName.trim().length < 2) {
       setError('Enter the name customers should see.')
       return
     }
-    if (form.amount === '' || Number(form.amount) < 0) {
+    if ((requiresAllDetails || Object.hasOwn(changes, 'amount')) && (form.amount === '' || Number(form.amount) < 0)) {
       setError('Enter a valid price.')
       return
     }
-    if (Number(form.amount) === 0 && form.isVisible && !form.isPromotional) {
+    if (requiresAllDetails && Number(form.amount) === 0 && form.isVisible && !form.isPromotional) {
       setError('A published free plan must be marked as a promotional package.')
       return
     }
-    if (form.durationValue !== '' && (!Number(form.durationValue) || Number(form.durationValue) <= 0)) {
+    if ((requiresAllDetails || Object.hasOwn(changes, 'duration_seconds')) && form.durationValue !== '' && (!Number(form.durationValue) || Number(form.durationValue) <= 0)) {
       setError('Enter a valid plan duration.')
       return
     }
-    if (profile.bulk_mode && profile.available_hostels < profile.hostel_count && !form.applyRouterSettings) {
+    if (requiresAllDetails && profile.bulk_mode && profile.available_hostels < profile.hostel_count && !form.applyRouterSettings) {
       setError('Enable router settings and choose a source hostel to create the missing profiles.')
       return
     }
@@ -324,21 +327,7 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
     setSaving(true)
     try {
       await onSave({
-        display_name: form.displayName.trim(),
-        description: form.description.trim() || null,
-        amount: Number(form.amount).toFixed(2),
-        currency: form.currency.toUpperCase(),
-        duration_seconds: form.durationValue === ''
-          ? null
-          : Math.round(Number(form.durationValue) * DURATION_UNITS[form.durationUnit]),
-        data_limit_bytes: form.dataLimitGb === ''
-          ? null
-          : Math.round(Number(form.dataLimitGb) * 1024 ** 3),
-        device_limit: form.applyRouterSettings ? (form.unlimitedSharedUsers ? null : Number(form.sharedUsers)) : form.deviceLimit === '' ? null : Number(form.deviceLimit),
-        download_speed: form.downloadSpeed.trim() || null,
-        is_promotional: profile.is_registration_profile ? false : form.isPromotional,
-        is_visible: profile.is_registration_profile ? false : form.isVisible,
-        ...(!profile.bulk_mode ? { group_id: form.groupId || null } : {}),
+        ...profileDetailsFromForm(form, profile),
         ...(form.applyRouterSettings ? {
           source_router_id: form.sourceRouterId || null,
           router_settings: {
@@ -347,7 +336,7 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
             keepalive_timeout: form.keepaliveTimeout.trim(),
           },
         } : {}),
-      })
+      }, changes)
     } catch (saveError) {
       setError(saveError.message || 'The profile could not be saved.')
     } finally {
@@ -402,7 +391,7 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
 
         {profile.bulk_mode && <div className={`bulk-profile-notice ${profile.configuration_consistent ? '' : 'mixed'}`}>
           <Icon name={profile.configuration_consistent ? 'check' : 'alert'} />
-          <div><strong>Match plans across {profile.hostel_count} hostels</strong><p>{profile.available_hostels} of {profile.hostel_count} routers have this profile. Choose a hostel below to use its plan settings, then save to apply them across all active hostels. Missing profiles will be created from that source.</p></div>
+          <div><strong>Edit plans across {profile.hostel_count} hostels</strong><p>{profile.available_hostels} of {profile.hostel_count} routers have this profile. Only the plan details you edit will change. To match router settings or create missing profiles, choose a source hostel below.</p></div>
         </div>}
         {profile.hostel_profiles && <div className="profile-comparison"><table><thead><tr><th>Hostel</th><th>Upload / download</th><th>Devices</th><th>Session timeout</th><th>Match from</th></tr></thead><tbody>{profile.hostel_profiles.map((entry) => <tr key={entry.router_id}><td>{entry.hostel_name}</td><td>{entry.available_on_router ? entry.rate_limit || 'Unlimited' : 'Missing profile'}</td><td>{entry.shared_users === 'unlimited' ? 'Unlimited' : entry.shared_users ?? '—'}</td><td>{entry.session_timeout || 'No limit'}</td><td>{entry.available_on_router && <button type="button" disabled={saving} onClick={() => useHostelSettings(entry)}>Use settings</button>}</td></tr>)}</tbody></table></div>}
 
@@ -485,6 +474,7 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
           <section>
             <div className="editor-section-heading"><span>4</span><div><h3>Router network settings</h3><p>Control the actual speed, simultaneous devices, and timeouts on MikroTik.</p></div></div>
             <label className="router-settings-option"><input checked={form.applyRouterSettings} name="applyRouterSettings" type="checkbox" onChange={change} />Apply these settings to the router{profile.bulk_mode ? 's at all active hostels' : ''}</label>
+            {!form.applyRouterSettings && <p className="customer-delete-help">Price and customer-facing details save without contacting the routers.</p>}
             {form.applyRouterSettings && <>
               <label className="editor-field"><span>Upload / download rate limit</span><input maxLength={200} name="rateLimit" placeholder="e.g. 5M/10M" value={form.rateLimit} onChange={change} /><small>Upload first, download second. Leave blank for unlimited speed. The customer download speed updates from this value.</small></label>
               <label className="router-settings-option"><input checked={form.unlimitedSharedUsers} name="unlimitedSharedUsers" type="checkbox" onChange={change} />Unlimited simultaneous devices</label>
@@ -2385,10 +2375,26 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
     }
   }
 
-  async function saveProfile(payload) {
+  async function saveProfile(payload, changes) {
+    if (editingProfile.is_configured && !payload.router_settings && !Object.keys(changes).length) {
+      setEditingProfile(null)
+      setToast('No changes to save.')
+      window.setTimeout(() => setToast(''), 3000)
+      return
+    }
+
+    async function saveForHostel(hostel, previous) {
+      const request = profileSaveRequest(previous, payload, changes)
+      if (request.method === 'PATCH') {
+        const details = await updateHostelProfileDetails(hostel.router_id, previous.mikrotik_profile, request.payload)
+        return mergeProfileDetails(previous, details, changes)
+      }
+      return saveHostelProfile(hostel.router_id, editingProfile.mikrotik_profile, request.payload)
+    }
+
     if (allHostelsSelected) {
       const results = await Promise.allSettled(bulkHostels.map((hostel) => (
-        saveHostelProfile(hostel.router_id, editingProfile.mikrotik_profile, payload)
+        saveForHostel(hostel, editingProfile.hostel_profiles.find((profile) => profile.router_id === hostel.router_id))
       )))
       const sessionFailure = results.find((result) => (
         result.status === 'rejected'
@@ -2400,7 +2406,8 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
       const savedCount = results.filter((result) => result.status === 'fulfilled').length
       if (savedCount !== bulkHostels.length) {
         try { setHostels(await listHostels()) } catch { /* Keep the current catalogue. */ }
-        throw new Error(`Saved ${savedCount} of ${bulkHostels.length} hostels. Retry to update the remaining hostels.`)
+        const failure = results.find((result) => result.status === 'rejected')
+        throw new Error(`Saved ${savedCount} of ${bulkHostels.length} hostels. ${failure.reason.detail || 'Retry to update the remaining hostels.'}`)
       }
 
       const saved = profilesAcrossHostels(results.map((result) => [result.value]), bulkHostels)[0]
@@ -2420,13 +2427,12 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
 
     let saved
     try {
-      saved = await saveHostelProfile(selectedId, editingProfile.mikrotik_profile, payload)
+      saved = await saveForHostel(selectedHostel, editingProfile)
     } catch (error) {
       if (error instanceof AdminApiError && error.status === 401) onSessionExpired()
       throw new Error(
-        error instanceof AdminApiError && error.status === 400
-          ? 'This system profile cannot be published.'
-          : 'The profile could not be saved. Please try again.',
+        error instanceof AdminApiError && error.detail
+          ? error.detail : 'The profile could not be saved. Please try again.',
       )
     }
     setProfiles((current) => current.map((profile) => (
