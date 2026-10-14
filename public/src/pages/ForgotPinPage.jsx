@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { WifiIcon } from '../components/Icons'
+import PageHero from '../components/PageHero'
 import OtpInput from '../components/OtpInput'
 import {
   AccountApiError,
@@ -183,11 +183,7 @@ export default function ForgotPinPage() {
   return (
     <main className="signup-page">
       <div className="signup-container login-container">
-        <header className="signup-header">
-          <a className="signup-brand" href="/" aria-label="Vlad WiFi home"><span className="signup-logo-mark"><WifiIcon /></span><span>Vlad WiFi</span></a>
-          <h1>Recover your account</h1>
-          <p>Recover your username, choose a new PIN, or unlock your account.</p>
-        </header>
+        <PageHero className="signup-header" title="Recover your account" description="Recover your username, choose a new PIN, or unlock your account." />
 
         <section className="signup-card login-card reset-pin-card">
           {step === 'email' && <>

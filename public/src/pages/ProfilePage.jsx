@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react'
 import AccountHeader from '../components/AccountHeader'
 import { AccountIcon, GlobeIcon, ShieldIcon, WarningIcon } from '../components/Icons'
 import PageLoadingState from '../components/PageLoadingState'
+import PageHero from '../components/PageHero'
+import StatusPill from '../components/StatusPill'
 import {
   AccountApiError,
   changePin,
@@ -236,6 +238,7 @@ export default function ProfilePage() {
   if (phase === 'loading' || hostelsPhase === 'loading') {
     return (
       <PageLoadingState
+        activePage="profile"
         title="Loading your profile"
         message="Fetching your account and hostel details."
       />
@@ -243,25 +246,24 @@ export default function ProfilePage() {
   }
   if (phase === 'error' || !account) {
     return (
+      <>
+      <AccountHeader activePage="profile" />
       <main className="account-page account-state-page">
         <ShieldIcon />
         <h1>Your profile could not be loaded</h1>
         <p>Please try again or contact help and support.</p>
         <button type="button" onClick={() => window.location.reload()}>Try again</button>
       </main>
+      </>
     )
   }
 
   return (
-    <main className="account-page">
+    <div className="account-page">
       <AccountHeader account={account} activePage="profile" />
-      <div className="account-shell profile-shell">
+      <main className="account-shell profile-shell">
         <a className="profile-back-link" href="/account">← Back to overview</a>
-        <section className="profile-heading">
-          <span className="account-eyebrow">Profile</span>
-          <h1>Account details</h1>
-          <p>Review the information connected to your Vlad WiFi account.</p>
-        </section>
+        <PageHero className="profile-heading" eyebrow="Profile" title="Account details" description="Review the information connected to your Vlad WiFi account." />
 
         <div className="profile-layout">
           <section className="profile-card">
@@ -285,7 +287,7 @@ export default function ProfilePage() {
                 </dd>
               </div>
               <div><dt>Hostel</dt><dd>{account.hostel_name}</dd></div>
-              <div><dt>Account status</dt><dd><span className={`profile-status status-${account.account_status}`}>{friendlyStatus(account.account_status)}</span></dd></div>
+              <div><dt>Account status</dt><dd><StatusPill className={`profile-status status-${account.account_status}`}>{friendlyStatus(account.account_status)}</StatusPill></dd></div>
             </dl>
           </section>
 
@@ -335,7 +337,7 @@ export default function ProfilePage() {
         </section>
 
         <p className="profile-legal-links"><a href="/terms">Terms</a><span>&middot;</span><a href="/privacy">Privacy</a></p>
-      </div>
+      </main>
 
       {showTransfer && (
         <div className="portal-modal-backdrop" role="presentation" onMouseDown={closeTransferModal}>
@@ -389,6 +391,6 @@ export default function ProfilePage() {
           </section>
         </div>
       )}
-    </main>
+    </div>
   )
 }

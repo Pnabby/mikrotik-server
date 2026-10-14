@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 
 import AccountHeader from '../components/AccountHeader'
 import PageLoadingState from '../components/PageLoadingState'
+import PageHero from '../components/PageHero'
+import PlanCategoryCard from '../components/PlanCategoryCard'
+import StatusPill from '../components/StatusPill'
 import {
   CheckIcon,
   DataLeftIcon,
@@ -176,8 +179,13 @@ function DeviceCard({ device, onDisconnect }) {
   )
 }
 
-function PlanCard({ plan, purchasingPlanId, onPurchase }) {
+function PlanCard({ plan, compact = false, purchasingPlanId, onPurchase }) {
   const isFreePromotion = plan.is_promotional && Number(plan.amount) === 0
+  const features = <ul>
+    <li><CheckIcon />{formatData(plan.data_limit_bytes)}</li>
+    {plan.download_speed && <li><DataUsedIcon />Up to {plan.download_speed} download</li>}
+    <li><DevicesIcon />{plan.device_limit ? `${plan.device_limit} device${plan.device_limit === 1 ? '' : 's'}` : 'Unlimited devices'}</li>
+  </ul>
   return (
     <article className={`plan-card${plan.is_promotional ? ' plan-card-promo' : ''}`}>
       <div>
@@ -185,13 +193,13 @@ function PlanCard({ plan, purchasingPlanId, onPurchase }) {
           <span className="plan-duration">{formatDuration(plan.duration_seconds)}</span>
         </div>
         <h3>{plan.name}</h3>
-        <p>{plan.description || 'Reliable WiFi access for your stay.'}</p>
+        {!compact && <p>{plan.description || 'Reliable WiFi access for your stay.'}</p>}
       </div>
-      <ul>
-        <li><CheckIcon />{formatData(plan.data_limit_bytes)}</li>
-        {plan.download_speed && <li><DataUsedIcon />Up to {plan.download_speed} download</li>}
-        <li><DevicesIcon />{plan.device_limit ? `${plan.device_limit} device${plan.device_limit === 1 ? '' : 's'}` : 'Unlimited devices'}</li>
-      </ul>
+      {compact ? <details className="promo-card-details">
+        <summary>{formatData(plan.data_limit_bytes)} · Details</summary>
+        <p>{plan.description || 'Reliable WiFi access for your stay.'}</p>
+        {features}
+      </details> : features}
       <div className="plan-card-footer">
         <strong>{formatMoney(plan.amount, plan.currency)}</strong>
         <button type="button" disabled={!plan.purchase_available || Boolean(purchasingPlanId)} onClick={() => onPurchase(plan)}>
@@ -202,7 +210,96 @@ function PlanCard({ plan, purchasingPlanId, onPurchase }) {
   )
 }
 
-export default function AccountPage() {
+function PlanCatalogue({ plans, groupId, standalone, purchasingPlanId, onPurchase }) {
+  const Heading = standalone ? 'h1' : 'h2'
+  const promotions = plans.filter((plan) => plan.is_promotional)
+    .sort((left, right) => Number(left.amount) - Number(right.amount))
+  const groups = Array.from(plans.reduce((catalogue, plan) => {
+    if (plan.is_promotional) return catalogue
+    const id = plan.group_id || '__ungrouped__'
+    if (!catalogue.has(id)) catalogue.set(id, {
+      id,
+      name: plan.group_name || 'Other plans',
+      description: plan.group_description || '',
+      displayOrder: plan.group_display_order ?? Number.MAX_SAFE_INTEGER,
+      sortByPrice: plan.group_sort_by_price,
+      plans: [],
+    })
+    catalogue.get(id).plans.push(plan)
+    return catalogue
+  }, new Map()).values()).sort((left, right) => (
+    left.displayOrder - right.displayOrder || left.name.localeCompare(right.name)
+  ))
+  const selectedGroup = groups.find((group) => group.id === groupId)
+  const groupPlans = selectedGroup ? [...selectedGroup.plans].sort((left, right) => (
+    selectedGroup.sortByPrice
+      ? Number(left.amount) - Number(right.amount) || left.name.localeCompare(right.name)
+      : left.name.localeCompare(right.name)
+  )) : []
+
+  useEffect(() => {
+    if (window.location.hash === '#promo-plans') {
+      document.getElementById('promo-plans')?.scrollIntoView({ block: 'start' })
+    }
+  }, [])
+
+  useEffect(() => {
+    if (groupId) document.title = `${selectedGroup?.name || 'Plans unavailable'} | Vlad WiFi`
+  }, [groupId, selectedGroup?.name])
+
+  return (
+    <section className={`plan-catalogue${groupId ? ' plan-category-page' : ''}`} id="plans">
+      {groupId && <a className="plans-back" href="/plans">← Back to plans</a>}
+      {standalone && !groupId ? <PageHero eyebrow="Get connected" title="Available plans" description="Choose a category to find the hotspot plan that fits how you browse.">
+        <ol className="hero-steps"><li><span>1</span>Pick a category</li><li><span>2</span>Choose a plan</li><li><span>3</span>Pay and get online</li></ol>
+      </PageHero> :
+      <div className="account-section-heading">
+        <div>
+          <span className="account-eyebrow">Get connected</span>
+          <Heading id="plans-title">{groupId ? selectedGroup?.name || 'Plans unavailable' : 'Available plans'}</Heading>
+          <p>{groupId
+            ? selectedGroup?.description || (selectedGroup ? `${groupPlans.length} plan${groupPlans.length === 1 ? '' : 's'} to choose from.` : 'These plans are no longer available at your hostel.')
+            : 'Choose a category to find your plan.'}</p>
+        </div>
+      </div>}
+
+      {groupId ? selectedGroup && (
+        <>
+          <div className="plans-grid compact-plans-grid">
+            {groupPlans.map((plan) => (
+              <PlanCard key={plan.id} plan={plan} purchasingPlanId={purchasingPlanId} onPurchase={onPurchase} />
+            ))}
+          </div>
+        </>
+      ) : plans.length ? (
+        <>
+          {promotions.length > 0 && <section className="promo-plans" id="promo-plans" aria-labelledby="promo-plans-title">
+            <header className="catalogue-heading"><h2 id="promo-plans-title">Special offers</h2><p>Explore your promotions before choosing a plan.</p></header>
+            <div className="plans-grid compact-plans-grid">
+              {promotions.map((plan) => <PlanCard key={plan.id} plan={plan} compact purchasingPlanId={purchasingPlanId} onPurchase={onPurchase} />)}
+            </div>
+          </section>}
+          {groups.length > 0 && <section className="plan-categories" aria-labelledby="categories-title">
+            <div className="catalogue-heading"><h2 id="categories-title">Browse plans</h2><span>{groups.length} categor{groups.length === 1 ? 'y' : 'ies'}</span></div>
+            <nav className="plan-category-grid" aria-label="Plan categories">
+            {groups.map((group) => {
+              const cheapestPlan = group.plans.reduce((cheapest, plan) => Number(plan.amount) < Number(cheapest.amount) ? plan : cheapest)
+              return <PlanCategoryCard key={group.id} href={`/plans/${encodeURIComponent(group.id)}`} name={group.name} planCount={group.plans.length} price={formatMoney(cheapestPlan.amount, cheapestPlan.currency)} />
+            })}
+            </nav>
+          </section>}
+        </>
+      ) : <div className="account-empty"><PlanIcon /><h3>No plans are available yet</h3><p>Please contact help and support for assistance.</p></div>}
+
+      {plans.length > 0 && (!groupId || selectedGroup) && <details className="plan-speed-details">
+        <summary>Understanding your plan speed</summary>
+        <p>The speed shown is the maximum a plan can reach. Actual speed can vary, especially during peak hours or when the WiFi signal is weak.</p>
+      </details>}
+    </section>
+  )
+}
+
+export default function AccountPage({ plansOnly = false, planGroupId = '' }) {
   const [account, setAccount] = useState(null)
   const [accountPhase, setAccountPhase] = useState('loading')
   const [networkStatus, setNetworkStatus] = useState(null)
@@ -210,7 +307,6 @@ export default function AccountPage() {
   const [disconnectTarget, setDisconnectTarget] = useState(null)
   const [disconnecting, setDisconnecting] = useState(false)
   const [disconnectError, setDisconnectError] = useState('')
-  const [showAllPlans, setShowAllPlans] = useState(false)
   const [showAllPurchases, setShowAllPurchases] = useState(false)
   const [showPromoPrompt, setShowPromoPrompt] = useState(false)
   const [activeSection, setActiveSection] = useState('overview')
@@ -231,7 +327,7 @@ export default function AccountPage() {
   const visiblePaymentNotice = paymentNotice || (recoverablePurchase ? 'activation_pending' : '')
 
   useEffect(() => {
-    document.title = 'Overview | Vlad WiFi'
+    document.title = `${plansOnly ? 'Plans' : 'Overview'} | Vlad WiFi`
     let active = true
 
     async function load() {
@@ -286,7 +382,7 @@ export default function AccountPage() {
     return () => {
       active = false
     }
-  }, [])
+  }, [plansOnly])
 
   useEffect(() => {
     if (!showPromoPrompt) return undefined
@@ -303,7 +399,7 @@ export default function AccountPage() {
   }, [showPromoPrompt])
 
   useEffect(() => {
-    if (accountPhase !== 'ready') return undefined
+    if (plansOnly || accountPhase !== 'ready') return undefined
     const sectionIds = ['overview', 'plans', 'purchases']
     let frameId = null
 
@@ -338,7 +434,7 @@ export default function AccountPage() {
       window.removeEventListener('hashchange', scheduleUpdate)
       if (frameId !== null) window.cancelAnimationFrame(frameId)
     }
-  }, [accountPhase])
+  }, [accountPhase, plansOnly])
 
   useEffect(() => {
     if (!activationReference || !['activation_pending', 'pending'].includes(visiblePaymentNotice)) return undefined
@@ -491,6 +587,10 @@ export default function AccountPage() {
 
   function openPromoCollection() {
     setShowPromoPrompt(false)
+    if (plansOnly && planGroupId) {
+      window.location.assign('/plans#promo-plans')
+      return
+    }
     window.requestAnimationFrame(() => {
       document.getElementById('promo-plans')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
@@ -504,6 +604,7 @@ export default function AccountPage() {
   if (loadingInitialDetails) {
     return (
       <PageLoadingState
+        activePage={plansOnly ? 'plans' : 'account'}
         title="Loading your account"
         message="Fetching your plan, usage, and connected devices."
       />
@@ -511,12 +612,15 @@ export default function AccountPage() {
   }
   if (accountPhase === 'error' || !account) {
     return (
+      <>
+      <AccountHeader activePage={plansOnly ? 'plans' : 'account'} activeSection={plansOnly ? 'plans' : 'overview'} />
       <main className="account-page account-state-page">
         <ShieldIcon />
         <h1>Your account could not be loaded</h1>
         <p>Please try again or contact help and support.</p>
         <button type="button" onClick={() => window.location.reload()}>Try again</button>
       </main>
+      </>
     )
   }
 
@@ -541,43 +645,6 @@ export default function AccountPage() {
         ? 'Managed by WiFi portal'
         : 'Starts after first login'
   const availablePlans = account.available_plans || []
-  const hasPlanGroups = availablePlans.some((plan) => plan.group_id)
-  const hasPromotionalPlans = availablePlans.some((plan) => plan.is_promotional)
-  const usesPlanCollections = hasPlanGroups || hasPromotionalPlans
-  const visiblePlans = usesPlanCollections || showAllPlans ? availablePlans : availablePlans.slice(0, 3)
-  const planSections = usesPlanCollections
-    ? Array.from(visiblePlans.reduce((sections, plan) => {
-      const isPromo = plan.is_promotional
-      const key = isPromo ? '__promo__' : plan.group_id || '__ungrouped__'
-      if (!sections.has(key)) sections.set(key, {
-        id: key,
-        isPromo,
-        name: isPromo ? 'Special Offers' : plan.group_name || 'Available plans',
-        description: isPromo
-          ? 'Special offers available to eligible customers.'
-          : plan.group_description || '',
-        displayOrder: isPromo ? -1 : plan.group_display_order ?? Number.MAX_SAFE_INTEGER,
-        sortByPrice: isPromo || plan.group_sort_by_price,
-        plans: [],
-      })
-      sections.get(key).plans.push(plan)
-      return sections
-    }, new Map()).values())
-      .map((section) => ({
-        ...section,
-        plans: [...section.plans].sort((left, right) => (
-          Number(right.is_promotional) - Number(left.is_promotional)
-          || (section.sortByPrice
-            ? Number(left.amount) - Number(right.amount)
-            : left.name.localeCompare(right.name))
-        )),
-      }))
-      .sort((left, right) => (
-        Number(right.isPromo) - Number(left.isPromo)
-        || left.displayOrder - right.displayOrder
-        || left.name.localeCompare(right.name)
-      ))
-    : [{ id: '__all__', name: '', description: '', plans: visiblePlans }]
   const eligibleFreePromotions = availablePlans.filter((plan) => (
     plan.is_promotional
     && Number(plan.amount) === 0
@@ -591,9 +658,9 @@ export default function AccountPage() {
     : PAYMENT_NOTICE_COPY[visiblePaymentNotice]
 
   return (
-    <main className="account-page">
-      <AccountHeader account={account} activeSection={activeSection} />
-      <div className="account-shell">
+    <div className="account-page">
+      <AccountHeader account={account} activePage={plansOnly ? 'plans' : 'account'} activeSection={plansOnly ? 'plans' : activeSection} />
+      <main className={`account-shell${plansOnly ? ' plans-shell' : ''}`}>
         {visiblePaymentNotice && (
           <div className={`payment-notice payment-notice-${visiblePaymentNotice}`} role="status">
             <div>
@@ -605,12 +672,8 @@ export default function AccountPage() {
             )}
           </div>
         )}
-        <section className="dashboard-heading" id="overview">
-          <div>
-            <span className="account-eyebrow">Overview</span>
-            <h1>Good to see you, {account.username}</h1>
-            <p>Track your WiFi access, devices, plans, and purchases.</p>
-          </div>
+        {!plansOnly && <>
+        <PageHero id="overview" eyebrow="Overview" title={`Good to see you, ${account.username}`} description="Track your WiFi access, devices, plans, and purchases.">
           {hasCurrentPlan && (
             <div className="network-actions">
               <div className={`network-state network-${planStatus}`} role="status">
@@ -620,23 +683,23 @@ export default function AccountPage() {
               <button className="network-refresh" type="button" disabled={networkPhase === 'loading'} onClick={refreshNetworkStatus}><RefreshIcon />{networkPhase === 'loading' ? 'Checking plan…' : 'Refresh WiFi status'}</button>
             </div>
           )}
-        </section>
+        </PageHero>
 
         {hasCurrentPlan && (
           <section className="usage-grid" aria-label="WiFi usage summary">
-            <article>
+            <article className="site-card">
               <span><DataUsedIcon /></span>
               <div><small>Data used</small><strong>{statusUnavailable ? '--' : networkStatus?.total_data_used || '0 B'}</strong></div>
             </article>
-            <article>
+            <article className="site-card">
               <span><DataLeftIcon /></span>
               <div><small>Data remaining</small><strong>{statusUnavailable ? '--' : networkStatus?.total_data_left || '--'}</strong></div>
             </article>
-            <article>
+            <article className="site-card">
               <span><PlanIcon /></span>
               <div><small>Current plan</small><strong>{hasActivePlan ? planName : planStatusCopy.access}</strong></div>
             </article>
-            <article>
+            <article className="site-card">
               <span><DevicesIcon /></span>
               <div><small>Connected devices</small><strong>{statusUnavailable ? '--' : networkStatus?.connected_devices_count ?? 0}</strong></div>
             </article>
@@ -698,34 +761,12 @@ export default function AccountPage() {
           </section>
         )}
 
-        <section className="account-section" id="plans">
-          <div className="account-section-heading">
-            <div><span className="account-eyebrow">Get connected</span><h2>Available plans</h2><p>Choose the plan that fits your needs.</p></div>
-            <div className="plan-heading-actions">
-              {!usesPlanCollections && availablePlans.length > 3 && <button type="button" aria-expanded={showAllPlans} onClick={() => setShowAllPlans((current) => !current)}>{showAllPlans ? 'Show featured plans' : `View all ${availablePlans.length} plans`}</button>}
-              <VoucherIcon />
-            </div>
-          </div>
-          <div className="plan-speed-notice" role="note"><DataUsedIcon /><p><strong>Understanding your plan speed</strong><span>The speed shown is the maximum a plan can reach. Actual speed can vary, especially during peak hours or when the WiFi signal is weak.</span></p></div>
-          {availablePlans.length ? (
-            <>
-              {purchaseError && <div className="plan-purchase-error" role="alert">{purchaseError}</div>}
-              <div className={usesPlanCollections ? 'plan-group-sections' : ''}>
-                {planSections.map((section) => (
-                  <section className={`${usesPlanCollections ? 'customer-plan-group' : ''}${section.isPromo ? ' promo-plan-group' : ''}`} id={section.isPromo ? 'promo-plans' : undefined} key={section.id}>
-                    {usesPlanCollections && <header><h3>{section.name}</h3>{section.description && <p>{section.description}</p>}</header>}
-                    <div className="plans-grid">
-                      {section.plans.map((plan) => <PlanCard key={plan.id} plan={plan} purchasingPlanId={purchasingPlanId} onPurchase={requestPlanPurchase} />)}
-                    </div>
-                  </section>
-                ))}
-              </div>
-            </>
-          ) : (
-            <div className="account-empty"><PlanIcon /><h3>No plans are available yet</h3><p>Please contact help and support for assistance.</p></div>
-          )}
-        </section>
+        </>}
 
+        {purchaseError && <div className="plan-purchase-error" role="alert">{purchaseError}</div>}
+        <PlanCatalogue plans={availablePlans} groupId={planGroupId} standalone={plansOnly} purchasingPlanId={purchasingPlanId} onPurchase={requestPlanPurchase} />
+
+        {!plansOnly && <>
         <section className="account-section" id="previous-plans">
           <div className="account-section-heading">
             <div><span className="account-eyebrow">Plan history</span><h2>Previous plans</h2><p>Your five most recent subscriptions.</p></div>
@@ -767,7 +808,7 @@ export default function AccountPage() {
                         <td>{formatDateTime(purchase.paid_at || purchase.purchased_at)}</td>
                         <td>{formatMoney(purchase.amount, purchase.currency)}</td>
                         <td>
-                          <span className={`purchase-status purchase-${purchase.status}`}>{friendlyPaymentStatus(purchase.status, purchase.amount)}</span>
+                          <StatusPill className={`purchase-status purchase-${purchase.status}`}>{friendlyPaymentStatus(purchase.status, purchase.amount)}</StatusPill>
                           {purchase.status === 'success' && purchase.activation_status && !['success', 'superseded'].includes(purchase.activation_status) && (
                             <button
                               className="purchase-activation-retry"
@@ -798,8 +839,9 @@ export default function AccountPage() {
           )}
         </section>
 
-        <footer className="account-footer"><ShieldIcon /><span>Need help with your account or a purchase? Contact <a href="#help-and-support" onClick={(event) => { event.preventDefault(); window.dispatchEvent(new Event('vlad:open-support')) }}>help and support</a>.</span></footer>
-      </div>
+        </>}
+
+      </main>
 
       {showPromoPrompt && eligibleFreePromotions.length > 0 && (
         <div className="portal-modal-backdrop" role="presentation" onMouseDown={() => setShowPromoPrompt(false)}>
@@ -836,9 +878,16 @@ export default function AccountPage() {
           <section className={`portal-modal${purchaseTarget.is_promotional ? ' special-offer-modal' : ''}`} role="dialog" aria-modal="true" aria-labelledby="replace-plan-title" onMouseDown={(event) => event.stopPropagation()}>
             <span className="portal-modal-icon plan-replace-icon"><WarningIcon /></span>
             <h2 id="replace-plan-title">{hasActivePlan ? 'Replace your active plan?' : 'Replace your existing plan?'}</h2>
+            <ol className="purchase-steps" aria-label="Purchase progress"><li className="active">1 Review plan</li><li>2 {purchaseTarget.is_promotional && Number(purchaseTarget.amount) === 0 ? 'Claim offer' : 'Pay securely'}</li><li>3 Get online</li></ol>
             <p>
               You currently have <strong>{currentPlan.name}</strong>. {purchaseTarget.is_promotional && Number(purchaseTarget.amount) === 0 ? 'Claiming' : 'Purchasing'} <strong>{purchaseTarget.name}</strong> will immediately replace it. Any remaining time or data on your current plan will not carry over. All connected devices will be logged out and every device must sign in through the WiFi portal again.
             </p>
+            <dl className="checkout-summary">
+              <div><dt>Plan</dt><dd>{purchaseTarget.name}</dd></div>
+              <div><dt>Data</dt><dd>{formatData(purchaseTarget.data_limit_bytes)}</dd></div>
+              <div><dt>Validity</dt><dd>{formatDuration(purchaseTarget.duration_seconds)}</dd></div>
+              <div className="checkout-total"><dt>Total</dt><dd>{formatMoney(purchaseTarget.amount, purchaseTarget.currency)}</dd></div>
+            </dl>
             <div className="portal-modal-actions">
               <button type="button" onClick={() => setPurchaseTarget(null)} disabled={Boolean(purchasingPlanId)}>Keep current plan</button>
               <button
@@ -853,6 +902,6 @@ export default function AccountPage() {
           </section>
         </div>
       )}
-    </main>
+    </div>
   )
 }

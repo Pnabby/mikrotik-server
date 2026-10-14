@@ -1,7 +1,5 @@
 import { useEffect } from 'react'
 
-import { WifiIcon } from '../components/Icons'
-
 const EFFECTIVE_DATE = '11 September 2026'
 
 function Terms() {
@@ -88,10 +86,6 @@ export default function LegalPage({ legalDocument }) {
     <main className="signup-page legal-page">
       <div className="legal-shell">
         <header className="legal-header">
-          <a className="signup-brand" href="/" aria-label="Vlad WiFi home">
-            <span className="signup-logo-mark"><WifiIcon /></span>
-            <span>Vlad WiFi</span>
-          </a>
           <nav aria-label="Legal documents">
             <a className={!isPrivacy ? 'active' : ''} href="/terms">Terms</a>
             <a className={isPrivacy ? 'active' : ''} href="/privacy">Privacy</a>
