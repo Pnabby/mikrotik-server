@@ -6,6 +6,7 @@ import './styles/signup.css'
 import './styles/account.css'
 import './styles/support.css'
 import './styles/site.css'
+import './styles/login.css'
 
 createRoot(document.getElementById('root')).render(
   <App />,

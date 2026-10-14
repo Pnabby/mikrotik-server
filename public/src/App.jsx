@@ -24,5 +24,6 @@ export default function App() {
   else if (path === '/terms') page = <LegalPage legalDocument="terms" />
   else if (path === '/privacy') page = <LegalPage legalDocument="privacy" />
   const pageHasHeader = path === '/account' || path === '/profile' || path === '/issues' || path === '/plans' || path.startsWith('/plans/')
-  return <div className="customer-site">{!pageHasHeader && <AccountHeader activePage="guest" />}{page}<SiteFooter /><SupportContact /></div>
+  const isLoginPage = page.type === LoginPage
+  return <div className={`customer-site${isLoginPage ? ' login-site' : ''}`}>{!pageHasHeader && !isLoginPage && <AccountHeader activePage="guest" />}{page}{!isLoginPage && <SiteFooter />}<SupportContact /></div>
 }

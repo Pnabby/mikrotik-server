@@ -1,0 +1,45 @@
+/* Preserve the original standalone login without changing other customer pages. */
+.customer-site.login-site .login-page {
+  display: grid;
+  min-height: 100svh;
+  place-items: center;
+  padding: clamp(1.25rem, 4vw, 3rem);
+  color: var(--login-ink);
+  background: var(--login-background);
+  font-family: var(--font-login);
+}
+
+.customer-site.login-site .login-container { width: min(500px, 100%); margin: auto; }
+.customer-site.login-site .login-card { padding: 2rem; border-color: var(--surface-a88); border-radius: 18px; box-shadow: var(--login-shadow); }
+.login-header { margin-bottom: 1.5rem; text-align: center; }
+.login-brand { display: inline-flex; flex-direction: column; align-items: center; gap: 0.5rem; color: var(--login-ink); text-decoration: none; }
+.login-logo-mark { display: block; width: 56px; height: 42px; color: var(--login-primary); }
+.customer-site.login-site .login-logo-mark svg { display: block; width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 8.5; }
+.login-logo-mark circle { fill: currentColor; stroke: none; }
+.customer-site.login-site .login-brand-name { font-family: var(--font-login); font-size: var(--text-card); font-weight: 700; }
+.customer-site.login-site .login-brand-name strong { color: var(--login-link); }
+.login-header p { margin-top: 0.65rem; color: var(--login-muted); font-size: var(--text-sm); line-height: 1.6; }
+.customer-site.login-site .login-form { gap: 1.1rem; }
+.customer-site.login-site .signup-field { gap: 0.4rem; }
+.customer-site.login-site .signup-field > label { color: var(--login-ink); font-size: var(--text-sm); font-weight: 700; }
+.customer-site.login-site .login-input-shell { min-height: 52px; padding: 0; border-color: var(--login-border); border-radius: 10px; }
+.customer-site.login-site .login-input-shell:focus-within { border-color: var(--login-primary); box-shadow: var(--login-focus-ring); }
+.customer-site.login-site .login-input-shell.invalid { border-color: var(--error); }
+.customer-site.login-site .login-field-icon { width: 52px; flex: 0 0 52px; border-color: var(--login-divider); color: var(--login-icon); background: var(--login-icon-bg); }
+.customer-site.login-site .login-input-shell input { min-height: 50px; font-family: var(--font-login); font-size: var(--text-md); }
+.customer-site.login-site .login-input-shell input::placeholder { color: var(--login-placeholder); }
+.customer-site.login-site .login-pin-toggle { color: var(--login-icon); border-radius: 0; }
+.customer-site.login-site .login-recovery-link { color: var(--login-primary); font-size: var(--text-xs); }
+.customer-site.login-site .remember-checkbox { color: var(--login-muted); font-size: var(--text-xs); }
+.customer-site.login-site .signup-submit { min-height: 52px; border-color: transparent; border-radius: 10px; background: var(--login-button); box-shadow: var(--login-button-shadow); font-size: var(--text-body); font-weight: 700; }
+.customer-site.login-site .signup-submit:hover:not(:disabled) { background: var(--login-button-hover); }
+.customer-site.login-site .signup-submit:disabled { color: var(--on-dark); background: var(--login-button); opacity: 0.6; cursor: wait; }
+.customer-site.login-site .login-divider { color: var(--login-muted); }
+.customer-site.login-site .login-create-account { color: var(--login-muted); font-size: var(--text-xs); }
+.customer-site.login-site .login-create-account a { color: var(--login-primary); }
+.customer-site.login-site .auth-legal-links { color: var(--login-muted); font-size: var(--text-xs); }
+.customer-site.login-site .auth-legal-links a { color: var(--login-muted); }
+
+@media (max-width: 700px) {
+  .customer-site.login-site .login-card { padding: 1.4rem; }
+}

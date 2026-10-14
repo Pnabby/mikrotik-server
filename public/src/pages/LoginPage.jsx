@@ -1,12 +1,22 @@
 import { useEffect, useState } from 'react'
 
 import PageLoadingState from '../components/PageLoadingState'
-import PageHero from '../components/PageHero'
 import { AccountApiError, getAccount, login } from '../services/accountApi'
 
 const USERNAME_PATTERN = /^[a-z0-9]{3,64}$/
 const PIN_PATTERN = /^[0-9]{6}$/
 const PROMO_PROMPT_SESSION_KEY = 'vlad-wifi:show-eligible-promo'
+
+function LoginWifiIcon() {
+  return (
+    <svg viewBox="0 0 96 72" aria-hidden="true">
+      <path d="M10 22.5a57 57 0 0 1 76 0" />
+      <path d="M23 36.5a38.5 38.5 0 0 1 50 0" />
+      <path d="M36 50.5a20 20 0 0 1 24 0" />
+      <circle cx="48" cy="63" r="6" />
+    </svg>
+  )
+}
 
 function UserIcon() {
   return (
@@ -141,8 +151,16 @@ export default function LoginPage() {
   return (
     <main className="signup-page login-page">
       <div className="signup-container login-container">
-        <PageHero className="auth-hero" titleId="login-title" title="Log in to Vlad WiFi" description="Log in with your permanent Vlad WiFi username and PIN." />
         <section className="signup-card login-card" aria-labelledby="login-title">
+          <header className="login-header">
+            <a className="login-brand" href="/" aria-label="Vlad WiFi home">
+              <span className="login-logo-mark"><LoginWifiIcon /></span>
+              <span className="login-brand-name">Vlad <strong>WiFi</strong></span>
+            </a>
+            <h1 className="sr-only" id="login-title">Log in to Vlad WiFi</h1>
+            <p>Log in with your permanent Vlad WiFi username and PIN.</p>
+          </header>
+
           <form className="login-form" noValidate onSubmit={submit}>
             <div className="signup-field">
               <label htmlFor="login-username">Username</label>
