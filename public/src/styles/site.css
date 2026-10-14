@@ -96,6 +96,8 @@ body:has(.portal-modal-backdrop) { overflow: hidden; }
 .customer-site :is(.plan-card-footer button, .signup-submit, .issue-primary, .portal-modal-actions .confirm, .profile-pin-form > button, .hostel-transfer-open, .captive-portal-callout a):hover:not(:disabled) { background: var(--link); }
 .customer-site :is(.plan-card-footer button, .signup-submit, .issue-primary):disabled { border-color: var(--divider); color: var(--disabled); background: var(--divider); cursor: not-allowed; opacity: 1; }
 .customer-site :is(.portal-modal-actions button, .profile-signout-card button, .purchase-activation-action, .plan-list-actions button, .network-refresh, .issue-pagination button) { padding: 12px 18px; border: 1px solid var(--border); color: var(--nav-ink); background: var(--surface); }
+.customer-site .profile-signout-card button { border-color: var(--error); color: var(--on-dark); background: var(--error); }
+.customer-site .profile-signout-card button:hover:not(:disabled) { border-color: var(--error-hover); background: var(--error-hover); }
 .customer-site :is(.portal-modal-actions .danger, .delete-account-open) { border-color: var(--error-border); color: var(--error); background: var(--error-bg); }
 .customer-site .portal-modal-actions .danger:hover:not(:disabled) { border-color: var(--error); color: var(--on-dark); background: var(--error); }
 .plan-list-actions { display: flex; justify-content: center; margin-top: 24px; }

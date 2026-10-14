@@ -153,6 +153,13 @@
   stroke-width: 1.8;
 }
 
+.support-modal-actions .support-whatsapp-icon {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+
 .support-modal-actions span {
   display: grid;
   gap: 0.1rem;

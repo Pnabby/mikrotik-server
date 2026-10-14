@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import supportIcon from '../assets/customer-service.png'
+import whatsappIcon from '../assets/whatsapp.png'
 import { ChatIcon, CloseIcon, PhoneIcon, ShieldIcon } from './Icons'
 import { getSupportSettings } from '../services/supportApi'
 
@@ -62,7 +63,7 @@ export default function SupportContact() {
               )}
               {support?.whatsapp_url && (
                 <a className="support-modal-whatsapp" href={support.whatsapp_url} rel="noreferrer" target="_blank">
-                  <ChatIcon />
+                  <img className="support-whatsapp-icon" src={whatsappIcon} alt="" />
                   <span><small>Send a message</small><strong>Open WhatsApp</strong></span>
                 </a>
               )}
