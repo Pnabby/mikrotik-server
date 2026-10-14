@@ -1,4 +1,5 @@
-import PriceNotice from './components/PriceNotice'
+import AccountHeader from './components/AccountHeader'
+import SiteFooter from './components/SiteFooter'
 import AccountPage from './pages/AccountPage'
 import LoginPage from './pages/LoginPage'
 import ForgotPinPage from './pages/ForgotPinPage'
@@ -15,10 +16,13 @@ export default function App() {
   if (path === '/signup') page = <SignupPage />
   else if (path === '/forgot-password') page = <ForgotPinPage />
   else if (path === '/account') page = <AccountPage />
+  else if (path === '/plans') page = <AccountPage plansOnly />
+  else if (/^\/plans\/[^/]+$/.test(path)) page = <AccountPage plansOnly planGroupId={path.slice('/plans/'.length)} />
   else if (path === '/profile') page = <ProfilePage />
   else if (path === '/issues') page = <IssuesPage />
   else if (path === '/verify-phone') page = <VerifyPhonePage />
   else if (path === '/terms') page = <LegalPage legalDocument="terms" />
   else if (path === '/privacy') page = <LegalPage legalDocument="privacy" />
-  return <><PriceNotice />{page}<SupportContact /></>
+  const pageHasHeader = path === '/account' || path === '/profile' || path === '/issues' || path === '/plans' || path.startsWith('/plans/')
+  return <div className="customer-site">{!pageHasHeader && <AccountHeader activePage="guest" />}{page}<SiteFooter /><SupportContact /></div>
 }

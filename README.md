@@ -22,6 +22,13 @@ it may take 30 seconds or more. The account overview confirms plan activity usin
 RouterOS status: disabled users show **Exhausted** and **No active plan**, while failed
 router checks show **Status unavailable**. **Refresh WiFi status** reads the router again.
 Purchased plan details and purchase history remain available when WiFi access is inactive.
+The **Plans** page (`/plans`) shows promotions first, followed by compact plan-group tiles
+with plan counts and starting prices. Selecting a tile opens `/plans/{group_id}` and shows
+only that group's plans, two per page on phones and four on larger screens, with a link
+back to all groups. Ungrouped plans
+remain available through an **Other plans** tile. Group ordering and price-sort settings
+still come from the admin catalogue. The account overview also shows the same compact
+catalogue instead of every group's plans.
 The customer-facing paths and APIs are available:
 
 ```text
@@ -29,6 +36,8 @@ GET  /
 GET  /login
 GET  /signup
 GET  /account
+GET  /plans
+GET  /plans/{group_id}
 GET  /profile
 GET  /health
 GET  /api/routers
@@ -139,7 +148,8 @@ issue after a move. Customers see only their own issues and admin replies. The a
 can reply, mark issues attended to, or reopen them. Viewers have read-only access. The
 notification bell displays the total issues awaiting attention and refreshes every 15
 seconds; attending to an issue updates the count immediately. Opening the bell does not
-clear outstanding issues.
+clear outstanding issues. The red count badge appears only when the count is greater
+than zero; at zero the bell has no badge.
 
 Apply migration `20261008_0014` before running the updated backend. Build both frontends
 and deploy them with the backend; no new environment variables are required.
@@ -233,7 +243,7 @@ npm run build --prefix admin
 ```
 
 After `public/dist` exists, FastAPI serves the built public app at `/`, `/login`, `/signup`,
-and `/account`. Without a build, those paths redirect to `FRONTEND_URL` so local frontend
+`/account`, `/plans`, and `/plans/{group_id}`. Without a build, those paths redirect to `FRONTEND_URL` so local frontend
 development remains separate.
 
 ## Configuration

@@ -2,15 +2,17 @@ import { useEffect, useState } from 'react'
 
 import AccountHeader from '../components/AccountHeader'
 import PageLoadingState from '../components/PageLoadingState'
+import PageHero from '../components/PageHero'
+import StatusPill from '../components/StatusPill'
 import { ChatIcon, CheckIcon, ClockIcon, GlobeIcon, SendIcon, ShieldIcon, WarningIcon } from '../components/Icons'
 import { AccountApiError, createIssue, getAccount, listIssues } from '../services/accountApi'
 import '../styles/issues.css'
 
 function IssueStatus({ status }) {
-  return <span className={`issue-status ${status}`}>
+  return <StatusPill className={`issue-status ${status}`}>
     {status === 'attended' ? <CheckIcon /> : <ClockIcon />}
     {status === 'attended' ? 'Attended to' : 'Awaiting attention'}
-  </span>
+  </StatusPill>
 }
 
 function IssueHistoryCard({ issue }) {
@@ -95,10 +97,10 @@ export default function IssuesPage() {
     } finally { setBusy(false) }
   }
 
-  if (loading) return <PageLoadingState title="Loading support" />
+  if (loading) return <PageLoadingState activePage="issues" title="Loading support" />
   return <div className="account-page"><AccountHeader activePage="issues" />
     <main className="issues-page">
-      <header className="issues-heading"><p className="issues-eyebrow">Customer support</p><h1>Raise an issue</h1><p>Connection trouble, a billing question, or something else? We are here to help.</p></header>
+      <PageHero className="issues-heading" eyebrow="Customer support" title="Raise an issue" description="Connection trouble, a billing question, or something else? We are here to help." />
       {signedOut ? <section className="issue-card issue-empty issue-signin"><span className="issue-icon-tile"><ShieldIcon /></span><h2>Let us know how we can help</h2><p>Sign in to send a complaint, include your hostel details, and keep track of replies.</p><a className="issue-primary" href="/login">Sign in to raise an issue</a></section> : !account ? <section className="issue-card issue-empty"><span className="issue-icon-tile"><WarningIcon /></span><h2>We could not load your account</h2><p role="alert">{error}</p><button className="issue-primary" onClick={() => window.location.reload()}>Try again</button></section> : <>
         <div className="issues-compose-layout">
           <form className="issue-card issue-form" id="new-issue" onSubmit={submit} aria-busy={busy}>

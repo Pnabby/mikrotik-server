@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 
-import { CheckIcon, GlobeIcon, ShieldIcon, WifiIcon } from '../components/Icons'
+import { CheckIcon, GlobeIcon, ShieldIcon } from '../components/Icons'
+import PageHero from '../components/PageHero'
 import OtpInput from '../components/OtpInput'
 import { getRouters } from '../services/hotspotApi'
 import {
@@ -64,14 +65,7 @@ function FieldError({ id, message }) {
 
 function SignupHeader() {
   return (
-    <header className="signup-header">
-      <a className="signup-brand" href="/" aria-label="Vlad WiFi home">
-        <span className="signup-logo-mark"><WifiIcon /></span>
-        <span>Vlad WiFi</span>
-      </a>
-      <h1>Create your WiFi account</h1>
-      <p>Select your hostel and create the login you will use whenever you connect to Vlad WiFi.</p>
-    </header>
+    <PageHero className="signup-header" title="Create your WiFi account" description="Select your hostel and create the login you will use whenever you connect to Vlad WiFi." />
   )
 }
 

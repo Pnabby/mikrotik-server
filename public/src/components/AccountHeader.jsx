@@ -10,6 +10,7 @@ export default function AccountHeader({ activePage = 'account', activeSection = 
 
   return (
     <header className="account-topbar">
+      <div className="site-header-inner">
       <a className="account-brand" href="/account#overview" aria-label="Vlad WiFi dashboard">
         <span><WifiIcon /></span>
         <strong>Vlad WiFi</strong>
@@ -17,12 +18,12 @@ export default function AccountHeader({ activePage = 'account', activeSection = 
 
       <nav className="account-nav" aria-label="Account navigation">
         {sections.map((section) => {
-          const isActive = onAccountPage && activeSection === section.id
+          const isActive = (onAccountPage || activePage === 'plans') && activeSection === section.id
           return (
             <a
               aria-current={isActive ? 'location' : undefined}
               className={isActive ? 'active' : ''}
-              href={onAccountPage ? `#${section.id}` : `/account#${section.id}`}
+              href={section.id === 'plans' ? '/plans' : onAccountPage ? `#${section.id}` : `/account#${section.id}`}
               key={section.id}
             >
               {section.label}
@@ -39,6 +40,7 @@ export default function AccountHeader({ activePage = 'account', activeSection = 
       >
         <AccountIcon />
       </a>
+      </div>
     </header>
   )
 }

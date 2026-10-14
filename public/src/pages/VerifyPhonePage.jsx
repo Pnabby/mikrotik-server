@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { WifiIcon } from '../components/Icons'
+import PageHero from '../components/PageHero'
 import OtpInput from '../components/OtpInput'
 import PageLoadingState from '../components/PageLoadingState'
 import {
@@ -78,11 +78,7 @@ export default function VerifyPhonePage() {
   return (
     <main className="signup-page">
       <div className="signup-container login-container">
-        <header className="signup-header">
-          <a className="signup-brand" href="/" aria-label="Vlad WiFi home"><span className="signup-logo-mark"><WifiIcon /></span><span>Vlad WiFi</span></a>
-          <h1>Verify your phone</h1>
-          <p>Add and verify your mobile number to finish securing your account.</p>
-        </header>
+        <PageHero className="signup-header" title="Verify your phone" description="Add and verify your mobile number to finish securing your account." />
         <section className="signup-card login-card">
           <form className="login-form" noValidate onSubmit={challenge ? verify : sendCode}>
             {!challenge ? <div className="signup-field">
