@@ -71,6 +71,10 @@ body:has(.portal-modal-backdrop) { overflow: hidden; }
 .category-footer strong { font-family: var(--font-heading); font-size: var(--text-card); line-height: 1.3; }
 .category-footer > span { padding-bottom: 4px; color: var(--link); font-size: var(--text-body); font-weight: 600; }
 .plans-back { display: inline-flex; min-height: 44px; align-items: center; margin-bottom: 12px; color: var(--link); font-size: var(--text-body); font-weight: 600; text-decoration: none; }
+.plan-description-notice { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 12px; margin-top: 24px; padding: 20px; border: 1px solid var(--warning-border); border-left: 4px solid var(--warning); border-radius: var(--radius-detail); background: var(--warning-bg); }
+.plan-description-notice > svg { width: 24px; height: 24px; fill: none; stroke: var(--warning); }
+.customer-site .plan-description-notice h2 { margin: 0; color: var(--warning); font-size: var(--text-base); line-height: 1.5; letter-spacing: normal; }
+.plan-description-notice p { margin-top: 8px; color: var(--ink); font-size: var(--text-base); line-height: 1.7; white-space: pre-line; overflow-wrap: anywhere; }
 .plans-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin-top: 24px; }
 .customer-site .plan-card { display: flex; flex-direction: column; }
 .plan-card-labels { display: flex; gap: 8px; margin-bottom: 12px; }
@@ -143,11 +147,25 @@ body:has(.portal-modal-backdrop) { overflow: hidden; }
 .customer-site .usage-grid small { color: var(--muted); font-size: var(--text-sm); }
 .customer-site .usage-grid strong { margin-top: 4px; font-size: var(--text-base); }
 .customer-site .usage-grid article > span { color: var(--link); background: var(--soft-blue); }
-.customer-site .site-hero .network-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 16px; margin-top: 24px; }
-.customer-site .site-hero .network-state { border: 1px solid var(--on-dark-eyebrow); color: var(--on-dark); background: var(--hero); }
-.customer-site .site-hero .network-state small { color: var(--on-dark-muted); }
-.customer-site .site-hero .network-state strong { color: var(--on-dark); }
-.customer-site .site-hero .network-refresh { border-color: var(--on-dark-eyebrow); color: var(--on-dark); background: var(--hero); }
+.customer-site .account-overview-hero { margin-bottom: 24px; padding: 28px 32px; }
+.customer-site .account-overview-hero .hero-eyebrow { margin-bottom: 8px; }
+.customer-site .account-overview-hero h1 { font-size: var(--text-title); overflow-wrap: anywhere; }
+.customer-site .account-overview-hero .hero-description { margin-top: 10px; font-size: var(--text-base); }
+.customer-site .plan-exhausted-section { margin-top: 0; border-color: var(--warning-border); }
+.customer-site .plan-exhausted-section .account-eyebrow { color: var(--warning); }
+.customer-site .plan-exhausted-section .account-section-heading { align-items: flex-start; }
+.plan-breakdown-status { flex-shrink: 0; white-space: nowrap; }
+.view-wifi-plans { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: 12px; margin-top: 20px; padding: 12px 20px; border: 1px solid var(--brand); border-radius: var(--radius-control); color: var(--on-dark); background: var(--brand); font-size: var(--text-body); font-weight: 600; text-decoration: none; transition: background var(--duration); }
+.view-wifi-plans:hover { background: var(--link); }
+.view-wifi-plans svg { width: 18px; height: 18px; fill: none; stroke: currentColor; }
+.exhausted-plan-details { margin-top: 20px; border-top: 1px solid var(--divider); }
+.exhausted-plan-details > summary { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 0 0; color: var(--link); font-size: var(--text-body); font-weight: 600; list-style: none; }
+.exhausted-plan-details > summary::-webkit-details-marker { display: none; }
+.exhausted-plan-details > summary::after { width: 8px; height: 8px; flex-shrink: 0; margin-right: 3px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; content: ''; transform: translateY(-2px) rotate(45deg); }
+.exhausted-plan-details[open] > summary::after { transform: translateY(2px) rotate(225deg); }
+.exhausted-plan-details .breakdown-hide-label, .exhausted-plan-details[open] .breakdown-show-label { display: none; }
+.exhausted-plan-details[open] .breakdown-hide-label { display: inline; }
+.customer-site .exhausted-plan-details .usage-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 20px; }
 .customer-site .plan-breakdown-list { gap: 0; margin-top: 20px; }
 .customer-site .plan-breakdown-list > div { padding: 18px 0; border-bottom: 1px solid var(--divider); }
 .customer-site .plan-breakdown-list dd { font-size: var(--text-md); }
@@ -233,6 +251,8 @@ body:has(.portal-modal-backdrop) { overflow: hidden; }
   .customer-site .site-hero { margin-bottom: 24px; padding: 32px 24px; }
   .customer-site .site-hero h1 { font-size: var(--text-title); }
   .customer-site .site-hero .hero-description { font-size: var(--text-base); }
+  .customer-site .account-overview-hero { padding: 24px; }
+  .customer-site .account-overview-hero h1 { font-size: var(--text-card); }
   .hero-steps { gap: 12px 20px; margin-top: 20px; }
   .customer-site .hero-signal { right: -175px; opacity: 0.3; }
   .customer-site :is(.site-card, .account-section, .account-panel, .signup-card, .legal-card, .profile-card, .profile-side-card, .profile-pin-card, .profile-signout-card, .profile-delete-card, .issue-card, .plan-card) { padding: 24px; }
@@ -242,8 +262,6 @@ body:has(.portal-modal-backdrop) { overflow: hidden; }
   .category-title h3, .category-footer strong { font-size: var(--text-section); }
   .catalogue-heading h2 { font-size: var(--text-lead); }
   .site-footer { padding: 32px 24px 88px; }
-  .customer-site .site-hero .network-actions { align-items: stretch; }
-  .customer-site .site-hero .network-state { width: auto; }
 }
 @media (max-width: 560px) {
   .plans-grid { grid-template-columns: minmax(0, 1fr); }
@@ -251,6 +269,8 @@ body:has(.portal-modal-backdrop) { overflow: hidden; }
   .customer-site .usage-grid { gap: 12px; }
   .customer-site .usage-grid article { padding: 18px; }
   .customer-site .usage-grid strong { white-space: normal; font-size: var(--text-body); }
+  .customer-site .plan-exhausted-section .account-section-heading { flex-direction: column-reverse; gap: 12px; }
+  .plan-exhausted-section .view-wifi-plans { width: 100%; }
   .customer-site .plan-card-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
   .customer-site .plan-card-footer button { width: auto; flex: 1 0 130px; }
   .customer-site .plan-card-footer > strong { font-size: var(--text-section); }

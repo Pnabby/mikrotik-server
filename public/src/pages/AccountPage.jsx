@@ -13,7 +13,6 @@ import {
   DeviceTypeIcon,
   DotIcon,
   PlanIcon,
-  RefreshIcon,
   ShieldIcon,
   VoucherIcon,
   WarningIcon,
@@ -231,6 +230,7 @@ function PlanCatalogue({ plans, groupId, standalone, purchasingPlanId, onPurchas
     left.displayOrder - right.displayOrder || left.name.localeCompare(right.name)
   ))
   const selectedGroup = groups.find((group) => group.id === groupId)
+  const groupDescription = selectedGroup?.description.trim() || ''
   const groupPlans = selectedGroup ? [...selectedGroup.plans].sort((left, right) => (
     selectedGroup.sortByPrice
       ? Number(left.amount) - Number(right.amount) || left.name.localeCompare(right.name)
@@ -257,11 +257,19 @@ function PlanCatalogue({ plans, groupId, standalone, purchasingPlanId, onPurchas
         <div>
           <span className="account-eyebrow">Get connected</span>
           <Heading id="plans-title">{groupId ? selectedGroup?.name || 'Plans unavailable' : 'Available plans'}</Heading>
-          <p>{groupId
-            ? selectedGroup?.description || (selectedGroup ? `${groupPlans.length} plan${groupPlans.length === 1 ? '' : 's'} to choose from.` : 'These plans are no longer available at your hostel.')
-            : 'Choose a category to find your plan.'}</p>
+          {(!groupId || !groupDescription) && <p>{groupId
+            ? selectedGroup ? `${groupPlans.length} plan${groupPlans.length === 1 ? '' : 's'} to choose from.` : 'These plans are no longer available at your hostel.'
+            : 'Choose a category to find your plan.'}</p>}
         </div>
       </div>}
+
+      {groupId && groupDescription && <aside className="plan-description-notice" aria-labelledby="plan-description-notice-title">
+        <WarningIcon />
+        <div>
+          <h2 id="plan-description-notice-title">Important notice</h2>
+          <p>{groupDescription}</p>
+        </div>
+      </aside>}
 
       {groupId ? selectedGroup && (
         <>
@@ -628,6 +636,7 @@ export default function AccountPage({ plansOnly = false, planGroupId = '' }) {
   const hasCurrentPlan = Boolean(currentPlan)
   const planStatus = getPlanStatus(currentPlan, networkStatus, networkPhase)
   const hasActivePlan = planStatus === 'active'
+  const isPlanExhausted = planStatus === 'exhausted'
   const planStatusCopy = PLAN_STATUS_COPY[planStatus]
   const planExpiryDate = networkStatus?.expiry_date || currentPlan?.expires_at || null
   const devices = networkStatus?.connected_devices || []
@@ -656,6 +665,38 @@ export default function AccountPage({ plansOnly = false, planGroupId = '' }) {
   const paymentNoticeCopy = visiblePaymentNotice === 'active' && !hasActivePlan
     ? { title: 'Your plan purchase was completed.', detail: hasCurrentPlan ? planStatusCopy.detail : 'Choose a plan below or contact support if you need help.' }
     : PAYMENT_NOTICE_COPY[visiblePaymentNotice]
+  const usageSummary = hasCurrentPlan && (
+    <section className="usage-grid" aria-label="WiFi usage summary">
+      <article className="site-card">
+        <span><DataUsedIcon /></span>
+        <div><small>Data used</small><strong>{statusUnavailable ? '--' : networkStatus?.total_data_used || '0 B'}</strong></div>
+      </article>
+      <article className="site-card">
+        <span><DataLeftIcon /></span>
+        <div><small>Data remaining</small><strong>{statusUnavailable ? '--' : networkStatus?.total_data_left || '--'}</strong></div>
+      </article>
+      {!isPlanExhausted && <>
+        <article className="site-card">
+          <span><PlanIcon /></span>
+          <div><small>Current plan</small><strong>{hasActivePlan ? planName : planStatusCopy.access}</strong></div>
+        </article>
+        <article className="site-card">
+          <span><DevicesIcon /></span>
+          <div><small>Connected devices</small><strong>{statusUnavailable ? '--' : networkStatus?.connected_devices_count ?? 0}</strong></div>
+        </article>
+      </>}
+    </section>
+  )
+  const planBreakdown = hasCurrentPlan && (
+    <dl className="plan-breakdown-list">
+      <div><dt>Plan</dt><dd>{planName}</dd></div>
+      <div><dt>Login date</dt><dd>{loginDateLabel}</dd></div>
+      <div><dt>Expiry date</dt><dd>{expiryDateLabel}</dd></div>
+      <div><dt>Data limit</dt><dd>{formatData(networkStatus?.data_limit_bytes ?? currentPlan.data_limit_bytes)}</dd></div>
+      <div><dt>Device allowance</dt><dd>{currentPlan.device_limit ? `${currentPlan.device_limit} device${currentPlan.device_limit === 1 ? '' : 's'}` : 'Unlimited devices'}</dd></div>
+      <div><dt>Download speed</dt><dd>{currentPlan.download_speed || 'Not listed'}</dd></div>
+    </dl>
+  )
 
   return (
     <div className="account-page">
@@ -673,58 +714,31 @@ export default function AccountPage({ plansOnly = false, planGroupId = '' }) {
           </div>
         )}
         {!plansOnly && <>
-        <PageHero id="overview" eyebrow="Overview" title={`Good to see you, ${account.username}`} description="Track your WiFi access, devices, plans, and purchases.">
-          {hasCurrentPlan && (
-            <div className="network-actions">
-              <div className={`network-state network-${planStatus}`} role="status">
-                <span><DotIcon /></span>
-                <div><small>WiFi access</small><strong>{planStatusCopy.access}</strong></div>
-              </div>
-              <button className="network-refresh" type="button" disabled={networkPhase === 'loading'} onClick={refreshNetworkStatus}><RefreshIcon />{networkPhase === 'loading' ? 'Checking plan…' : 'Refresh WiFi status'}</button>
-            </div>
-          )}
-        </PageHero>
+        <PageHero className="account-overview-hero" id="overview" eyebrow="Overview" title={`Good to see you, ${account.username}`} description="Your WiFi account, at a glance." />
+
+        {!isPlanExhausted && usageSummary}
 
         {hasCurrentPlan && (
-          <section className="usage-grid" aria-label="WiFi usage summary">
-            <article className="site-card">
-              <span><DataUsedIcon /></span>
-              <div><small>Data used</small><strong>{statusUnavailable ? '--' : networkStatus?.total_data_used || '0 B'}</strong></div>
-            </article>
-            <article className="site-card">
-              <span><DataLeftIcon /></span>
-              <div><small>Data remaining</small><strong>{statusUnavailable ? '--' : networkStatus?.total_data_left || '--'}</strong></div>
-            </article>
-            <article className="site-card">
-              <span><PlanIcon /></span>
-              <div><small>Current plan</small><strong>{hasActivePlan ? planName : planStatusCopy.access}</strong></div>
-            </article>
-            <article className="site-card">
-              <span><DevicesIcon /></span>
-              <div><small>Connected devices</small><strong>{statusUnavailable ? '--' : networkStatus?.connected_devices_count ?? 0}</strong></div>
-            </article>
-          </section>
-        )}
-
-        {hasCurrentPlan && (
-          <section className="account-section plan-breakdown-section" aria-labelledby="plan-breakdown-title">
+          <section className={`account-section plan-breakdown-section${isPlanExhausted ? ' plan-exhausted-section' : ''}`} aria-labelledby="plan-breakdown-title">
             <div className="account-section-heading">
               <div>
-                <span className="account-eyebrow">Your plan</span>
-                <h2 id="plan-breakdown-title">Plan breakdown</h2>
-                <p>{hasActivePlan ? 'Your current WiFi plan and access details.' : 'Your plan details and current WiFi access status.'}</p>
+                <span className="account-eyebrow">{isPlanExhausted ? 'Time to reconnect' : 'Your plan'}</span>
+                <h2 id="plan-breakdown-title">{isPlanExhausted ? 'Your plan is exhausted' : 'Plan breakdown'}</h2>
+                <p>{isPlanExhausted ? 'Choose a new plan to get back online.' : hasActivePlan ? 'Your current WiFi plan and access details.' : 'Your plan details and current WiFi access status.'}</p>
               </div>
               <span className={`plan-breakdown-status ${planStatus}`}><DotIcon />{planStatusCopy.label}</span>
             </div>
-            {planStatusCopy.detail && <p className="plan-status-notice" role="status">{planStatusCopy.detail}</p>}
-            <dl className="plan-breakdown-list">
-              <div><dt>Plan</dt><dd>{planName}</dd></div>
-              <div><dt>Login date</dt><dd>{loginDateLabel}</dd></div>
-              <div><dt>Expiry date</dt><dd>{expiryDateLabel}</dd></div>
-              <div><dt>Data limit</dt><dd>{formatData(networkStatus?.data_limit_bytes ?? currentPlan.data_limit_bytes)}</dd></div>
-              <div><dt>Device allowance</dt><dd>{currentPlan.device_limit ? `${currentPlan.device_limit} device${currentPlan.device_limit === 1 ? '' : 's'}` : 'Unlimited devices'}</dd></div>
-              <div><dt>Download speed</dt><dd>{currentPlan.download_speed || 'Not listed'}</dd></div>
-            </dl>
+            {isPlanExhausted ? <>
+              <a className="view-wifi-plans" href="#plans">View WiFi plans<DataUsedIcon /></a>
+              <details className="exhausted-plan-details">
+                <summary><span className="breakdown-show-label">View plan breakdown</span><span className="breakdown-hide-label">Hide plan breakdown</span></summary>
+                {usageSummary}
+                {planBreakdown}
+              </details>
+            </> : <>
+              {planStatusCopy.detail && <p className="plan-status-notice" role="status">{planStatusCopy.detail}</p>}
+              {planBreakdown}
+            </>}
             {hasActivePlan && <div className="captive-portal-callout">
               <div><strong>Ready to connect?</strong><p>Open the WiFi login page to activate your plan on this device.</p></div>
               <a href="http://wifi.flint.net">Open WiFi login</a>
@@ -732,7 +746,7 @@ export default function AccountPage({ plansOnly = false, planGroupId = '' }) {
           </section>
         )}
 
-        {hasCurrentPlan && (
+        {hasCurrentPlan && !isPlanExhausted && (
           <section className="account-section">
             <div className="account-section-heading">
               <div><span className="account-eyebrow">Connections</span><h2>Connected devices</h2><p>Review and disconnect devices currently using your account.</p></div>
@@ -741,7 +755,7 @@ export default function AccountPage({ plansOnly = false, planGroupId = '' }) {
             {networkPhase === 'loading' && !networkStatus ? (
               <div className="account-empty"><div className="inline-loader" /><p>Loading connected devices...</p></div>
             ) : statusUnavailable ? (
-              <div className="account-empty"><WarningIcon /><h3>Devices could not be loaded</h3><p>Refresh your WiFi status and try again.</p></div>
+              <div className="account-empty"><WarningIcon /><h3>Devices could not be loaded</h3><p>Reload the page to try again.</p></div>
             ) : devices.length ? (
               <div className="portal-device-list">
                 {devices.map((device) => (
