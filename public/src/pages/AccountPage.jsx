@@ -675,16 +675,14 @@ export default function AccountPage({ plansOnly = false, planGroupId = '' }) {
         <span><DataLeftIcon /></span>
         <div><small>Data remaining</small><strong>{statusUnavailable ? '--' : networkStatus?.total_data_left || '--'}</strong></div>
       </article>
-      {!isPlanExhausted && <>
-        <article className="site-card">
-          <span><PlanIcon /></span>
-          <div><small>Current plan</small><strong>{hasActivePlan ? planName : planStatusCopy.access}</strong></div>
-        </article>
-        <article className="site-card">
-          <span><DevicesIcon /></span>
-          <div><small>Connected devices</small><strong>{statusUnavailable ? '--' : networkStatus?.connected_devices_count ?? 0}</strong></div>
-        </article>
-      </>}
+      <article className="site-card">
+        <span><PlanIcon /></span>
+        <div><small>{isPlanExhausted ? 'Last plan' : 'Current plan'}</small><strong>{hasActivePlan || isPlanExhausted ? planName : planStatusCopy.access}</strong></div>
+      </article>
+      <article className="site-card">
+        <span><DevicesIcon /></span>
+        <div><small>Connected devices</small><strong>{statusUnavailable ? '--' : networkStatus?.connected_devices_count ?? 0}</strong></div>
+      </article>
     </section>
   )
   const planBreakdown = hasCurrentPlan && (
@@ -716,7 +714,7 @@ export default function AccountPage({ plansOnly = false, planGroupId = '' }) {
         {!plansOnly && <>
         <PageHero className="account-overview-hero" id="overview" eyebrow="Overview" title={`Good to see you, ${account.username}`} description="Your WiFi account, at a glance." />
 
-        {!isPlanExhausted && usageSummary}
+        {usageSummary}
 
         {hasCurrentPlan && (
           <section className={`account-section plan-breakdown-section${isPlanExhausted ? ' plan-exhausted-section' : ''}`} aria-labelledby="plan-breakdown-title">
@@ -732,7 +730,6 @@ export default function AccountPage({ plansOnly = false, planGroupId = '' }) {
               <a className="view-wifi-plans" href="#plans">View WiFi plans<DataUsedIcon /></a>
               <details className="exhausted-plan-details">
                 <summary><span className="breakdown-show-label">View plan breakdown</span><span className="breakdown-hide-label">Hide plan breakdown</span></summary>
-                {usageSummary}
                 {planBreakdown}
               </details>
             </> : <>
