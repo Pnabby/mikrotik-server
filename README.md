@@ -20,9 +20,10 @@ and comment to the destination, and deducts settled byte usage from finite allow
 Customer and admin transfer dialogs show a spinner while the move runs and explain that
 it may take 30 seconds or more. The account overview confirms plan activity using live
 RouterOS status: disabled users see a compact **Your plan is exhausted** card with a
-**View WiFi plans** link that scrolls to the catalogue. Usage and plan details stay
-collapsed under **View plan breakdown**, and connected devices are hidden for exhausted
-plans. Failed router checks show **Status unavailable**. Purchase history remains available.
+**View WiFi plans** link that scrolls to the catalogue. All four summary cards remain
+visible for exhausted plans; extended details stay collapsed under **View plan breakdown**.
+The connected-device list is hidden for exhausted plans. Failed router checks show
+**Status unavailable**. Purchase history remains available.
 The **Plans** page (`/plans`) shows promotions first, followed by compact plan-group tiles
 with plan counts and starting prices. Selecting a tile opens `/plans/{group_id}` and shows
 only that group's plans, two per page on phones and four on larger screens, with a link
