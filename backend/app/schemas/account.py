@@ -114,7 +114,7 @@ class PinResetSmsRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def validate_email(cls, value: str) -> str:
-        return normalize_recovery_identifier(value)
+        return normalize_customer_email(value)
 
 
 class UsernameRecoveryCompleteRequest(BaseModel):
@@ -125,7 +125,7 @@ class UsernameRecoveryCompleteRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def validate_email(cls, value: str) -> str:
-        return normalize_recovery_identifier(value)
+        return normalize_customer_email(value)
 
     @field_validator("code")
     @classmethod
