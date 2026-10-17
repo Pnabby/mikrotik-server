@@ -128,7 +128,7 @@ export default function LoginPage() {
         setApiError('This account is currently unavailable. Please contact help and support.')
       } else if (error instanceof AccountApiError && error.status === 423) {
         setApiError('This account is locked after 5 failed login attempts.')
-        setAccountLocked(true)
+        window.location.assign(`/forgot-password?mode=unlock&username=${encodeURIComponent(form.username)}`)
       } else if (error instanceof AccountApiError && error.status === 429) {
         setApiError('Too many login attempts. Please wait before trying again.')
       } else {
@@ -207,7 +207,7 @@ export default function LoginPage() {
             </label>
 
             {apiError && <div className="otp-api-error" role="alert">{apiError}</div>}
-            {accountLocked && <a className="login-unlock-link" href={`/forgot-password?mode=unlock&username=${encodeURIComponent(form.username)}`}>Unlock account with OTP</a>}
+            
 
             <button className="signup-submit" disabled={busy} type="submit">
               {busy && <span className="login-button-loader" aria-hidden="true" />}
