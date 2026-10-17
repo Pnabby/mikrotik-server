@@ -94,3 +94,29 @@ test('all-hostel save results retain each hostels different router settings', ()
   assert.equal(combined.hostel_profiles[0].shared_users, 2)
   assert.equal(combined.hostel_profiles[1].shared_users, 4)
 })
+
+
+test('price-only bulk changes target every configured hostel even when router is offline', () => {
+  const offline = { ...profile, router_id: 'annex', amount: '12.00', available_on_router: false }
+  const online = { ...profile, router_id: 'main', amount: '10.00', available_on_router: true }
+  const changes = { amount: '15.00' }
+  const requests = [offline, online].map((entry) => profileSaveRequest(entry,
+    { ...profileDetailsFromForm(form, profile), amount: '15.00' }, changes))
+  assert.deepEqual(requests, [
+    { method: 'PATCH', payload: { amount: '15.00' } },
+    { method: 'PATCH', payload: { amount: '15.00' } },
+  ])
+})
+
+test('offline configured hostels remain visible in bulk comparison and expose different prices', () => {
+  const online = { ...profile, amount: '10.00', available_on_router: true }
+  const offline = { ...profile, amount: '12.00', available_on_router: false }
+  const [combined] = profilesAcrossHostels([[online], [offline]], [
+    { router_id: 'main', name: 'Main' }, { router_id: 'annex', name: 'Annex' },
+  ])
+  assert.equal(combined.configured_hostels, 2)
+  assert.equal(combined.hostel_count, 2)
+  assert.ok(combined.mixed_fields.includes('amount'))
+  assert.equal(combined.hostel_profiles[1].amount, '12.00')
+  assert.equal(combined.hostel_profiles[1].available_on_router, false)
+})
