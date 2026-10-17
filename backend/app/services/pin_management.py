@@ -176,7 +176,7 @@ class PinManagementService:
     ) -> StartedPinReset:
         secret = self._hash_secret()
         customer = self._session.scalar(
-            select(Customer).where(Customer.username == request.username).limit(1)
+            select(Customer).where(Customer.phone_number == request.username if request.username.startswith('+') else Customer.username == request.username).limit(1)
         )
         if customer is None:
             raise ServiceError(status.HTTP_404_NOT_FOUND, "Account was not found.")
