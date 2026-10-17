@@ -58,7 +58,7 @@ export default function ForgotPinPage() {
       setError('Enter the username or phone number for the locked account.')
       return
     }
-    if (mode !== 'unlock' && !(EMAIL_PATTERN.test(normalizedEmail) || PHONE_PATTERN.test(normalizedEmail.replace(/[\s()-]/g, '')))) {
+    if (mode !== 'unlock' && !(EMAIL_PATTERN.test(normalizedEmail) || (mode === 'pin' && PHONE_PATTERN.test(normalizedEmail)))) {
       setError('Enter your registered email address or phone number.')
       return
     }
@@ -72,7 +72,7 @@ export default function ForgotPinPage() {
       if (mode === 'unlock') setUsername(normalizedUsername)
       else setEmail(normalizedEmail.replace(/[\s()-]/g, ''))
       setChallenge(result)
-      setDeliveryMethod(normalizedEmail.includes('@') ? 'email' : 'sms')
+      setDeliveryMethod(mode === 'unlock' || normalizedEmail.includes('@') ? 'email' : 'sms')
       setForm((current) => ({ ...current, code: '' }))
       setResendIn(result.resend_after_seconds)
       setStep('code')
