@@ -87,13 +87,17 @@ def normalize_customer_email(value: str) -> str:
     return normalized
 
 
+def normalize_recovery_identifier(value: str) -> str:
+    return normalize_customer_email(value) if "@" in value else normalize_phone_number(value)
+
+
 class PinResetStartRequest(BaseModel):
     email: str
 
     @field_validator("email")
     @classmethod
     def validate_email(cls, value: str) -> str:
-        return normalize_customer_email(value)
+        return normalize_recovery_identifier(value)
 
 
 class PinResetStartResponse(BaseModel):
@@ -110,7 +114,7 @@ class PinResetSmsRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def validate_email(cls, value: str) -> str:
-        return normalize_customer_email(value)
+        return normalize_recovery_identifier(value)
 
 
 class UsernameRecoveryCompleteRequest(BaseModel):
@@ -121,7 +125,7 @@ class UsernameRecoveryCompleteRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def validate_email(cls, value: str) -> str:
-        return normalize_customer_email(value)
+        return normalize_recovery_identifier(value)
 
     @field_validator("code")
     @classmethod
@@ -180,7 +184,7 @@ class PinResetCompleteRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def validate_email(cls, value: str) -> str:
-        return normalize_customer_email(value)
+        return normalize_recovery_identifier(value)
 
     @field_validator("code", "new_pin", "new_pin_confirmation")
     @classmethod
