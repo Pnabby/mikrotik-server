@@ -275,9 +275,10 @@ metadata is stored in PostgreSQL. In particular:
   account recovery emails. The sender address must be verified in Brevo.
 - `MNOTIFY_API_KEY` and `MNOTIFY_SENDER_ID` configure signup verification by SMS to
   the submitted phone number. The sender ID must be approved in mNotify.
-  Verification and PIN reset SMS requests use `sms_type: "otp"`; mNotify documents
-  a charge of 0.035 per campaign from the main wallet for this route. See the
-  [provider API documentation](https://developer.bms.africa/).
+  Verification and PIN reset codes use the approved standard SMS route and SMS
+  credits. mNotify's separate `sms_type: "otp"` route requires an OTP-registered
+  sender and an OTP application URL; a regular approved sender is rejected on that
+  route. OTP generation, expiry, and verification are managed by this application.
   Acceptance logs include the provider campaign ID for checking delivery reports;
   provider acceptance does not confirm delivery to the handset.
 - `OTP_HASH_SECRET` is an application-only random secret of at least 32 characters used

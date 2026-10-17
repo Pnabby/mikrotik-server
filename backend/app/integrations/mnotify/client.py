@@ -46,29 +46,26 @@ class MNotifySmsSender:
         )
 
     def send_verification_otp(self, *, recipient: str, code: str, expires_in_minutes: int) -> None:
-        self._send(
+        self.send(
             recipient=recipient,
             message=(
                 f"Your Vlad WiFi verification code is {code}. "
                 f"It expires in {expires_in_minutes} minutes."
             ),
-            sms_type="otp",
         )
 
     def send_pin_reset_otp(self, *, recipient: str, code: str, expires_in_minutes: int) -> None:
-        self._send(
+        self.send(
             recipient=recipient,
             message=(
                 f"Your Vlad WiFi PIN reset code is {code}. "
                 f"It expires in {expires_in_minutes} minutes."
             ),
-            sms_type="otp",
         )
 
     def send(self, *, recipient: str, message: str) -> None:
-        self._send(recipient=recipient, message=message)
-
-    def _send(self, *, recipient: str, message: str, sms_type: str | None = None) -> None:
+        # sms_type="otp" requires separate OTP sender registration in mNotify.
+        # Use the existing approved SMS sender for our application-generated codes.
         request_body = {
             "recipient": [recipient.lstrip("+")],
             "sender": self._sender_id,
@@ -76,8 +73,6 @@ class MNotifySmsSender:
             "is_schedule": False,
             "schedule_date": "",
         }
-        if sms_type is not None:
-            request_body["sms_type"] = sms_type
         try:
             response = httpx.post(
                 self._api_url,
@@ -115,7 +110,6 @@ class MNotifySmsSender:
 
         campaign_id = str(summary.get("_id", ""))
         logger.info(
-            "mNotify accepted SMS; campaign_id=%s; sms_type=%s",
+            "mNotify accepted SMS; campaign_id=%s",
             campaign_id if re.fullmatch(r"[A-Za-z0-9_-]{1,100}", campaign_id) else "unknown",
-            sms_type or "standard",
         )
