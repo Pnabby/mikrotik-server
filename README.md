@@ -261,7 +261,14 @@ metadata is stored in PostgreSQL. In particular:
 - `DATABASE_URL` is a PostgreSQL SQLAlchemy URL such as
   `postgresql+psycopg://USER:PASSWORD@HOST:5432/DATABASE`.
 - `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, and `BREVO_SENDER_NAME` configure
-  transactional OTP delivery. The sender address must be verified in Brevo.
+  account recovery emails. The sender address must be verified in Brevo.
+- `MNOTIFY_API_KEY` and `MNOTIFY_SENDER_ID` configure signup verification by SMS to
+  the submitted phone number. The sender ID must be approved in mNotify.
+  Verification and PIN reset SMS requests use `sms_type: "otp"`; mNotify documents
+  a charge of 0.035 per campaign from the main wallet for this route. See the
+  [provider API documentation](https://developer.bms.africa/).
+  Acceptance logs include the provider campaign ID for checking delivery reports;
+  provider acceptance does not confirm delivery to the handset.
 - `OTP_HASH_SECRET` is an application-only random secret of at least 32 characters used
   to protect stored OTP hashes. It must be different from the Brevo API key.
 - `PIN_HASH_SECRET` is a second independent random secret used with Argon2id to protect

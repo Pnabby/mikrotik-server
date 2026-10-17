@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import logging
+import re
 from typing import Protocol
 
 import httpx
 
 from app.core.config import Settings
+
+logger = logging.getLogger(__name__)
 
 
 class SmsDeliveryError(RuntimeError):
@@ -42,40 +46,76 @@ class MNotifySmsSender:
         )
 
     def send_verification_otp(self, *, recipient: str, code: str, expires_in_minutes: int) -> None:
-        self.send(
+        self._send(
             recipient=recipient,
             message=(
                 f"Your Vlad WiFi verification code is {code}. "
                 f"It expires in {expires_in_minutes} minutes."
             ),
+            sms_type="otp",
         )
 
     def send_pin_reset_otp(self, *, recipient: str, code: str, expires_in_minutes: int) -> None:
-        self.send(
+        self._send(
             recipient=recipient,
             message=(
                 f"Your Vlad WiFi PIN reset code is {code}. "
                 f"It expires in {expires_in_minutes} minutes."
             ),
+            sms_type="otp",
         )
 
     def send(self, *, recipient: str, message: str) -> None:
+        self._send(recipient=recipient, message=message)
+
+    def _send(self, *, recipient: str, message: str, sms_type: str | None = None) -> None:
+        request_body = {
+            "recipient": [recipient.lstrip("+")],
+            "sender": self._sender_id,
+            "message": message,
+            "is_schedule": False,
+            "schedule_date": "",
+        }
+        if sms_type is not None:
+            request_body["sms_type"] = sms_type
         try:
             response = httpx.post(
                 self._api_url,
                 params={"key": self._api_key},
-                json={
-                    "recipient": [recipient.lstrip("+")],
-                    "sender": self._sender_id,
-                    "message": message,
-                    "is_schedule": False,
-                    "schedule_date": "",
-                },
+                json=request_body,
                 timeout=self._timeout,
             )
             response.raise_for_status()
             payload = response.json()
-            if str(payload.get("status", "success")).lower() in {"error", "failed", "false"}:
-                raise SmsDeliveryError("mNotify rejected the message.")
         except (httpx.HTTPError, ValueError, TypeError) as exc:
-            raise SmsDeliveryError("SMS could not be sent.") from exc
+            # HTTP exceptions can include the API key in the request URL. Keep them
+            # out of caller tracebacks and never log message bodies or OTPs.
+            logger.warning("mNotify SMS request failed; failure_type=%s", type(exc).__name__)
+            raise SmsDeliveryError("SMS could not be sent.") from None
+
+        if not isinstance(payload, dict):
+            logger.warning("mNotify returned an invalid SMS response")
+            raise SmsDeliveryError("SMS acceptance could not be confirmed.")
+
+        provider_code = str(payload.get("code", ""))
+        if str(payload.get("status", "")).lower() != "success" or provider_code != "2000":
+            logger.warning(
+                "mNotify rejected SMS; provider_code=%s",
+                provider_code if re.fullmatch(r"[0-9]{1,8}", provider_code) else "unknown",
+            )
+            raise SmsDeliveryError("mNotify rejected the message.")
+
+        summary = payload.get("summary")
+        if not isinstance(summary, dict):
+            logger.warning("mNotify SMS response has no acceptance summary")
+            raise SmsDeliveryError("SMS acceptance could not be confirmed.")
+        if str(summary.get("total_sent")) != "1" or str(summary.get("total_rejected")) != "0":
+            logger.warning("mNotify did not accept the SMS recipient")
+            raise SmsDeliveryError("mNotify did not accept the SMS recipient.")
+
+        campaign_id = str(summary.get("_id", ""))
+        logger.info(
+            "mNotify accepted SMS; campaign_id=%s; sms_type=%s",
+            campaign_id if re.fullmatch(r"[A-Za-z0-9_-]{1,100}", campaign_id) else "unknown",
+            sms_type or "standard",
+        )

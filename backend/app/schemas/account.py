@@ -10,6 +10,13 @@ from app.models.enums import AccountStatus, ActivationStatus, PaymentStatus, Sub
 from app.schemas.registration import PIN_PATTERN, normalize_phone_number, normalize_username
 
 
+def normalize_login_identifier(value: str) -> str:
+    try:
+        return normalize_phone_number(value.strip())
+    except ValueError:
+        return normalize_username(value)
+
+
 class CustomerLoginRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
@@ -20,7 +27,7 @@ class CustomerLoginRequest(BaseModel):
     @field_validator("username")
     @classmethod
     def validate_username(cls, value: str) -> str:
-        return normalize_username(value)
+        return normalize_login_identifier(value)
 
     @field_validator("pin")
     @classmethod
@@ -87,13 +94,17 @@ def normalize_customer_email(value: str) -> str:
     return normalized
 
 
+def normalize_recovery_identifier(value: str) -> str:
+    return normalize_customer_email(value) if "@" in value else normalize_phone_number(value)
+
+
 class PinResetStartRequest(BaseModel):
     email: str
 
     @field_validator("email")
     @classmethod
     def validate_email(cls, value: str) -> str:
-        return normalize_customer_email(value)
+        return normalize_recovery_identifier(value)
 
 
 class PinResetStartResponse(BaseModel):
@@ -121,7 +132,7 @@ class UsernameRecoveryCompleteRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def validate_email(cls, value: str) -> str:
-        return normalize_customer_email(value)
+        return normalize_recovery_identifier(value)
 
     @field_validator("code")
     @classmethod
@@ -143,7 +154,7 @@ class AccountUnlockStartRequest(BaseModel):
     @field_validator("username")
     @classmethod
     def validate_username(cls, value: str) -> str:
-        return normalize_username(value)
+        return normalize_login_identifier(value)
 
 
 class AccountUnlockCompleteRequest(BaseModel):
@@ -156,7 +167,7 @@ class AccountUnlockCompleteRequest(BaseModel):
     @field_validator("username")
     @classmethod
     def validate_username(cls, value: str) -> str:
-        return normalize_username(value)
+        return normalize_login_identifier(value)
 
     @field_validator("code")
     @classmethod
@@ -180,7 +191,7 @@ class PinResetCompleteRequest(BaseModel):
     @field_validator("email")
     @classmethod
     def validate_email(cls, value: str) -> str:
-        return normalize_customer_email(value)
+        return normalize_recovery_identifier(value)
 
     @field_validator("code", "new_pin", "new_pin_confirmation")
     @classmethod

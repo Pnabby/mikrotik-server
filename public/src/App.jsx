@@ -15,6 +15,7 @@ export default function App() {
   let page = <LoginPage />
   if (path === '/signup') page = <SignupPage />
   else if (path === '/forgot-password') page = <ForgotPinPage />
+  else if (path === '/unlock-account') page = <ForgotPinPage unlockAccount />
   else if (path === '/account') page = <AccountPage />
   else if (path === '/plans') page = <AccountPage plansOnly />
   else if (/^\/plans\/[^/]+$/.test(path)) page = <AccountPage plansOnly planGroupId={path.slice('/plans/'.length)} />
@@ -25,5 +26,6 @@ export default function App() {
   else if (path === '/privacy') page = <LegalPage legalDocument="privacy" />
   const pageHasHeader = path === '/account' || path === '/profile' || path === '/issues' || path === '/plans' || path.startsWith('/plans/')
   const isLoginPage = page.type === LoginPage
-  return <div className={`customer-site${isLoginPage ? ' login-site' : ''}`}>{!pageHasHeader && !isLoginPage && <AccountHeader activePage="guest" />}{page}{!isLoginPage && <SiteFooter />}<SupportContact /></div>
+  const isRecoveryPage = page.type === ForgotPinPage
+  return <div className={`customer-site${isLoginPage ? ' login-site' : ''}${isRecoveryPage ? ' recovery-site' : ''}`}>{!pageHasHeader && !isLoginPage && !isRecoveryPage && <AccountHeader activePage="guest" />}{page}{!isLoginPage && !isRecoveryPage && <SiteFooter />}<SupportContact /></div>
 }

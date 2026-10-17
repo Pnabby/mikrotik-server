@@ -85,9 +85,14 @@ class CustomerAuthenticationService:
         user_agent: str | None,
     ) -> CreatedCustomerSession:
         attempt_key = f"{ip_address or 'unknown'}:{request.username}"
+        identifier_filter = (
+            Customer.phone_number == request.username
+            if request.username.startswith('+')
+            else Customer.username == request.username
+        )
         customer = self._session.scalar(
             select(Customer)
-            .where(Customer.username == request.username)
+            .where(identifier_filter)
             .with_for_update()
             .limit(1)
         )

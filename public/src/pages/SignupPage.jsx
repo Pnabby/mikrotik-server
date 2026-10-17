@@ -71,6 +71,7 @@ function SignupHeader() {
 
 function startErrorMessage(error) {
   if (!(error instanceof RegistrationApiError)) return 'Could not send the SMS code. Check your connection and try again.'
+  if (error.code === 'registration_sms_unavailable') return 'We could not send an SMS to your phone number. Please try again shortly or contact help and support.'
   if (error.status === 409) return 'One or more account details are already registered.'
   if (error.status === 429) return 'Too many codes were requested. Please wait before trying again.'
   if ([404, 502, 503].includes(error.status)) {
@@ -251,6 +252,7 @@ export default function SignupPage() {
   }
 
   async function requestCode() {
+    if (busy) return
     setBusy(true)
     setApiError('')
     try {
@@ -366,7 +368,7 @@ export default function SignupPage() {
             <div className="signup-card-header">
               <span className="signup-step">Step 2 of 2</span>
               <h2 id="otp-title">Check your phone</h2>
-              <p>We sent a 6-digit verification code to <strong>{challenge.destination}</strong>.</p>
+              <p>We sent a 6-digit verification code by SMS to <strong>{form.phoneNumber}</strong>.</p>
             </div>
 
             <form className="otp-form" noValidate onSubmit={verifyOtp}>
@@ -376,11 +378,13 @@ export default function SignupPage() {
                   autoFocus
                   id="signup-otp"
                   invalid={Boolean(otpError)}
+                  disabled={busy}
+                  describedBy={`signup-otp-help${otpError ? ' signup-otp-error' : ''}`}
                   value={otpCode}
                   onChange={(value) => { setOtpCode(value); setOtpError('') }}
                 />
                 <span className="signup-field-help" id="signup-otp-help">
-                  The code expires in {Math.ceil((challenge.expires_in_seconds || 600) / 60)} minutes.
+                  Use the latest SMS code. It expires in {Math.ceil((challenge.expires_in_seconds || 600) / 60)} minutes.
                 </span>
                 <FieldError id="signup-otp-error" message={otpError} />
               </div>
@@ -395,7 +399,7 @@ export default function SignupPage() {
                 <button disabled={busy || resendSeconds > 0} type="button" onClick={resendOtp}>
                   {resendSeconds > 0 ? `Resend code in ${resendSeconds}s` : 'Resend code'}
                 </button>
-                <button disabled={busy} type="button" onClick={editDetails}>Change account details</button>
+                <button disabled={busy} type="button" onClick={editDetails}>Change phone number or account details</button>
               </div>
             </form>
           </section>

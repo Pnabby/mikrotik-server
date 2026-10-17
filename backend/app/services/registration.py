@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 REGISTRATION_COMMENT_PREFIX = "flint-registration="
 SIGNUP_UNAVAILABLE_DETAIL = "Signup is currently unavailable. Please contact help and support."
 REGISTRATION_CONFLICT_CODE = "registration_details_in_use"
+REGISTRATION_SMS_UNAVAILABLE_CODE = "registration_sms_unavailable"
 
 
 def _registration_conflict_fields(
@@ -236,15 +237,6 @@ class RegistrationOtpService:
         code = f"{secrets.randbelow(1_000_000):06d}"
         expires_at = now + timedelta(seconds=self._settings.otp_code_ttl_seconds)
 
-        self._session.execute(
-            update(EmailOtpChallenge)
-            .where(
-                EmailOtpChallenge.email == request.email,
-                EmailOtpChallenge.purpose == OtpPurpose.REGISTRATION,
-                EmailOtpChallenge.consumed_at.is_(None),
-            )
-            .values(consumed_at=now)
-        )
         challenge = EmailOtpChallenge(
             id=challenge_id,
             email=request.email,
@@ -255,6 +247,9 @@ class RegistrationOtpService:
             max_attempts=self._settings.otp_max_attempts,
             expires_at=expires_at,
             requested_ip=requested_ip,
+            # Keep this code inactive until the SMS provider accepts it. A failed
+            # resend must not invalidate the user's previous working code.
+            consumed_at=now,
         )
         self._session.add(challenge)
         self._session.commit()
@@ -266,12 +261,27 @@ class RegistrationOtpService:
                 expires_in_minutes=max(1, (self._settings.otp_code_ttl_seconds + 59) // 60),
             )
         except SmsDeliveryError as exc:
+            logger.warning("Registration SMS not accepted; challenge_id=%s", challenge_id)
             challenge.consumed_at = datetime.now(UTC)
             self._session.commit()
             raise ServiceError(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
                 "Verification SMS could not be sent.",
+                error_code=REGISTRATION_SMS_UNAVAILABLE_CODE,
             ) from exc
+
+        self._session.execute(
+            update(EmailOtpChallenge)
+            .where(
+                EmailOtpChallenge.email == request.email,
+                EmailOtpChallenge.purpose == OtpPurpose.REGISTRATION,
+                EmailOtpChallenge.id != challenge_id,
+                EmailOtpChallenge.consumed_at.is_(None),
+            )
+            .values(consumed_at=datetime.now(UTC))
+        )
+        challenge.consumed_at = None
+        self._session.commit()
 
         return StartedRegistrationOtp(
             challenge_id=challenge_id,
@@ -586,13 +596,13 @@ class RegistrationOtpService:
         if self._settings.otp_hash_secret is None:
             raise ServiceError(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
-                "Email verification is not configured.",
+                "Phone verification is not configured.",
             )
         secret = self._settings.otp_hash_secret.get_secret_value()
         if len(secret) < 32:
             raise ServiceError(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
-                "Email verification is not configured.",
+                "Phone verification is not configured.",
             )
         return secret.encode("utf-8")
 

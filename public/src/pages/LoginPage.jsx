@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 
 import PageLoadingState from '../components/PageLoadingState'
 import { AccountApiError, getAccount, login } from '../services/accountApi'
+import { normalizeLoginIdentifier } from '../utils/authIdentifiers'
 
-const USERNAME_PATTERN = /^[a-z0-9]{3,64}$/
 const PIN_PATTERN = /^[0-9]{6}$/
 const PROMO_PROMPT_SESSION_KEY = 'vlad-wifi:show-eligible-promo'
 
@@ -57,8 +57,8 @@ function ArrowIcon() {
 function validate(form) {
   const errors = {}
 
-  if (!form.username) errors.username = 'Enter your username.'
-  else if (!USERNAME_PATTERN.test(form.username)) errors.username = 'Enter a valid username.'
+  if (!form.username) errors.username = 'Enter your username or phone number.'
+  else if (!normalizeLoginIdentifier(form.username)) errors.username = 'Enter a valid username or phone number.'
 
   if (!form.pin) errors.pin = 'Enter your PIN.'
   else if (!PIN_PATTERN.test(form.pin)) errors.pin = 'Enter a valid PIN.'
@@ -71,7 +71,6 @@ export default function LoginPage() {
   const [errors, setErrors] = useState({})
   const [showPin, setShowPin] = useState(false)
   const [apiError, setApiError] = useState('')
-  const [accountLocked, setAccountLocked] = useState(false)
   const [busy, setBusy] = useState(false)
   const [checkingSession, setCheckingSession] = useState(true)
 
@@ -95,13 +94,12 @@ export default function LoginPage() {
       return
     }
     const normalizedValue = name === 'username'
-      ? value.toLowerCase().replace(/\s/g, '')
+      ? value.toLowerCase()
       : value.replace(/\D/g, '')
 
     setForm((current) => ({ ...current, [name]: normalizedValue }))
     setErrors((current) => ({ ...current, [name]: '' }))
     setApiError('')
-    setAccountLocked(false)
   }
 
   async function submit(event) {
@@ -109,12 +107,11 @@ export default function LoginPage() {
     const nextErrors = validate(form)
     setErrors(nextErrors)
     setApiError('')
-    setAccountLocked(false)
     if (Object.keys(nextErrors).length) return
 
     setBusy(true)
     try {
-      const result = await login(form.username, form.pin, form.rememberMe)
+      const result = await login(normalizeLoginIdentifier(form.username), form.pin, form.rememberMe)
       try {
         window.sessionStorage.setItem(PROMO_PROMPT_SESSION_KEY, '1')
       } catch {
@@ -123,12 +120,12 @@ export default function LoginPage() {
       window.location.assign(result.redirect_to || '/account')
     } catch (error) {
       if (error instanceof AccountApiError && error.status === 401) {
-        setApiError('The username or PIN is incorrect.')
+        setApiError('The username, phone number, or PIN is incorrect.')
       } else if (error instanceof AccountApiError && error.status === 403) {
         setApiError('This account is currently unavailable. Please contact help and support.')
       } else if (error instanceof AccountApiError && error.status === 423) {
         setApiError('This account is locked after 5 failed login attempts.')
-        setAccountLocked(true)
+        window.location.assign(`/unlock-account?username=${encodeURIComponent(normalizeLoginIdentifier(form.username))}`)
       } else if (error instanceof AccountApiError && error.status === 429) {
         setApiError('Too many login attempts. Please wait before trying again.')
       } else {
@@ -158,15 +155,15 @@ export default function LoginPage() {
               <span className="login-brand-name">Vlad <strong>WiFi</strong></span>
             </a>
             <h1 className="sr-only" id="login-title">Log in to Vlad WiFi</h1>
-            <p>Log in with your permanent Vlad WiFi username and PIN.</p>
+            <p>Sign in with your username or phone number and PIN.</p>
           </header>
 
           <form className="login-form" noValidate onSubmit={submit}>
             <div className="signup-field">
-              <label htmlFor="login-username">Username</label>
+              <label htmlFor="login-username">Username or phone number</label>
               <div className={`login-input-shell${errors.username ? ' invalid' : ''}`}>
                 <span className="login-field-icon"><UserIcon /></span>
-                <input autoCapitalize="none" autoComplete="username" id="login-username" maxLength={64} name="username" placeholder="Enter your username" spellCheck="false" type="text" value={form.username} onChange={updateField} aria-describedby={errors.username ? 'login-username-error' : undefined} aria-invalid={Boolean(errors.username)} />
+                <input autoCapitalize="none" autoComplete="username" id="login-username" maxLength={64} name="username" placeholder="Username or phone number" spellCheck="false" type="text" value={form.username} onChange={updateField} aria-describedby={errors.username ? 'login-username-error' : undefined} aria-invalid={Boolean(errors.username)} />
               </div>
               {errors.username && <span className="signup-field-error" id="login-username-error">{errors.username}</span>}
             </div>
@@ -207,7 +204,7 @@ export default function LoginPage() {
             </label>
 
             {apiError && <div className="otp-api-error" role="alert">{apiError}</div>}
-            {accountLocked && <a className="login-unlock-link" href={`/forgot-password?mode=unlock&username=${encodeURIComponent(form.username)}`}>Unlock account with OTP</a>}
+            
 
             <button className="signup-submit" disabled={busy} type="submit">
               {busy && <span className="login-button-loader" aria-hidden="true" />}

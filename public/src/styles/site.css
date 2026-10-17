@@ -129,8 +129,8 @@ body:has(.portal-modal-backdrop) { overflow: hidden; }
 .customer-site .login-pin-toggle { min-width: 44px; min-height: 44px; color: var(--link); }
 .customer-site .login-options label { display: inline-flex; min-height: 44px; align-items: center; }
 .customer-site .signup-step { color: var(--link); background: var(--soft-blue); }
-.customer-site .otp-boxes { gap: 8px; }
-.customer-site .otp-boxes input { min-width: 0; min-height: 48px; border-color: var(--border); border-radius: var(--radius-control); font-family: var(--font-heading); font-size: var(--text-section); }
+.customer-site .otp-boxes { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; width: 100%; max-width: 384px; }
+.customer-site .otp-boxes input { width: 100%; min-width: 0; height: clamp(44px, 12vw, 56px); min-height: 44px; aspect-ratio: auto; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-control); font-family: var(--font-heading); font-size: 22px; }
 .customer-site .otp-boxes.invalid input, .customer-site .invalid { border-color: var(--error-border); }
 .customer-site .recovery-mode-tabs { gap: 8px; padding: 6px; border-radius: var(--radius-detail); background: var(--page); }
 .customer-site .recovery-mode-tabs button { padding: 10px; border-radius: var(--radius-control); font-size: var(--text-xs); }
@@ -283,9 +283,6 @@ body:has(.portal-modal-backdrop) { overflow: hidden; }
   .customer-site .portal-modal-actions { flex-wrap: wrap; }
   .customer-site .portal-modal-actions button { flex: 1 0 140px; }
   .customer-site .otp-boxes { gap: 6px; }
-  .customer-site .otp-boxes input { width: calc((100% - 30px) / 6); }
-  .customer-site .recovery-mode-tabs { display: flex; flex-wrap: wrap; }
-  .customer-site .recovery-mode-tabs button { flex: 1 1 100px; }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
