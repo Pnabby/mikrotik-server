@@ -15,7 +15,7 @@ import {
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const PHONE_PATTERN = /^(?:\+233|0|233)[0-9]{9}$/
-const USERNAME_PATTERN = /^[a-z0-9]{3,64}$/
+const USERNAME_PATTERN = /^(?:[a-z0-9]{3,64}|(?:\\+233|0)[0-9]{9})$/
 const SIX_DIGITS = /^[0-9]{6}$/
 const recoveryParams = new URLSearchParams(window.location.search)
 const requestedMode = recoveryParams.get('mode')
@@ -55,7 +55,7 @@ export default function ForgotPinPage() {
     const normalizedEmail = email.trim().toLowerCase().replace(/[\s()-]/g, '')
     const normalizedUsername = username.trim().toLowerCase()
     if (mode === 'unlock' && !USERNAME_PATTERN.test(normalizedUsername)) {
-      setError('Enter the username for the locked account.')
+      setError('Enter the username or phone number for the locked account.')
       return
     }
     if (mode !== 'unlock' && !(EMAIL_PATTERN.test(normalizedEmail) || PHONE_PATTERN.test(normalizedEmail.replace(/[\s()-]/g, '')))) {
@@ -192,7 +192,7 @@ export default function ForgotPinPage() {
             <div className="recovery-mode-tabs" aria-label="Choose recovery type"><button className={mode === 'username' ? 'active' : ''} type="button" onClick={() => chooseMode('username')}>Forgot username</button><button className={mode === 'pin' ? 'active' : ''} type="button" onClick={() => chooseMode('pin')}>Forgot PIN</button></div>
             <form className="login-form" noValidate onSubmit={requestCode}>
               {mode === 'unlock'
-                ? <div className="signup-field"><label htmlFor="unlock-username">Username</label><input autoCapitalize="none" autoComplete="username" className="signup-input" id="unlock-username" maxLength="64" placeholder="Enter your username" spellCheck="false" type="text" value={username} onChange={(event) => { setUsername(event.target.value.toLowerCase().replace(/\s/g, '')); setError('') }} /></div>
+                ? <div className="signup-field"><label htmlFor="unlock-username">Username</label><input autoCapitalize="none" autoComplete="username" className="signup-input" id="unlock-username" maxLength="64" placeholder="Username or phone number" spellCheck="false" type="text" value={username} onChange={(event) => { setUsername(event.target.value.toLowerCase().replace(/\s/g, '')); setError('') }} /></div>
                 : <div className="signup-field"><label htmlFor="reset-email">Email address</label><input autoComplete="email" className="signup-input" id="reset-email" placeholder="Email or phone number" type="text" value={email} onChange={(event) => { setEmail(event.target.value); setError('') }} /></div>}
               {error && <div className="otp-api-error" role="alert">{error}</div>}
               <button className="signup-submit" disabled={busy} type="submit">{busy ? 'Sending code...' : `Send ${mode === 'username' ? 'username recovery' : mode === 'unlock' ? 'account unlock' : 'PIN reset'} code`}</button>
