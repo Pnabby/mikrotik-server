@@ -335,9 +335,14 @@ class PinManagementService:
             .with_for_update()
         )
         now = datetime.now(UTC)
+        if request.email.startswith('+'):
+            customer = self._session.scalar(select(Customer).where(Customer.phone_number == request.email).limit(1))
+            expected_email = customer.email if customer and customer.phone_verified_at else ''
+        else:
+            expected_email = request.email
         if (
             challenge is None
-            or challenge.email != request.email
+            or challenge.email != expected_email
             or challenge.purpose != OtpPurpose.PIN_RESET
         ):
             raise ServiceError(status.HTTP_400_BAD_REQUEST, "Invalid verification code.")
