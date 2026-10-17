@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from fastapi import status
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -16,7 +16,9 @@ from app.core.config import Settings
 from app.core.exceptions import ServiceError
 from app.integrations.mnotify import MNotifySmsSender, SmsDeliveryError
 from app.models.customer import Customer
+from app.models.enums import OtpFlow
 from app.models.phone_otp_challenge import PhoneOtpChallenge
+from app.services.otp_limits import customer_subject, enforce_otp_request_limit
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,31 +47,10 @@ class PhoneVerificationService:
         if owner is not None:
             raise ServiceError(status.HTTP_409_CONFLICT, "Phone number is already registered.")
         now = datetime.now(UTC)
-        recent_count = (
-            self._session.scalar(
-                select(func.count(PhoneOtpChallenge.id)).where(
-                    PhoneOtpChallenge.customer_id == customer.id,
-                    PhoneOtpChallenge.created_at >= now - timedelta(hours=1),
-                )
-            )
-            or 0
+        enforce_otp_request_limit(
+            self._session, self._settings, OtpFlow.PHONE_VERIFICATION,
+            customer_subject(customer.id), now=now,
         )
-        if recent_count >= self._settings.otp_max_requests_per_hour:
-            raise ServiceError(status.HTTP_429_TOO_MANY_REQUESTS, "Too many codes requested.")
-        latest = self._session.scalar(
-            select(PhoneOtpChallenge)
-            .where(PhoneOtpChallenge.customer_id == customer.id)
-            .order_by(PhoneOtpChallenge.created_at.desc())
-            .limit(1)
-        )
-        if (
-            latest
-            and (now - _as_utc(latest.created_at)).total_seconds()
-            < self._settings.otp_resend_cooldown_seconds
-        ):
-            raise ServiceError(
-                status.HTTP_429_TOO_MANY_REQUESTS, "Wait before requesting another code."
-            )
 
         challenge_id = uuid.uuid4()
         code = f"{secrets.randbelow(1_000_000):06d}"

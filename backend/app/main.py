@@ -24,6 +24,7 @@ from app.routes import (
     auth,
     health,
     hotspot,
+    otp_support,
     pages,
     payments,
     registration,
@@ -143,6 +144,7 @@ def create_app() -> FastAPI:
     application.include_router(routers.router)
     application.include_router(hotspot.router)
     application.include_router(registration.router)
+    application.include_router(otp_support.router)
     application.include_router(auth.router)
     application.include_router(account.router)
     application.include_router(payments.router)

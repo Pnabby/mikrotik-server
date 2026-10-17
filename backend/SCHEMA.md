@@ -20,6 +20,10 @@ payment remains recoverable when RouterOS is offline or returns an uncertain res
   router, and only an irreversible `pin_hash`.
 - `email_otp_challenges`, `customer_sessions`, and `admin_sessions` store only hashes of
   OTP/session secrets.
+- `otp_limit_resets` records the administrator, flow, quota subject, and reset time.
+  Request limits count challenges newer than the latest applicable reset, preserving
+  OTP history and per-code verification limits. Phone verification uses the customer
+  ID as its quota subject; signup and recovery use their existing email/destination key.
 - `transactions` owns Paystack/payment state. `payment_events` provides durable webhook
   idempotency and processing history.
 - `activations` owns the desired RouterOS state and its independent status.
@@ -71,7 +75,7 @@ Registration order:
 validate account details
   -> confirm the selected router is reachable and has the disabled profile
   -> confirm the username is not already on the selected router
-  -> send and verify the email OTP
+  -> send and verify the phone OTP by SMS
   -> create RouterOS HotSpot user (profile=disabled, disabled=yes)
   -> read back and verify the marked RouterOS user
   -> hash the PIN with Argon2id
