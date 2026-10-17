@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import PageLoadingState from '../components/PageLoadingState'
 import { AccountApiError, getAccount, login } from '../services/accountApi'
 
-const USERNAME_PATTERN = /^[a-z0-9]{3,64}$/
+const USERNAME_PATTERN = /^(?:[a-z0-9]{3,64}|(?:\\+233|0)[0-9]{9})$/
 const PIN_PATTERN = /^[0-9]{6}$/
 const PROMO_PROMPT_SESSION_KEY = 'vlad-wifi:show-eligible-promo'
 
@@ -57,8 +57,8 @@ function ArrowIcon() {
 function validate(form) {
   const errors = {}
 
-  if (!form.username) errors.username = 'Enter your username.'
-  else if (!USERNAME_PATTERN.test(form.username)) errors.username = 'Enter a valid username.'
+  if (!form.username) errors.username = 'Enter your username or phone number.'
+  else if (!USERNAME_PATTERN.test(form.username)) errors.username = 'Enter a valid username or Ghana phone number.'
 
   if (!form.pin) errors.pin = 'Enter your PIN.'
   else if (!PIN_PATTERN.test(form.pin)) errors.pin = 'Enter a valid PIN.'
@@ -163,10 +163,10 @@ export default function LoginPage() {
 
           <form className="login-form" noValidate onSubmit={submit}>
             <div className="signup-field">
-              <label htmlFor="login-username">Username</label>
+              <label htmlFor="login-username">Username or phone number</label>
               <div className={`login-input-shell${errors.username ? ' invalid' : ''}`}>
                 <span className="login-field-icon"><UserIcon /></span>
-                <input autoCapitalize="none" autoComplete="username" id="login-username" maxLength={64} name="username" placeholder="Enter your username" spellCheck="false" type="text" value={form.username} onChange={updateField} aria-describedby={errors.username ? 'login-username-error' : undefined} aria-invalid={Boolean(errors.username)} />
+                <input autoCapitalize="none" autoComplete="username" id="login-username" maxLength={64} name="username" placeholder="Username or phone number" spellCheck="false" type="text" value={form.username} onChange={updateField} aria-describedby={errors.username ? 'login-username-error' : undefined} aria-invalid={Boolean(errors.username)} />
               </div>
               {errors.username && <span className="signup-field-error" id="login-username-error">{errors.username}</span>}
             </div>
