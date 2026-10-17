@@ -71,6 +71,7 @@ class PinManagementService:
         router_client_factory: PasswordRouterClientFactory,
         *,
         requested_ip: str | None,
+        sms_sender: SmsSender | None = None,
     ) -> StartedPinReset:
         return self._start_recovery(
             request,
@@ -78,6 +79,7 @@ class PinManagementService:
             send_otp=sender.send_pin_reset_otp,
             router_client_factory=router_client_factory,
             requested_ip=requested_ip,
+            sms_sender=sms_sender,
         )
 
     def start_username_recovery(
