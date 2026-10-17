@@ -3745,3 +3745,24 @@ a:focus-visible {
 .customer-directory-sort label { display: grid; gap: 0.35rem; color: var(--muted); font-size: 0.75rem; }
 .customer-directory-sort select { padding: 0.5rem 0.65rem; border: 1px solid var(--line); border-radius: 0.5rem; background: var(--card); color: var(--ink); font: inherit; }
 .customer-directory td:nth-child(6) { min-width: 160px; }
+
+/* Clear, accessible price reconciliation for the all-hostel editor. */
+.bulk-price-source {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 240px);
+  align-items: center;
+  gap: 1rem;
+  margin: 1rem 0;
+  padding: 1rem 1.2rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--primary);
+  border-radius: .75rem;
+  background: var(--card);
+}
+.bulk-price-source strong { display: block; color: var(--primary-text); font-size: .86rem; }
+.bulk-price-source p { margin: .35rem 0 0; color: var(--muted); font-size: .76rem; line-height: 1.55; }
+.bulk-price-source .editor-field { margin: 0; min-width: 0; }
+.bulk-price-source select { width: 100%; }
+@media (max-width: 640px) {
+  .bulk-price-source { grid-template-columns: minmax(0, 1fr); }
+}

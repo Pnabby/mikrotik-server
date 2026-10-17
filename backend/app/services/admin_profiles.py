@@ -235,9 +235,11 @@ class AdminProfileService:
     def list_profiles(
         self,
         router: Router,
-        router_client: RouterProfileClient,
+        router_client: RouterProfileClient | None,
     ) -> list[AdminRouterProfileResponse]:
-        raw_profiles = self._read_router_profiles(router, router_client)
+        # Router connectivity is optional for catalogue reads: configured plans
+        # remain editable from the database when their MikroTik is offline.
+        raw_profiles = self._read_router_profiles(router, router_client) if router_client else []
         live_profiles = {
             name: profile
             for profile in raw_profiles
@@ -260,9 +262,10 @@ class AdminProfileService:
             ),
         )
 
-        router.status = RouterStatus.ONLINE
-        router.last_seen_at = datetime.now(UTC)
-        self._session.commit()
+        if router_client is not None:
+            router.status = RouterStatus.ONLINE
+            router.last_seen_at = datetime.now(UTC)
+            self._session.commit()
         return [
             self._profile_response(
                 profile_name=(

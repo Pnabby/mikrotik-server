@@ -259,6 +259,7 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
     keepaliveTimeout: routerDefaults.keepalive_timeout || '2m',
   })
   const [form, setForm] = useState(initialForm)
+  const [priceSourceId, setPriceSourceId] = useState('')
   const [editedFields, setEditedFields] = useState([])
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -270,6 +271,15 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
     const { name, value, checked, type } = event.target
     setForm((current) => ({ ...current, [name]: type === 'checkbox' ? checked : value }))
     setEditedFields((current) => current.includes(name) ? current : [...current, name])
+    setError('')
+  }
+
+  function useHostelPrice(routerId) {
+    setPriceSourceId(routerId)
+    const selected = profile.hostel_profiles?.find((entry) => entry.router_id === routerId)
+    if (!selected || selected.amount == null) return
+    setForm((current) => ({ ...current, amount: selected.amount, currency: selected.currency || 'GHS' }))
+    setEditedFields((current) => [...new Set([...current, 'amount', 'currency'])])
     setError('')
   }
 
@@ -288,6 +298,7 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
       sessionTimeout: selected.session_timeout || '0s', idleTimeout: selected.idle_timeout || 'none',
       keepaliveTimeout: selected.keepalive_timeout || '2m',
     }))
+    setPriceSourceId(selected.router_id)
     setEditedFields(['displayName', 'description', 'amount', 'currency', 'durationValue',
       'dataLimitGb', 'deviceLimit', 'downloadSpeed', 'isPromotional', 'isVisible'])
     setError('')
@@ -391,8 +402,22 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
 
         {profile.bulk_mode && <div className={`bulk-profile-notice ${profile.configuration_consistent ? '' : 'mixed'}`}>
           <Icon name={profile.configuration_consistent ? 'check' : 'alert'} />
-          <div><strong>Edit plans across {profile.hostel_count} hostels</strong><p>{profile.available_hostels} of {profile.hostel_count} routers have this profile. Only the plan details you edit will change. To match router settings or create missing profiles, choose a source hostel below.</p></div>
+          <div><strong>Edit plans across {profile.hostel_count} hostels</strong><p>{profile.configured_hostels} of {profile.hostel_count} hostels have saved plan details; router settings are currently verified on {profile.available_hostels}. Prices can be changed even when a router is offline. Only enable router settings if you need to change MikroTik configuration.</p></div>
         </div>}
+        {profile.bulk_mode && profile.mixed_fields?.includes('amount') && (
+          <div className="bulk-price-source">
+            <div><strong>Different prices detected</strong><p>Choose an existing hostel price to apply to all selected hostels, or enter a new price below. This does not contact the routers.</p></div>
+            <label className="editor-field">
+              <span>Use price from</span>
+              <select value={priceSourceId} disabled={saving} onChange={(event) => useHostelPrice(event.target.value)}>
+                <option value="">Enter a new price</option>
+                {profile.hostel_profiles.filter((entry) => entry.is_configured && entry.amount != null).map((entry) => (
+                  <option key={entry.router_id} value={entry.router_id}>{entry.hostel_name} — {formatMoney(entry.amount, entry.currency)}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
         {profile.hostel_profiles && <div className="profile-comparison"><table><thead><tr><th>Hostel</th><th>Upload / download</th><th>Devices</th><th>Session timeout</th><th>Match from</th></tr></thead><tbody>{profile.hostel_profiles.map((entry) => <tr key={entry.router_id}><td>{entry.hostel_name}</td><td>{entry.available_on_router ? entry.rate_limit || 'Unlimited' : 'Missing profile'}</td><td>{entry.shared_users === 'unlimited' ? 'Unlimited' : entry.shared_users ?? '—'}</td><td>{entry.session_timeout || 'No limit'}</td><td>{entry.available_on_router && <button type="button" disabled={saving} onClick={() => useHostelSettings(entry)}>Use settings</button>}</td></tr>)}</tbody></table></div>}
 
         <form className="profile-editor-form" onSubmit={submit}>
@@ -943,7 +968,7 @@ function ProfileTable({ bulkMode, profiles, query, filter, onEdit }) {
                 <td><div className="router-details"><span>{profile.mixed_fields?.includes('rate_limit') ? 'Mixed rate limits' : profile.rate_limit || 'No rate limit'}</span><small>{profile.download_speed ? `${profile.download_speed} download` : 'Download speed not set'}</small></div></td>
                 <td><div className="router-details"><span>{formatMoney(profile.amount, profile.currency)}</span><small>{formatDuration(profile.duration_seconds)}</small></div></td>
                 <td><span className={`profile-status ${status.className}`}><i />{status.label}</span></td>
-                <td><button className="profile-edit-button" disabled={!profile.available_on_router} type="button" onClick={() => onEdit(profile)}>{profile.bulk_mode ? (profile.is_configured ? 'Edit all' : 'Configure all') : (profile.is_configured ? 'Edit' : 'Configure')}<Icon name="chevron" /></button></td>
+                <td><button className="profile-edit-button" disabled={!profile.available_on_router && !(profile.is_configured || profile.configured_hostels > 0)} type="button" onClick={() => onEdit(profile)}>{profile.bulk_mode ? (profile.is_configured ? 'Edit all' : 'Configure all') : (profile.is_configured ? 'Edit' : 'Configure')}<Icon name="chevron" /></button></td>
               </tr>
             )
           })}
@@ -2212,8 +2237,8 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
     )))
     setHostels((current) => current.map((hostel) => ({
       ...hostel,
-      status: failedRouterIds.has(hostel.router_id) ? 'offline' : 'online',
-      ...(!failedRouterIds.has(hostel.router_id) ? { last_seen_at: new Date().toISOString() } : {}),
+      status: failedRouterIds.has(hostel.router_id) ? 'offline' : hostel.status,
+
     })))
 
     const failedResult = results.find((result) => result.status === 'rejected')
@@ -2246,7 +2271,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
         if (selectedId !== ALL_HOSTELS_ID) {
           setHostels((current) => current.map((hostel) => (
             hostel.router_id === selectedId
-              ? { ...hostel, status: 'online', last_seen_at: new Date().toISOString() }
+              ? hostel
               : hostel
           )))
         }
@@ -2259,8 +2284,8 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
           )))
         }
         handleError(error, selectedId === ALL_HOSTELS_ID
-          ? 'Every hostel must be reachable to compare their profiles. Check the offline router and try again.'
-          : 'The router could not be reached. Check its connection and try again.')
+          ? 'Could not load the selected hostel catalogues. Please retry.'
+          : 'Could not load the hostel catalogue. Please retry.')
       })
       .finally(() => { if (active) setLoadingProfiles(false) })
     return () => { active = false }
@@ -2359,7 +2384,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
     setPageError('')
     try {
       setProfiles(await listProfilesForSelection(selectedId))
-      setToast(allHostelsSelected ? 'Profiles refreshed from all routers.' : 'Profiles refreshed from the router.')
+      setToast(allHostelsSelected ? 'Hostel profiles refreshed, including saved plans on offline routers.' : 'Hostel profiles refreshed.')
       window.setTimeout(() => setToast(''), 3000)
     } catch (error) {
       if (!allHostelsSelected) {
@@ -2368,8 +2393,8 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
         )))
       }
       handleError(error, allHostelsSelected
-        ? 'Every hostel must be reachable to compare their profiles. Check the offline router and try again.'
-        : 'The router could not be reached. Check its connection and try again.')
+        ? 'Could not refresh the selected hostel catalogues. Please retry.'
+        : 'Could not refresh the hostel catalogue. Please retry.')
     } finally {
       setLoadingProfiles(false)
     }
@@ -2393,6 +2418,12 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
     }
 
     if (allHostelsSelected) {
+      const missing = bulkHostels.filter((hostel) => !editingProfile.hostel_profiles?.some(
+        (entry) => entry.router_id === hostel.router_id && entry.is_configured,
+      ))
+      if (missing.length && !payload.router_settings) {
+        throw new Error(`The plan is not configured at ${missing.map((hostel) => hostel.name).join(', ')}. Price-only updates can be saved at configured hostels while offline, but creating a router profile requires that router to be online.`)
+      }
       const results = await Promise.allSettled(bulkHostels.map((hostel) => (
         saveForHostel(hostel, editingProfile.hostel_profiles.find((profile) => profile.router_id === hostel.router_id))
       )))
@@ -2405,6 +2436,7 @@ export default function AdminDashboard({ admin, onSessionExpired }) {
 
       const savedCount = results.filter((result) => result.status === 'fulfilled').length
       if (savedCount !== bulkHostels.length) {
+        try { setProfiles(await listProfilesForSelection(ALL_HOSTELS_ID)) } catch { /* Keep available profiles. */ }
         try { setHostels(await listHostels()) } catch { /* Keep the current catalogue. */ }
         const failure = results.find((result) => result.status === 'rejected')
         throw new Error(`Saved ${savedCount} of ${bulkHostels.length} hostels. ${failure.reason.detail || 'Retry to update the remaining hostels.'}`)

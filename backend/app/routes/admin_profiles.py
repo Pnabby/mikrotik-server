@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
+from app.core.exceptions import ServiceError
 from app.db.session import get_db_session
 from app.dependencies import MikroTikClientDependency, RouterDependency, mikrotik_client_context
 from app.integrations.mikrotik.registry import get_router
@@ -202,13 +203,19 @@ def force_ip_cloud_update(
 def list_router_profiles(
     _admin: AdminDependency,
     router_definition: RouterDependency,
-    router_client: MikroTikClientDependency,
     session: SessionDependency,
     settings: SettingsDependency,
 ) -> list[AdminRouterProfileResponse]:
     router_model = session.get(Router, router_definition.router_id)
     assert router_model is not None
-    return AdminProfileService(session, settings).list_profiles(router_model, router_client)
+    service = AdminProfileService(session, settings)
+    try:
+        with mikrotik_client_context(router_definition) as client:
+            return service.list_profiles(router_model, client)
+    except (HTTPException, ServiceError) as exc:
+        if exc.status_code != status.HTTP_502_BAD_GATEWAY:
+            raise
+        return service.list_profiles(router_model, None)
 
 
 @router.get(
