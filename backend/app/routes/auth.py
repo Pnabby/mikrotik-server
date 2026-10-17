@@ -226,12 +226,14 @@ def start_username_recovery(
     settings: SettingsDependency,
     sender: PasswordEmailSenderDependency,
     router_factory: PasswordRouterFactoryDependency,
+    sms_sender: PasswordSmsSenderDependency,
 ) -> PinResetStartResponse:
     result = PinManagementService(session, settings).start_username_recovery(
         payload,
         sender,
         router_factory,
         requested_ip=request.client.host if request.client else None,
+        sms_sender=sms_sender,
     )
     return PinResetStartResponse(
         challenge_id=result.challenge_id,

@@ -89,6 +89,7 @@ class PinManagementService:
         router_client_factory: PasswordRouterClientFactory,
         *,
         requested_ip: str | None,
+        sms_sender: SmsSender | None = None,
     ) -> StartedPinReset:
         return self._start_recovery(
             request,
@@ -96,6 +97,7 @@ class PinManagementService:
             send_otp=sender.send_username_recovery_otp,
             router_client_factory=router_client_factory,
             requested_ip=requested_ip,
+            sms_sender=sms_sender,
         )
 
     def send_reset_sms(
@@ -176,7 +178,13 @@ class PinManagementService:
     ) -> StartedPinReset:
         secret = self._hash_secret()
         customer = self._session.scalar(
-            select(Customer).where(Customer.phone_number == request.username if request.username.startswith('+') else Customer.username == request.username).limit(1)
+            select(Customer)
+            .where(
+                Customer.phone_number == request.username
+                if request.username.startswith('+')
+                else Customer.username == request.username
+            )
+            .limit(1)
         )
         if customer is None:
             raise ServiceError(status.HTTP_404_NOT_FOUND, "Account was not found.")
@@ -253,7 +261,11 @@ class PinManagementService:
         secret = self._hash_secret()
         now = datetime.now(UTC)
         by_phone = request.email.startswith('+')
-        customer = self._session.scalar(select(Customer).where(Customer.phone_number == request.email if by_phone else Customer.email == request.email).limit(1))
+        customer = self._session.scalar(
+            select(Customer)
+            .where(Customer.phone_number == request.email if by_phone else Customer.email == request.email)
+            .limit(1)
+        )
         if by_phone and customer is not None and customer.phone_verified_at is None:
             customer = None
         lookup_email = customer.email if by_phone and customer else request.email
@@ -281,6 +293,7 @@ class PinManagementService:
             id=challenge_id,
             customer=customer,
             email=lookup_email,
+            phone_number=request.email if by_phone else None,
             purpose=purpose,
             code_hash=self._hash_code(secret, challenge_id, code, purpose),
             attempt_count=0,
@@ -295,22 +308,34 @@ class PinManagementService:
             try:
                 if by_phone:
                     if sms_sender is None:
-                        raise SmsDeliveryError('SMS is not configured.')
-                    sms_sender.send_pin_reset_otp(recipient=customer.phone_number, code=code, expires_in_minutes=max(1, (self._settings.otp_code_ttl_seconds + 59) // 60))
+                        raise SmsDeliveryError("SMS is not configured.")
+                    expires_in_minutes = max(1, (self._settings.otp_code_ttl_seconds + 59) // 60)
+                    if purpose == OtpPurpose.USERNAME_RECOVERY:
+                        sms_sender.send(
+                            recipient=customer.phone_number,
+                            message=(
+                                f"Your Vlad WiFi username recovery code is {code}. "
+                                f"It expires in {expires_in_minutes} minutes."
+                            ),
+                        )
+                    else:
+                        sms_sender.send_pin_reset_otp(
+                            recipient=customer.phone_number,
+                            code=code,
+                            expires_in_minutes=expires_in_minutes,
+                        )
                 else:
                     send_otp(
-                    recipient=lookup_email,
-                    code=code,
-                    expires_in_minutes=max(
-                        1, (self._settings.otp_code_ttl_seconds + 59) // 60
-                    ),
-                )
+                        recipient=lookup_email,
+                        code=code,
+                        expires_in_minutes=max(1, (self._settings.otp_code_ttl_seconds + 59) // 60),
+                    )
             except (EmailDeliveryError, SmsDeliveryError) as exc:
                 challenge.consumed_at = datetime.now(UTC)
                 self._session.commit()
                 raise ServiceError(
                     status.HTTP_503_SERVICE_UNAVAILABLE,
-                    "Recovery email could not be sent.",
+                    "Recovery code could not be sent.",
                 ) from exc
 
         return StartedPinReset(
@@ -336,13 +361,16 @@ class PinManagementService:
         )
         now = datetime.now(UTC)
         if request.email.startswith('+'):
-            customer = self._session.scalar(select(Customer).where(Customer.phone_number == request.email).limit(1))
+            customer = self._session.scalar(
+                select(Customer).where(Customer.phone_number == request.email).limit(1)
+            )
             expected_email = customer.email if customer and customer.phone_verified_at else ''
         else:
             expected_email = request.email
         if (
             challenge is None
             or challenge.email != expected_email
+            or (request.email.startswith('+') and challenge.phone_number != request.email)
             or challenge.purpose != OtpPurpose.PIN_RESET
         ):
             raise ServiceError(status.HTTP_400_BAD_REQUEST, "Invalid verification code.")
@@ -425,9 +453,17 @@ class PinManagementService:
             .with_for_update()
         )
         now = datetime.now(UTC)
+        if request.email.startswith('+'):
+            customer = self._session.scalar(
+                select(Customer).where(Customer.phone_number == request.email).limit(1)
+            )
+            expected_email = customer.email if customer and customer.phone_verified_at else ''
+        else:
+            expected_email = request.email
         if (
             challenge is None
-            or challenge.email != request.email
+            or challenge.email != expected_email
+            or (request.email.startswith('+') and challenge.phone_number != request.email)
             or challenge.purpose != OtpPurpose.USERNAME_RECOVERY
         ):
             raise ServiceError(status.HTTP_400_BAD_REQUEST, "Invalid verification code.")

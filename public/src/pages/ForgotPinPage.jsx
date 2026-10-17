@@ -1,92 +1,87 @@
 import { useEffect, useState } from 'react'
 
-import PageHero from '../components/PageHero'
+import { CheckIcon, LockIcon, ShieldIcon, WifiIcon } from '../components/Icons'
 import OtpInput from '../components/OtpInput'
 import {
   AccountApiError,
   completeAccountUnlock,
   completePinReset,
   completeUsernameRecovery,
+  sendPinResetSms,
   startAccountUnlock,
   startPinReset,
   startUsernameRecovery,
-  sendPinResetSms,
 } from '../services/accountApi'
+import { normalizeLoginIdentifier, normalizeRecoveryIdentifier } from '../utils/authIdentifiers'
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const PHONE_PATTERN = /^(?:\+233|0|233)[0-9]{9}$/
-const USERNAME_PATTERN = /^(?:[a-z0-9]{3,64}|(?:\\+233|0)[0-9]{9})$/
 const SIX_DIGITS = /^[0-9]{6}$/
-const recoveryParams = new URLSearchParams(window.location.search)
-const requestedMode = recoveryParams.get('mode')
-const initialMode = ['username', 'pin', 'unlock'].includes(requestedMode)
-  ? requestedMode
-  : 'pin'
 
-export default function ForgotPinPage() {
-  const [mode, setMode] = useState(initialMode)
-  const [step, setStep] = useState('email')
-  const [email, setEmail] = useState('')
-  const [username, setUsername] = useState(
-    (recoveryParams.get('username') || '').toLowerCase().replace(/\s/g, ''),
-  )
+export default function ForgotPinPage({ unlockAccount = false }) {
+  const params = new URLSearchParams(window.location.search)
+  const isUnlock = unlockAccount || params.get('mode') === 'unlock'
+  const [mode, setMode] = useState(isUnlock ? 'unlock' : params.get('mode') === 'username' ? 'username' : 'pin')
+  const [step, setStep] = useState('contact')
+  const [identifier, setIdentifier] = useState(isUnlock ? params.get('username') || '' : '')
   const [challenge, setChallenge] = useState(null)
   const [form, setForm] = useState({ code: '', newPin: '', confirmation: '' })
+  const [errors, setErrors] = useState({})
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [resendIn, setResendIn] = useState(0)
   const [recoveredUsername, setRecoveredUsername] = useState('')
   const [deliveryMethod, setDeliveryMethod] = useState('email')
+  const [showPin, setShowPin] = useState(false)
 
   useEffect(() => {
-    document.title = 'Account recovery | Vlad WiFi'
-  }, [])
+    document.title = `${isUnlock ? 'Unlock account' : 'Account recovery'} | Vlad WiFi`
+  }, [isUnlock])
 
   useEffect(() => {
     if (resendIn <= 0) return undefined
-    const timer = window.setInterval(() => {
-      setResendIn((remaining) => Math.max(0, remaining - 1))
-    }, 1000)
-    return () => window.clearInterval(timer)
+    const timer = window.setTimeout(() => setResendIn((remaining) => Math.max(0, remaining - 1)), 1000)
+    return () => window.clearTimeout(timer)
   }, [resendIn])
+
+  function clearErrors() {
+    setError('')
+    setErrors({})
+  }
 
   async function requestCode(event) {
     event?.preventDefault()
-    const normalizedEmail = email.trim().toLowerCase().replace(/[\s()-]/g, '')
-    const normalizedUsername = username.trim().toLowerCase()
-    if (mode === 'unlock' && !USERNAME_PATTERN.test(normalizedUsername)) {
-      setError('Enter the username or phone number for the locked account.')
-      return
-    }
-    if (mode !== 'unlock' && !(EMAIL_PATTERN.test(normalizedEmail) || (mode === 'pin' && PHONE_PATTERN.test(normalizedEmail)))) {
-      setError('Enter your registered email address or phone number.')
+    if (busy || (step === 'code' && resendIn > 0)) return
+    const normalized = mode === 'unlock'
+      ? normalizeLoginIdentifier(identifier)
+      : normalizeRecoveryIdentifier(identifier)
+    if (!normalized) {
+      setErrors({ identifier: mode === 'unlock'
+        ? 'Enter the username or phone number for your locked account.'
+        : 'Enter your registered email address or phone number.' })
       return
     }
     setBusy(true)
-    setError('')
+    clearErrors()
     try {
-      let result
-      if (mode === 'username') result = await startUsernameRecovery(normalizedEmail)
-      else if (mode === 'unlock') result = await startAccountUnlock(normalizedUsername)
-      else result = await startPinReset(normalizedEmail)
-      if (mode === 'unlock') setUsername(normalizedUsername)
-      else setEmail(normalizedEmail.replace(/[\s()-]/g, ''))
+      const result = mode === 'username'
+        ? await startUsernameRecovery(normalized)
+        : mode === 'unlock'
+          ? await startAccountUnlock(normalized)
+          : await startPinReset(normalized)
+      setIdentifier(normalized)
       setChallenge(result)
-      setDeliveryMethod(mode === 'unlock' || normalizedEmail.includes('@') ? 'email' : 'sms')
+      setDeliveryMethod(mode === 'unlock' || normalized.includes('@') ? 'email' : 'sms')
       setForm((current) => ({ ...current, code: '' }))
       setResendIn(result.resend_after_seconds)
       setStep('code')
     } catch (requestError) {
-      if (requestError instanceof AccountApiError && [502, 503].includes(requestError.status)) {
-        setError('We could not send your code right now. Please try again later.')
-      } else if (requestError instanceof AccountApiError && requestError.status === 429) {
+      if (requestError instanceof AccountApiError && requestError.status === 429) {
         setError('Please wait before requesting another code.')
       } else if (mode === 'unlock' && requestError instanceof AccountApiError && requestError.status === 404) {
-        setError('We could not find an account with that username.')
+        setError('We could not find that account. Check your username or phone number.')
       } else if (mode === 'unlock' && requestError instanceof AccountApiError && requestError.status === 409) {
-        setError('This account is not locked. You can return to login.')
+        setError('Your account is not locked. You can return to sign in.')
       } else {
-        setError('We could not start account recovery. Please try again.')
+        setError('We could not send your code right now. Please try again.')
       }
     } finally {
       setBusy(false)
@@ -94,22 +89,19 @@ export default function ForgotPinPage() {
   }
 
   async function useSmsFallback() {
+    if (busy) return
     setBusy(true)
-    setError('')
+    clearErrors()
     try {
-      const result = await sendPinResetSms(challenge.challenge_id, email)
+      const result = await sendPinResetSms(challenge.challenge_id, identifier)
       setChallenge(result)
       setForm((current) => ({ ...current, code: '' }))
       setDeliveryMethod('sms')
       setResendIn(result.resend_after_seconds)
     } catch (requestError) {
-      if (requestError instanceof AccountApiError && requestError.status === 409) {
-        setError('SMS recovery requires a verified phone number and can only be used once.')
-      } else if (requestError instanceof AccountApiError && requestError.status === 503) {
-        setError('The SMS could not be sent. Please request a new email code and try again.')
-      } else {
-        setError('SMS recovery is not available for this request.')
-      }
+      setError(requestError instanceof AccountApiError && requestError.status === 409
+        ? 'SMS recovery requires a verified phone number and can only be used once per code.'
+        : 'We could not send an SMS for this request. Please request a new code.')
     } finally {
       setBusy(false)
     }
@@ -118,101 +110,129 @@ export default function ForgotPinPage() {
   function updatePinField(event) {
     const { name, value } = event.target
     setForm((current) => ({ ...current, [name]: value.replace(/\D/g, '').slice(0, 6) }))
+    setErrors((current) => ({ ...current, [name]: '' }))
     setError('')
   }
 
   async function completeRecovery(event) {
     event.preventDefault()
-    if (!SIX_DIGITS.test(form.code)) {
-      setError('Enter the 6-digit verification code.')
-      return
-    }
-    if (mode === 'pin' && !SIX_DIGITS.test(form.newPin)) {
-      setError('Your new PIN must contain exactly 6 digits.')
-      return
-    }
-    if (mode === 'pin' && form.newPin !== form.confirmation) {
-      setError('The new PINs do not match.')
-      return
-    }
-    setBusy(true)
+    if (busy) return
+    const nextErrors = {}
+    if (!SIX_DIGITS.test(form.code)) nextErrors.code = 'Enter the 6-digit verification code.'
+    if (mode === 'pin' && !SIX_DIGITS.test(form.newPin)) nextErrors.newPin = 'Use exactly 6 digits for your new PIN.'
+    if (mode === 'pin' && form.newPin !== form.confirmation) nextErrors.confirmation = 'Your PINs do not match.'
+    setErrors(nextErrors)
     setError('')
+    if (Object.keys(nextErrors).length) return
+    setBusy(true)
     try {
       if (mode === 'username') {
-        const result = await completeUsernameRecovery(challenge.challenge_id, email, form.code)
+        const result = await completeUsernameRecovery(challenge.challenge_id, identifier, form.code)
         setRecoveredUsername(result.username)
       } else if (mode === 'unlock') {
-        await completeAccountUnlock(challenge.challenge_id, username, form.code)
+        await completeAccountUnlock(challenge.challenge_id, identifier, form.code)
       } else {
-        await completePinReset(
-          challenge.challenge_id,
-          email,
-          form.code,
-          form.newPin,
-          form.confirmation,
-        )
+        await completePinReset(challenge.challenge_id, identifier, form.code, form.newPin, form.confirmation)
       }
+      setForm({ code: '', newPin: '', confirmation: '' })
       setStep('done')
     } catch (requestError) {
-      if (requestError instanceof AccountApiError && [502, 503].includes(requestError.status)) {
-        setError('We could not update your account right now. Please try again later.')
-      } else if (requestError instanceof AccountApiError && requestError.status === 429) {
+      if (requestError instanceof AccountApiError && requestError.status === 429) {
         setError('Too many incorrect attempts. Request a new code.')
       } else if (requestError instanceof AccountApiError && requestError.status === 400) {
-        setError('The code is incorrect or has expired.')
+        setErrors({ code: 'This code is incorrect or has expired. Try again or request a new code.' })
       } else {
-        setError('Account recovery could not be completed. Please try again.')
+        setError('We could not update your account right now. Please try again.')
       }
     } finally {
       setBusy(false)
     }
   }
 
-  function chooseMode(nextMode) {
-    setMode(nextMode)
-    setError('')
-  }
-
   function restartRecovery() {
-    setStep('email')
+    setStep('contact')
     setChallenge(null)
     setForm({ code: '', newPin: '', confirmation: '' })
-    setDeliveryMethod('email')
-    setError('')
+    setShowPin(false)
+    clearErrors()
   }
+
+  const title = step === 'done'
+    ? mode === 'username' ? 'Username recovered' : mode === 'unlock' ? 'Account unlocked' : 'PIN updated'
+    : step === 'code'
+      ? mode === 'pin' ? 'Set a new PIN' : 'Enter your code'
+      : mode === 'unlock' ? 'Unlock your account' : 'Recover your account'
 
   return (
     <main className="signup-page recovery-page">
-      <div className="signup-container login-container recovery-container">
-        <PageHero className="signup-header" title="Recover your account" description="Recover your username or securely reset your PIN." />
+      <div className="recovery-container">
+        <a className="account-brand recovery-brand" href="/" aria-label="Vlad WiFi home">
+          <span><WifiIcon /></span><strong>Vlad WiFi</strong>
+        </a>
+        <section className="signup-card recovery-card" aria-labelledby="recovery-title">
+          <header className="recovery-heading">
+            <span className={`recovery-icon${step === 'done' ? ' complete' : ''}`}>
+              {step === 'done' ? <CheckIcon /> : mode === 'unlock' ? <LockIcon /> : <ShieldIcon />}
+            </span>
+            {step !== 'done' && <p className="recovery-step">Step {step === 'contact' ? '1' : '2'} of 2</p>}
+            <h1 id="recovery-title">{title}</h1>
+            {step === 'contact' && <p>{mode === 'unlock'
+              ? 'Your account was locked after too many sign-in attempts. Verify your identity to sign in again.'
+              : 'Get back to your WiFi account in a few simple steps.'}</p>}
+            {step === 'code' && <p>Enter the code sent {deliveryMethod === 'sms' ? 'by SMS' : 'by email'} to <strong>{challenge.destination}</strong>.</p>}
+          </header>
 
-        <section className="signup-card login-card reset-pin-card recovery-card">
-          {step === 'email' && <>
-            <div className="signup-card-header"><h2>Find your account</h2><p>Enter your account details to receive a verification code.</p></div>
-            <div className="recovery-mode-tabs" aria-label="Choose recovery type"><button className={mode === 'username' ? 'active' : ''} type="button" onClick={() => chooseMode('username')}>Forgot username</button><button className={mode === 'pin' ? 'active' : ''} type="button" onClick={() => chooseMode('pin')}>Forgot PIN</button></div>
-            <form className="login-form" noValidate onSubmit={requestCode}>
-              {mode === 'unlock'
-                ? <div className="signup-field"><label htmlFor="unlock-username">Username</label><input autoCapitalize="none" autoComplete="username" className="signup-input" id="unlock-username" maxLength="64" placeholder="Username or phone number" spellCheck="false" type="text" value={username} onChange={(event) => { setUsername(event.target.value.toLowerCase().replace(/\s/g, '')); setError('') }} /></div>
-                : <div className="signup-field"><label htmlFor="reset-email">Email address</label><input autoComplete="email" className="signup-input" id="reset-email" placeholder="Email or phone number" type="text" value={email} onChange={(event) => { setEmail(event.target.value); setError('') }} /></div>}
+          {step === 'contact' && <>
+            {!isUnlock && <div className="recovery-mode-tabs" role="group" aria-label="Choose recovery type">
+              <button aria-pressed={mode === 'pin'} className={mode === 'pin' ? 'active' : ''} disabled={busy} type="button" onClick={() => { setMode('pin'); clearErrors() }}>Forgot PIN</button>
+              <button aria-pressed={mode === 'username'} className={mode === 'username' ? 'active' : ''} disabled={busy} type="button" onClick={() => { setMode('username'); clearErrors() }}>Forgot username</button>
+            </div>}
+            <form className="login-form" noValidate onSubmit={requestCode} aria-busy={busy}>
+              <div className="signup-field">
+                <label htmlFor="recovery-identifier">{isUnlock ? 'Username or phone number' : 'Email or phone number'}</label>
+                <input autoCapitalize="none" autoComplete={isUnlock ? 'username' : 'on'} className="signup-input" disabled={busy} id="recovery-identifier" maxLength={isUnlock ? 64 : 320} placeholder={isUnlock ? 'Enter your username or phone' : 'you@example.com or 024 123 4567'} spellCheck="false" type="text" value={identifier} onChange={(event) => { setIdentifier(event.target.value); clearErrors() }} aria-invalid={Boolean(errors.identifier)} aria-describedby={errors.identifier ? 'identifier-error' : 'identifier-help'} />
+                {errors.identifier ? <span className="signup-field-error" id="identifier-error">{errors.identifier}</span> : <span className="signup-field-help" id="identifier-help">{isUnlock ? 'We will send a verification code to your registered email.' : 'Use the email or verified phone number linked to your account.'}</span>}
+              </div>
               {error && <div className="otp-api-error" role="alert">{error}</div>}
-              <button className="signup-submit" disabled={busy} type="submit">{busy ? 'Sending code...' : `Send ${mode === 'username' ? 'username recovery' : mode === 'unlock' ? 'account unlock' : 'PIN reset'} code`}</button>
+              <button className="signup-submit" disabled={busy} type="submit">{busy ? 'Sending code...' : 'Send verification code'}</button>
             </form>
           </>}
 
-          {step === 'code' && <>
-            <div className="signup-card-header"><h2>Enter your code</h2><p>A verification code was sent by {deliveryMethod} to <strong>{challenge.destination}</strong>.</p></div>
-            <form className="login-form" noValidate onSubmit={completeRecovery}>
-              <div className="signup-field"><label htmlFor="reset-code">Verification code</label><OtpInput autoFocus id="reset-code" invalid={Boolean(error)} value={form.code} onChange={(value) => { setForm((current) => ({ ...current, code: value })); setError('') }} /></div>
-              {mode === 'pin' && <><div className="signup-field"><label htmlFor="reset-new-pin">New PIN</label><input autoComplete="new-password" className="signup-input pin-masked" id="reset-new-pin" inputMode="numeric" maxLength="6" name="newPin" placeholder="6-digit PIN" type="text" value={form.newPin} onChange={updatePinField} /></div><div className="signup-field"><label htmlFor="reset-confirm-pin">Confirm new PIN</label><input autoComplete="new-password" className="signup-input pin-masked" id="reset-confirm-pin" inputMode="numeric" maxLength="6" name="confirmation" placeholder="Repeat new PIN" type="text" value={form.confirmation} onChange={updatePinField} /></div></>}
-              {error && <div className="otp-api-error" role="alert">{error}</div>}
-              <button className="signup-submit" disabled={busy} type="submit">{busy ? 'Updating account...' : mode === 'username' ? 'Recover username' : mode === 'unlock' ? 'Unlock account' : 'Reset PIN'}</button>
-              <div className="otp-actions"><button disabled={busy || resendIn > 0} type="button" onClick={requestCode}>{resendIn > 0 ? `Send another email in ${resendIn}s` : 'Send another email code'}</button>{mode === 'pin' && deliveryMethod === 'email' && <button disabled={busy} type="button" onClick={useSmsFallback}>I can’t access my email — send by SMS</button>}<button disabled={busy} type="button" onClick={restartRecovery}>Use another {mode === 'unlock' ? 'username' : 'email or phone'}</button></div>
-            </form>
-          </>}
+          {step === 'code' && <form className="login-form" noValidate onSubmit={completeRecovery} aria-busy={busy}>
+            <div className="signup-field">
+              <label htmlFor="recovery-code">Verification code</label>
+              <OtpInput id="recovery-code" disabled={busy} invalid={Boolean(errors.code)} describedBy={errors.code ? 'code-error' : 'code-help'} value={form.code} onChange={(code) => { setForm((current) => ({ ...current, code })); setErrors((current) => ({ ...current, code: '' })); setError('') }} />
+              {errors.code ? <span className="signup-field-error" id="code-error" role="alert">{errors.code}</span> : <span className="signup-field-help" id="code-help">Enter all 6 digits. You can also paste your code.</span>}
+            </div>
+            {mode === 'pin' && <div className="recovery-pin-fields">
+              <div className="recovery-pin-heading"><span>Your new PIN</span><button type="button" aria-pressed={showPin} onClick={() => setShowPin((shown) => !shown)}>{showPin ? 'Hide PINs' : 'Show PINs'}</button></div>
+              <div className="signup-field">
+                <label htmlFor="reset-new-pin">New PIN</label>
+                <input autoComplete="new-password" className="signup-input" disabled={busy} id="reset-new-pin" inputMode="numeric" maxLength={6} name="newPin" placeholder="Enter 6 digits" type={showPin ? 'text' : 'password'} value={form.newPin} onChange={updatePinField} aria-invalid={Boolean(errors.newPin)} aria-describedby={errors.newPin ? 'new-pin-error' : undefined} />
+                {errors.newPin && <span className="signup-field-error" id="new-pin-error" role="alert">{errors.newPin}</span>}
+              </div>
+              <div className="signup-field">
+                <label htmlFor="reset-confirm-pin">Confirm new PIN</label>
+                <input autoComplete="new-password" className="signup-input" disabled={busy} id="reset-confirm-pin" inputMode="numeric" maxLength={6} name="confirmation" placeholder="Repeat your new PIN" type={showPin ? 'text' : 'password'} value={form.confirmation} onChange={updatePinField} aria-invalid={Boolean(errors.confirmation)} aria-describedby={errors.confirmation ? 'confirm-pin-error' : undefined} />
+                {errors.confirmation && <span className="signup-field-error" id="confirm-pin-error" role="alert">{errors.confirmation}</span>}
+              </div>
+            </div>}
+            {error && <div className="otp-api-error" role="alert">{error}</div>}
+            <button className="signup-submit" disabled={busy} type="submit">{busy ? 'Please wait...' : mode === 'username' ? 'Recover username' : mode === 'unlock' ? 'Unlock account' : 'Reset PIN'}</button>
+            <div className="otp-actions recovery-code-actions">
+              <button disabled={busy || resendIn > 0} type="button" onClick={requestCode}>{resendIn > 0 ? `Resend code in ${resendIn}s` : 'Resend verification code'}</button>
+              {mode === 'pin' && deliveryMethod === 'email' && <button disabled={busy} type="button" onClick={useSmsFallback}>Send the code by SMS instead</button>}
+              <button disabled={busy} type="button" onClick={restartRecovery}>Use another {isUnlock ? 'username or phone' : 'email or phone'}</button>
+            </div>
+          </form>}
 
-          {step === 'done' && <div className="reset-pin-success"><span aria-hidden="true">&#10003;</span><h2>{mode === 'username' ? 'Username recovered' : mode === 'unlock' ? 'Account unlocked' : 'PIN changed'}</h2>{mode === 'username' ? <><p>Your Vlad WiFi username is:</p><strong className="recovered-username">{recoveredUsername}</strong></> : mode === 'unlock' ? <p>Your account is unlocked. You can now log in.</p> : <p>Your PIN has been changed. You can now sign in with your new PIN.</p>}<a className="signup-submit" href="/">Return to login</a></div>}
-          {step !== 'done' && <p className="reset-back-link"><a href="/">Back to login</a></p>}
+          {step === 'done' && <div className="recovery-success" role="status">
+            {mode === 'username' ? <><p>Your Vlad WiFi username is:</p><strong className="recovered-username">{recoveredUsername}</strong></> : <p>{mode === 'unlock' ? 'Your account is ready. You can now sign in with your username or phone number.' : 'Your PIN has been changed. Sign in with your new PIN to get connected.'}</p>}
+            <a className="signup-submit" href="/login">Back to sign in</a>
+          </div>}
+          {step !== 'done' && <a className="recovery-back-link" href="/login"><span aria-hidden="true">&larr;</span> Back to sign in</a>}
         </section>
+        <p className="recovery-help">Need a hand? <a href="#help-and-support" onClick={(event) => { event.preventDefault(); window.dispatchEvent(new Event('vlad:open-support')) }}>Contact support</a></p>
       </div>
     </main>
   )

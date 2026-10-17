@@ -7,6 +7,7 @@ import './styles/account.css'
 import './styles/support.css'
 import './styles/site.css'
 import './styles/login.css'
+import './styles/recovery.css'
 
 createRoot(document.getElementById('root')).render(
   <App />,

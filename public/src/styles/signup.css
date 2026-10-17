@@ -656,7 +656,7 @@
 
 .recovery-mode-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.35rem;
   margin-bottom: 1.25rem;
   padding: 0.3rem;
@@ -892,24 +892,4 @@
   .signup-submit {
     transition: none;
   }
-}
-
-
-/* Mobile-first account recovery and OTP layout */
-.recovery-container { max-width: 540px; }
-.recovery-card { width: 100%; min-width: 0; overflow: hidden; }
-.recovery-card .recovery-mode-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.recovery-card .signup-card-header { margin-bottom: 1.25rem; }
-.recovery-card .login-form { display: grid; gap: 1.1rem; }
-.recovery-card .signup-field { min-width: 0; margin: 0; }
-.recovery-card .otp-boxes { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .5rem; width: 100%; }
-.recovery-card .otp-boxes input { width: 100%; min-width: 0; height: 54px; padding: 0; text-align: center; border-radius: 12px; }
-.recovery-card .signup-input { width: 100%; box-sizing: border-box; }
-.recovery-card .signup-submit { width: 100%; box-sizing: border-box; margin-top: .3rem; }
-.recovery-card .otp-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .65rem 1rem; }
-@media (max-width: 540px) {
-  .recovery-container { width: 100%; padding-inline: 16px; box-sizing: border-box; }
-  .recovery-card { padding: 24px 20px; border-radius: 20px; }
-  .recovery-card .otp-boxes { gap: 6px; }
-  .recovery-card .otp-boxes input { height: 48px; font-size: 1.1rem; }
 }

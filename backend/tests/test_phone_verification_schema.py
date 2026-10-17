@@ -12,6 +12,7 @@ def test_phone_verification_page_is_served_by_spa_fallback() -> None:
 
     assert "/verify-phone" in page_paths
     assert "/forgot-password" in page_paths
+    assert "/unlock-account" in page_paths
 
     response = TestClient(app).get("/verify-phone", follow_redirects=False)
     assert response.status_code in {200, 307}

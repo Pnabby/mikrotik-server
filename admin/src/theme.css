@@ -33,15 +33,21 @@
   --primary-text: #71D9A3;
   --orange-50: #392718;
   --warning-text: #FFAA6B;
-  --ink: #EEF4F0;
-  --muted: #ABBAB1;
-  --bg: #0D1210;
-  --card: #151D18;
-  --line: #2C3931;
-  --control-line: #718679;
+  --ink: #F2F2F2;
+  --muted: #B7B7B7;
+  /* Neutral charcoal canvas with darker containers, matching the reference. */
+  --bg: #282828;
+  --card: #202020;
+  --line: #383838;
+  --control-line: #737373;
   --focus-ring: #FFD2AD;
-  --disabled-bg: #26382D;
+  --disabled-bg: #303030;
+  --overlay-ink: #000000;
   --red-600: #FF8C98;
   --red-50: #3D2026;
+  --sidebar-bg: #222222;
+  --sidebar-hover: #303030;
+  --sidebar-text: #DEDEDE;
+  --sidebar-muted: #A7A7A7;
   --shadow-ink: #000000;
 }
