@@ -147,7 +147,7 @@ class AccountUnlockStartRequest(BaseModel):
     @field_validator("username")
     @classmethod
     def validate_username(cls, value: str) -> str:
-        return normalize_username(value)
+        return normalize_phone_number(value) if value.startswith(('+', '0')) else normalize_username(value)
 
 
 class AccountUnlockCompleteRequest(BaseModel):
@@ -160,7 +160,7 @@ class AccountUnlockCompleteRequest(BaseModel):
     @field_validator("username")
     @classmethod
     def validate_username(cls, value: str) -> str:
-        return normalize_username(value)
+        return normalize_phone_number(value) if value.startswith(('+', '0')) else normalize_username(value)
 
     @field_validator("code")
     @classmethod
