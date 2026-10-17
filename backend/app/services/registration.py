@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 from fastapi import status
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -21,7 +21,7 @@ from app.integrations.mikrotik.registry import UnknownRouterError, get_router
 from app.integrations.mnotify import SmsDeliveryError, SmsSender
 from app.models.customer import Customer
 from app.models.email_otp_challenge import EmailOtpChallenge
-from app.models.enums import AccountStatus, OtpPurpose
+from app.models.enums import AccountStatus, OtpFlow, OtpPurpose
 from app.models.router import Router
 from app.schemas.registration import (
     PRIVACY_NOTICE_VERSION,
@@ -29,6 +29,7 @@ from app.schemas.registration import (
     RegistrationCompleteRequest,
     RegistrationStartRequest,
 )
+from app.services.otp_limits import email_subject, enforce_otp_request_limit
 
 logger = logging.getLogger(__name__)
 REGISTRATION_COMMENT_PREFIX = "flint-registration="
@@ -557,40 +558,9 @@ class RegistrationOtpService:
             )
 
     def _enforce_request_limits(self, email: str, *, now: datetime) -> None:
-        latest_created_at = self._session.scalar(
-            select(EmailOtpChallenge.created_at)
-            .where(
-                EmailOtpChallenge.email == email,
-                EmailOtpChallenge.purpose == OtpPurpose.REGISTRATION,
-            )
-            .order_by(EmailOtpChallenge.created_at.desc())
-            .limit(1)
+        enforce_otp_request_limit(
+            self._session, self._settings, OtpFlow.REGISTRATION, email_subject(email), now=now
         )
-        if latest_created_at is not None:
-            elapsed = (now - _as_utc(latest_created_at)).total_seconds()
-            if elapsed < self._settings.otp_resend_cooldown_seconds:
-                raise ServiceError(
-                    status.HTTP_429_TOO_MANY_REQUESTS,
-                    "Please wait before requesting another code.",
-                )
-
-        since = now - timedelta(hours=1)
-        email_count = self._session.scalar(
-            select(func.count())
-            .select_from(EmailOtpChallenge)
-            .where(
-                EmailOtpChallenge.email == email,
-                EmailOtpChallenge.purpose == OtpPurpose.REGISTRATION,
-                EmailOtpChallenge.created_at >= since,
-            )
-        )
-        # Captive-portal clients commonly share one NAT or reverse-proxy address.
-        # Limiting by that address lets one guest exhaust signup for everyone else.
-        if (email_count or 0) >= self._settings.otp_max_requests_per_hour:
-            raise ServiceError(
-                status.HTTP_429_TOO_MANY_REQUESTS,
-                "Too many verification codes requested.",
-            )
 
     def _hash_secret(self) -> bytes:
         if self._settings.otp_hash_secret is None:

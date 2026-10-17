@@ -26,6 +26,14 @@ class OtpPurpose(StrEnum):
     ACCOUNT_UNLOCK = "account_unlock"
 
 
+class OtpFlow(StrEnum):
+    REGISTRATION = "registration"
+    USERNAME_RECOVERY = "username_recovery"
+    PIN_RESET = "pin_reset"
+    ACCOUNT_UNLOCK = "account_unlock"
+    PHONE_VERIFICATION = "phone_verification"
+
+
 class PaymentStatus(StrEnum):
     PENDING = "pending"
     SUCCESS = "success"

@@ -4,6 +4,7 @@ import RevenueForecast from '../components/RevenueForecast'
 import AdminHeader from '../components/AdminHeader'
 import WireGuardPanel from '../components/WireGuardPanel'
 import IssuesPanel from '../components/IssuesPanel'
+import OtpSupportPanel from '../components/OtpSupportPanel'
 import { profilesAcrossHostels } from '../utils/profileCatalogue'
 import { changedProfileDetails, DURATION_UNITS, mergeProfileDetails, profileDetailsFromForm, profileSaveRequest } from '../utils/profileEdits'
 
@@ -1942,7 +1943,7 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
   }, [customerAction, viewCustomer, actionBusy])
 
   useEffect(() => {
-    if (mode === 'message') return undefined
+    if (mode === 'message' || mode === 'otp') return undefined
     let active = true
     setLoading(true)
     setError('')
@@ -2058,12 +2059,12 @@ function CustomersDevicesPanel({ admin, hostels, onSessionExpired }) {
   return <>
     <header className="dashboard-page-heading">
       <div><p className="dashboard-kicker">Customer operations</p><h1>Customers &amp; devices</h1><p>Understand account status, subscriptions, live connections, and communicate with your users.</p></div>
-      {mode !== 'message' && <button className="dashboard-refresh-button" disabled={loading} type="button" onClick={() => setRefreshKey((value) => value + 1)}><Icon name="refresh" />{loading ? 'Refreshing' : 'Refresh live data'}</button>}
+      {mode !== 'message' && mode !== 'otp' && <button className="dashboard-refresh-button" disabled={loading} type="button" onClick={() => setRefreshKey((value) => value + 1)}><Icon name="refresh" />{loading ? 'Refreshing' : 'Refresh live data'}</button>}
     </header>
 
-    <div className="admin-section-tabs" role="tablist" aria-label="Customer information"><button className={mode === 'customers' ? 'active' : ''} role="tab" type="button" onClick={() => setMode('customers')}><Icon name="users" />Users</button><button className={mode === 'devices' ? 'active' : ''} role="tab" type="button" onClick={() => setMode('devices')}><Icon name="device" />Devices</button><button className={mode === 'message' ? 'active' : ''} role="tab" type="button" onClick={() => setMode('message')}><Icon name="activity" />Message users</button></div>
+    <div className="admin-section-tabs" role="tablist" aria-label="Customer information"><button className={mode === 'customers' ? 'active' : ''} aria-selected={mode === 'customers'} role="tab" type="button" onClick={() => setMode('customers')}><Icon name="users" />Users</button><button className={mode === 'devices' ? 'active' : ''} aria-selected={mode === 'devices'} role="tab" type="button" onClick={() => setMode('devices')}><Icon name="device" />Devices</button><button className={mode === 'message' ? 'active' : ''} aria-selected={mode === 'message'} role="tab" type="button" onClick={() => setMode('message')}><Icon name="activity" />Message users</button><button className={mode === 'otp' ? 'active' : ''} aria-selected={mode === 'otp'} role="tab" type="button" onClick={() => setMode('otp')}><Icon name="shield" />OTP support</button></div>
 
-    {mode === 'message' ? <MessagingPanel embedded canEdit={admin.role !== 'viewer'} hostels={hostels} onSessionExpired={onSessionExpired} /> : <>
+    {mode === 'otp' ? <OtpSupportPanel canReset={admin.role === 'administrator'} onSessionExpired={onSessionExpired} /> : mode === 'message' ? <MessagingPanel embedded canEdit={admin.role !== 'viewer'} hostels={hostels} onSessionExpired={onSessionExpired} /> : <>
       <form className="admin-data-filters customer-filters" onSubmit={apply}>
         <label><span>Hostel</span><select name="router_id" value={filters.router_id} onChange={change}><option value="">All hostels</option>{hostels.filter((hostel) => hostel.is_active).map((hostel) => <option key={hostel.router_id} value={hostel.router_id}>{hostel.name}</option>)}</select></label>
         <label><span>Account status</span><select name="account_status" value={filters.account_status} onChange={change}><option value="">All accounts</option><option value="active">Active</option><option value="inactive">Inactive</option></select></label>

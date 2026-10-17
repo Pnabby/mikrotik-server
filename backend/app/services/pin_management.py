@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 from fastapi import status
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -25,7 +25,7 @@ from app.models.audit_log import AuditLog
 from app.models.customer import Customer
 from app.models.customer_session import CustomerSession
 from app.models.email_otp_challenge import EmailOtpChallenge
-from app.models.enums import AuditActorType, OtpPurpose
+from app.models.enums import AuditActorType, OtpFlow, OtpPurpose
 from app.schemas.account import (
     AccountUnlockCompleteRequest,
     AccountUnlockStartRequest,
@@ -36,6 +36,7 @@ from app.schemas.account import (
     UsernameRecoveryCompleteRequest,
 )
 from app.services.customer_auth import login_attempt_limiter
+from app.services.otp_limits import email_subject, enforce_otp_request_limit
 
 PASSWORD_SERVICE_UNAVAILABLE = "The hostel router is temporarily unavailable."
 
@@ -708,39 +709,9 @@ class PinManagementService:
         purpose: OtpPurpose,
         now: datetime,
     ) -> None:
-        latest = self._session.scalar(
-            select(EmailOtpChallenge.created_at)
-            .where(
-                EmailOtpChallenge.email == email,
-                EmailOtpChallenge.purpose == purpose,
-            )
-            .order_by(EmailOtpChallenge.created_at.desc())
-            .limit(1)
+        enforce_otp_request_limit(
+            self._session, self._settings, OtpFlow(purpose.value), email_subject(email), now=now
         )
-        if latest is not None and (
-            now - _as_utc(latest)
-        ).total_seconds() < self._settings.otp_resend_cooldown_seconds:
-            raise ServiceError(
-                status.HTTP_429_TOO_MANY_REQUESTS,
-                "Please wait before requesting another code.",
-            )
-        since = now - timedelta(hours=1)
-        email_count = self._session.scalar(
-            select(func.count())
-            .select_from(EmailOtpChallenge)
-            .where(
-                EmailOtpChallenge.email == email,
-                EmailOtpChallenge.purpose == purpose,
-                EmailOtpChallenge.created_at >= since,
-            )
-        )
-        # Captive-portal clients commonly share one NAT or reverse-proxy address.
-        # Limit the destination instead so one guest cannot block other accounts.
-        if (email_count or 0) >= self._settings.otp_max_requests_per_hour:
-            raise ServiceError(
-                status.HTTP_429_TOO_MANY_REQUESTS,
-                "Too many verification codes requested.",
-            )
 
     def _hash_secret(self) -> bytes:
         if self._settings.otp_hash_secret is None:

@@ -100,6 +100,17 @@ export function getCustomersAndDevices(filters = {}) {
   return request(`/api/admin/dashboard/customers${query.size ? `?${query}` : ''}`)
 }
 
+export function getOtpSupport(search) {
+  return request(`/api/admin/otp-support?${new URLSearchParams({ search })}`)
+}
+
+export function resetOtpLimit(flow, subject) {
+  return request('/api/admin/otp-support/reset', {
+    method: 'POST',
+    body: JSON.stringify({ flow, subject }),
+  })
+}
+
 export function transferCustomerHostel(customerId, destinationRouterId, password) {
   return request(`/api/admin/dashboard/customers/${encodeURIComponent(customerId)}/transfer-hostel`, {
     method: 'POST',

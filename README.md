@@ -250,6 +250,17 @@ development remains separate.
 
 ## Configuration
 
+OTP request support is available under **Customers & devices → OTP support** in the
+admin workspace. Search the full email address or phone number to inspect hourly
+usage and the next retry time, including requests for signups without an account.
+Only the `administrator` role can reset an allowance; operators and viewers can
+inspect it. A reset applies to one destination and flow, clears its resend cooldown,
+and records the administrator and time. The user then requests a fresh OTP through
+the normal page. Code expiry, incorrect-code attempts, and account locks still apply.
+
+Run `alembic upgrade head` from `backend/` before deploying this change. Revision
+`20261017_0016` creates the durable reset records; existing OTP history is retained.
+
 Secrets and application deployment settings are environment-driven. Router catalogue
 metadata is stored in PostgreSQL. In particular:
 

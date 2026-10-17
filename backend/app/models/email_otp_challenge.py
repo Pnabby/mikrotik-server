@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, func
@@ -37,8 +37,9 @@ class EmailOtpChallenge(Base):
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     requested_ip: Mapped[str | None] = mapped_column(String(64))
+    # Preserve microseconds so a request immediately after a quota reset still counts.
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), index=True
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), server_default=func.now(), index=True
     )
 
     customer: Mapped[Customer | None] = relationship(back_populates="otp_challenges")
