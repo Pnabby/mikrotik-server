@@ -248,18 +248,20 @@ class PinManagementService:
         send_otp: Callable[..., None],
         router_client_factory: PasswordRouterClientFactory,
         requested_ip: str | None,
+        sms_sender: SmsSender | None = None,
     ) -> StartedPinReset:
         secret = self._hash_secret()
         now = datetime.now(UTC)
+        by_phone = request.email.startswith('+')
+        customer = self._session.scalar(select(Customer).where(Customer.phone_number == request.email if by_phone else Customer.email == request.email).limit(1))
+        if by_phone and customer is not None and customer.phone_verified_at is None:
+            customer = None
+        lookup_email = customer.email if by_phone and customer else request.email
         self._enforce_request_limits(
-            request.email,
+            lookup_email,
             purpose=purpose,
             now=now,
         )
-        customer = self._session.scalar(
-            select(Customer).where(Customer.email == request.email).limit(1)
-        )
-
         if customer is not None:
             self._check_router(customer, router_client_factory)
 
@@ -269,7 +271,7 @@ class PinManagementService:
         self._session.execute(
             update(EmailOtpChallenge)
             .where(
-                EmailOtpChallenge.email == request.email,
+                EmailOtpChallenge.email == lookup_email,
                 EmailOtpChallenge.purpose == purpose,
                 EmailOtpChallenge.consumed_at.is_(None),
             )
@@ -278,7 +280,7 @@ class PinManagementService:
         challenge = EmailOtpChallenge(
             id=challenge_id,
             customer=customer,
-            email=request.email,
+            email=lookup_email,
             purpose=purpose,
             code_hash=self._hash_code(secret, challenge_id, code, purpose),
             attempt_count=0,
@@ -291,14 +293,19 @@ class PinManagementService:
 
         if customer is not None:
             try:
-                send_otp(
-                    recipient=request.email,
+                if by_phone:
+                    if sms_sender is None:
+                        raise SmsDeliveryError('SMS is not configured.')
+                    sms_sender.send_pin_reset_otp(recipient=customer.phone_number, code=code, expires_in_minutes=max(1, (self._settings.otp_code_ttl_seconds + 59) // 60))
+                else:
+                    send_otp(
+                    recipient=lookup_email,
                     code=code,
                     expires_in_minutes=max(
                         1, (self._settings.otp_code_ttl_seconds + 59) // 60
                     ),
                 )
-            except EmailDeliveryError as exc:
+            except (EmailDeliveryError, SmsDeliveryError) as exc:
                 challenge.consumed_at = datetime.now(UTC)
                 self._session.commit()
                 raise ServiceError(
@@ -308,7 +315,7 @@ class PinManagementService:
 
         return StartedPinReset(
             challenge_id=challenge_id,
-            destination=_mask_email(request.email),
+            destination=_mask_phone(request.email) if by_phone else _mask_email(lookup_email),
             expires_in_seconds=self._settings.otp_code_ttl_seconds,
             resend_after_seconds=self._settings.otp_resend_cooldown_seconds,
         )
