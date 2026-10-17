@@ -181,14 +181,14 @@ export default function ForgotPinPage() {
   }
 
   return (
-    <main className="signup-page">
-      <div className="signup-container login-container">
-        <PageHero className="signup-header" title="Recover your account" description="Recover your username, choose a new PIN, or unlock your account." />
+    <main className="signup-page recovery-page">
+      <div className="signup-container login-container recovery-container">
+        <PageHero className="signup-header" title="Recover your account" description="Recover your username or securely reset your PIN." />
 
-        <section className="signup-card login-card reset-pin-card">
+        <section className="signup-card login-card reset-pin-card recovery-card">
           {step === 'email' && <>
             <div className="signup-card-header"><h2>Find your account</h2><p>Enter your account details to receive a verification code.</p></div>
-            <div className="recovery-mode-tabs" aria-label="Choose recovery type"><button className={mode === 'username' ? 'active' : ''} type="button" onClick={() => chooseMode('username')}>Forgot username</button><button className={mode === 'pin' ? 'active' : ''} type="button" onClick={() => chooseMode('pin')}>Forgot PIN</button><button className={mode === 'unlock' ? 'active' : ''} type="button" onClick={() => chooseMode('unlock')}>Unlock account</button></div>
+            <div className="recovery-mode-tabs" aria-label="Choose recovery type"><button className={mode === 'username' ? 'active' : ''} type="button" onClick={() => chooseMode('username')}>Forgot username</button><button className={mode === 'pin' ? 'active' : ''} type="button" onClick={() => chooseMode('pin')}>Forgot PIN</button></div>
             <form className="login-form" noValidate onSubmit={requestCode}>
               {mode === 'unlock'
                 ? <div className="signup-field"><label htmlFor="unlock-username">Username</label><input autoCapitalize="none" autoComplete="username" className="signup-input" id="unlock-username" maxLength="64" placeholder="Enter your username" spellCheck="false" type="text" value={username} onChange={(event) => { setUsername(event.target.value.toLowerCase().replace(/\s/g, '')); setError('') }} /></div>
