@@ -34,6 +34,11 @@ def signup_client(support_db, monkeypatch):
 
     def post(url, **kwargs):
         sent_requests.append(kwargs["json"])
+        if kwargs["json"].get("sms_type") == "otp":
+            return httpx.Response(403, json={
+                "status": "error",
+                "error": "Sender ID is approved for SMS but is not registered as an OTP sender ID.",
+            }, request=httpx.Request("POST", url))
         return httpx.Response(200, json=response_payload, request=httpx.Request("POST", url))
 
     monkeypatch.setattr("app.integrations.mnotify.client.httpx.post", post)
@@ -71,7 +76,7 @@ def test_signup_sends_otp_to_normalized_phone_then_verifies_it(signup_client, ph
     assert started.status_code == 201, started.text
     assert len(sent) == 1
     assert sent[0]["recipient"] == ["233241234567"]
-    assert sent[0]["sms_type"] == "otp"
+    assert "sms_type" not in sent[0]
     assert request["email"] not in sent[0]["message"]
     code = re.search(r"\b[0-9]{6}\b", sent[0]["message"]).group()
     payload = {**request, "challenge_id": started.json()["challenge_id"], "code": code}

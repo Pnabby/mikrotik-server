@@ -37,13 +37,13 @@ def provider(monkeypatch):
 
 
 @pytest.mark.parametrize("method", ["send_verification_otp", "send_pin_reset_otp"])
-def test_verification_messages_use_otp_route_to_phone(provider, method, caplog):
+def test_verification_messages_use_approved_sms_route_to_phone(provider, method, caplog):
     sender, post, _ = provider
     caplog.set_level(logging.INFO)
     getattr(sender, method)(recipient="+233241234567", code="135790", expires_in_minutes=10)
     body = post.call_args.kwargs["json"]
     assert body["recipient"] == ["233241234567"]
-    assert body["sms_type"] == "otp"
+    assert "sms_type" not in body
     assert body["is_schedule"] is False
     assert "135790" in body["message"]
     assert "campaign-test-123" in caplog.text
