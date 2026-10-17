@@ -14,6 +14,7 @@ import {
 } from '../services/accountApi'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const PHONE_PATTERN = /^(?:\+233|0|233)[0-9]{9}$/
 const USERNAME_PATTERN = /^[a-z0-9]{3,64}$/
 const SIX_DIGITS = /^[0-9]{6}$/
 const recoveryParams = new URLSearchParams(window.location.search)
@@ -51,14 +52,14 @@ export default function ForgotPinPage() {
 
   async function requestCode(event) {
     event?.preventDefault()
-    const normalizedEmail = email.trim().toLowerCase()
+    const normalizedEmail = email.trim().toLowerCase().replace(/[\s()-]/g, '')
     const normalizedUsername = username.trim().toLowerCase()
     if (mode === 'unlock' && !USERNAME_PATTERN.test(normalizedUsername)) {
       setError('Enter the username for the locked account.')
       return
     }
-    if (mode !== 'unlock' && !EMAIL_PATTERN.test(normalizedEmail)) {
-      setError('Enter the email address connected to your account.')
+    if (mode !== 'unlock' && !(EMAIL_PATTERN.test(normalizedEmail) || PHONE_PATTERN.test(normalizedEmail.replace(/[\s()-]/g, '')))) {
+      setError('Enter your registered email address or phone number.')
       return
     }
     setBusy(true)
@@ -69,9 +70,9 @@ export default function ForgotPinPage() {
       else if (mode === 'unlock') result = await startAccountUnlock(normalizedUsername)
       else result = await startPinReset(normalizedEmail)
       if (mode === 'unlock') setUsername(normalizedUsername)
-      else setEmail(normalizedEmail)
+      else setEmail(normalizedEmail.replace(/[\s()-]/g, ''))
       setChallenge(result)
-      setDeliveryMethod('email')
+      setDeliveryMethod(normalizedEmail.includes('@') ? 'email' : 'sms')
       setForm((current) => ({ ...current, code: '' }))
       setResendIn(result.resend_after_seconds)
       setStep('code')
@@ -192,7 +193,7 @@ export default function ForgotPinPage() {
             <form className="login-form" noValidate onSubmit={requestCode}>
               {mode === 'unlock'
                 ? <div className="signup-field"><label htmlFor="unlock-username">Username</label><input autoCapitalize="none" autoComplete="username" className="signup-input" id="unlock-username" maxLength="64" placeholder="Enter your username" spellCheck="false" type="text" value={username} onChange={(event) => { setUsername(event.target.value.toLowerCase().replace(/\s/g, '')); setError('') }} /></div>
-                : <div className="signup-field"><label htmlFor="reset-email">Email address</label><input autoComplete="email" className="signup-input" id="reset-email" placeholder="you@example.com" type="email" value={email} onChange={(event) => { setEmail(event.target.value); setError('') }} /></div>}
+                : <div className="signup-field"><label htmlFor="reset-email">Email address</label><input autoComplete="email" className="signup-input" id="reset-email" placeholder="Email or phone number" type="text" value={email} onChange={(event) => { setEmail(event.target.value); setError('') }} /></div>}
               {error && <div className="otp-api-error" role="alert">{error}</div>}
               <button className="signup-submit" disabled={busy} type="submit">{busy ? 'Sending code...' : `Send ${mode === 'username' ? 'username recovery' : mode === 'unlock' ? 'account unlock' : 'PIN reset'} code`}</button>
             </form>
@@ -205,7 +206,7 @@ export default function ForgotPinPage() {
               {mode === 'pin' && <><div className="signup-field"><label htmlFor="reset-new-pin">New PIN</label><input autoComplete="new-password" className="signup-input pin-masked" id="reset-new-pin" inputMode="numeric" maxLength="6" name="newPin" placeholder="6-digit PIN" type="text" value={form.newPin} onChange={updatePinField} /></div><div className="signup-field"><label htmlFor="reset-confirm-pin">Confirm new PIN</label><input autoComplete="new-password" className="signup-input pin-masked" id="reset-confirm-pin" inputMode="numeric" maxLength="6" name="confirmation" placeholder="Repeat new PIN" type="text" value={form.confirmation} onChange={updatePinField} /></div></>}
               {error && <div className="otp-api-error" role="alert">{error}</div>}
               <button className="signup-submit" disabled={busy} type="submit">{busy ? 'Updating account...' : mode === 'username' ? 'Recover username' : mode === 'unlock' ? 'Unlock account' : 'Reset PIN'}</button>
-              <div className="otp-actions"><button disabled={busy || resendIn > 0} type="button" onClick={requestCode}>{resendIn > 0 ? `Send another email in ${resendIn}s` : 'Send another email code'}</button>{mode === 'pin' && deliveryMethod === 'email' && <button disabled={busy} type="button" onClick={useSmsFallback}>I can’t access my email — send by SMS</button>}<button disabled={busy} type="button" onClick={restartRecovery}>Use another {mode === 'unlock' ? 'username' : 'email'}</button></div>
+              <div className="otp-actions"><button disabled={busy || resendIn > 0} type="button" onClick={requestCode}>{resendIn > 0 ? `Send another email in ${resendIn}s` : 'Send another email code'}</button>{mode === 'pin' && deliveryMethod === 'email' && <button disabled={busy} type="button" onClick={useSmsFallback}>I can’t access my email — send by SMS</button>}<button disabled={busy} type="button" onClick={restartRecovery}>Use another {mode === 'unlock' ? 'username' : 'email or phone'}</button></div>
             </form>
           </>}
 
