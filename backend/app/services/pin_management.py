@@ -506,7 +506,7 @@ class PinManagementService:
             raise ServiceError(status.HTTP_429_TOO_MANY_REQUESTS, "Too many code attempts.")
 
         customer = self._session.get(Customer, challenge.customer_id)
-        if customer is None or customer.username != request.username:
+        if customer is None or request.username not in (customer.username, customer.phone_number):
             raise ServiceError(status.HTTP_400_BAD_REQUEST, "Invalid verification code.")
         supplied_hash = self._hash_code(
             self._hash_secret(),
