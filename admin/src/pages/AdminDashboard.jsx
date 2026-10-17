@@ -402,7 +402,7 @@ function ProfileEditor({ groups, hostel, profile, onClose, onDelete, onSave }) {
 
         {profile.bulk_mode && <div className={`bulk-profile-notice ${profile.configuration_consistent ? '' : 'mixed'}`}>
           <Icon name={profile.configuration_consistent ? 'check' : 'alert'} />
-          <div><strong>Edit plans across {profile.hostel_count} hostels</strong><p>{profile.available_hostels} of {profile.hostel_count} routers have this profile. Only the plan details you edit will change. To match router settings or create missing profiles, choose a source hostel below.</p></div>
+          <div><strong>Edit plans across {profile.hostel_count} hostels</strong><p>{profile.configured_hostels} of {profile.hostel_count} hostels have saved plan details; router settings are currently verified on {profile.available_hostels}. Prices can be changed even when a router is offline. Only enable router settings if you need to change MikroTik configuration.</p></div>
         </div>}
         {profile.bulk_mode && profile.mixed_fields?.includes('amount') && (
           <div className="bulk-price-source">
